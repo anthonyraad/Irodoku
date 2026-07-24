@@ -53,7 +53,8 @@ class PreferencesService {
     await _prefs.setBool(_keySoundEnabled, enabled);
   }
 
-  bool getXlPicker() => _prefs.getBool(_keyXlPicker) ?? false;
+  /// Defaults to on when unset.
+  bool getXlPicker() => _prefs.getBool(_keyXlPicker) ?? true;
 
   Future<void> setXlPicker(bool enabled) async {
     await _prefs.setBool(_keyXlPicker, enabled);

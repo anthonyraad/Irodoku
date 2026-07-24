@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/theme.dart';
+import 'core/web_layout.dart';
 import 'providers/game_provider.dart';
 import 'providers/iroen_provider.dart';
 import 'providers/settings_provider.dart';
@@ -47,6 +48,7 @@ class IrodokuApp extends StatelessWidget {
             theme: IrodokuTheme.light(),
             darkTheme: IrodokuTheme.dark(),
             themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
+            builder: WebLayout.wrap,
             home: const GameScreen(),
           );
         },
