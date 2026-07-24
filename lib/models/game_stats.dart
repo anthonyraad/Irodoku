@@ -1,0 +1,102 @@
+import 'difficulty.dart';
+import 'game_palette.dart';
+
+class GameStats {
+  static const int iroenUnlockWinsRequired = 100;
+
+  final int currentStreak;
+  final int bestStreak;
+  final int gamesPlayed;
+  final int gamesWon;
+  final Map<Difficulty, Duration?> bestTimes;
+  final Map<Difficulty, int> winsByDifficulty;
+  final Set<GamePalette> unlockedPalettes;
+  final Map<GamePalette, int> bestStreakByPalette;
+  final Map<GamePalette, int> currentStreakByPalette;
+
+  const GameStats({
+    this.currentStreak = 0,
+    this.bestStreak = 0,
+    this.gamesPlayed = 0,
+    this.gamesWon = 0,
+    this.bestTimes = const {},
+    this.winsByDifficulty = const {},
+    this.unlockedPalettes = const {},
+    this.bestStreakByPalette = const {},
+    this.currentStreakByPalette = const {},
+  });
+
+  Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
+
+  int winsFor(Difficulty difficulty) => winsByDifficulty[difficulty] ?? 0;
+
+  int bestStreakForPalette(GamePalette palette) =>
+      bestStreakByPalette[palette] ?? 0;
+
+  /// Palette with the highest recorded win streak, if any wins exist.
+  GamePalette? get favoritePalette {
+    GamePalette? favorite;
+    var best = 0;
+    for (final palette in GamePalette.values) {
+      final streak = bestStreakForPalette(palette);
+      if (streak > best) {
+        best = streak;
+        favorite = palette;
+      }
+    }
+    return favorite;
+  }
+
+  bool isPaletteUnlocked(GamePalette palette) {
+    if (!palette.isLockedByDefault) return true;
+    return unlockedPalettes.contains(palette);
+  }
+
+  GamePalette get fallbackPalette {
+    for (final palette in GamePalette.values) {
+      if (isPaletteUnlocked(palette)) return palette;
+    }
+    return GamePalette.standard;
+  }
+
+  bool isUnlocked(Difficulty difficulty) {
+    final prerequisite = difficulty.unlockPrerequisite;
+    if (prerequisite == null) return true;
+    return winsFor(prerequisite) >= Difficulty.unlockWinsRequired;
+  }
+
+  bool get isIroenUnlocked => gamesWon >= iroenUnlockWinsRequired;
+
+  Difficulty get highestUnlocked {
+    Difficulty best = Difficulty.easy;
+    for (final d in Difficulty.values) {
+      if (isUnlocked(d)) best = d;
+    }
+    return best;
+  }
+
+  GameStats copyWith({
+    int? currentStreak,
+    int? bestStreak,
+    int? gamesPlayed,
+    int? gamesWon,
+    Map<Difficulty, Duration?>? bestTimes,
+    Map<Difficulty, int>? winsByDifficulty,
+    Set<GamePalette>? unlockedPalettes,
+    Map<GamePalette, int>? bestStreakByPalette,
+    Map<GamePalette, int>? currentStreakByPalette,
+  }) {
+    return GameStats(
+      currentStreak: currentStreak ?? this.currentStreak,
+      bestStreak: bestStreak ?? this.bestStreak,
+      gamesPlayed: gamesPlayed ?? this.gamesPlayed,
+      gamesWon: gamesWon ?? this.gamesWon,
+      bestTimes: bestTimes ?? this.bestTimes,
+      winsByDifficulty: winsByDifficulty ?? this.winsByDifficulty,
+      unlockedPalettes: unlockedPalettes ?? this.unlockedPalettes,
+      bestStreakByPalette: bestStreakByPalette ?? this.bestStreakByPalette,
+      currentStreakByPalette:
+          currentStreakByPalette ?? this.currentStreakByPalette,
+    );
+  }
+}
