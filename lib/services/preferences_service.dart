@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../models/paused_game.dart';
 
@@ -21,6 +22,8 @@ class PreferencesService {
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
   static const _keyIroenState = 'iroen_state';
+  static const _keyIroenGallery = 'iroen_gallery';
+  static const _keyIroenActiveMosaicId = 'iroen_active_mosaic_id';
   static const _keyDevMode = 'dev_mode';
 
   final SharedPreferences _prefs;
@@ -206,5 +209,38 @@ class PreferencesService {
 
   Future<void> saveIroenState(IroenState state) async {
     await _prefs.setString(_keyIroenState, jsonEncode(state.toJson()));
+  }
+
+  List<IroenMosaic> loadIroenGallery() {
+    final raw = _prefs.getString(_keyIroenGallery);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return [
+        for (final item in decoded)
+          if (item is Map)
+            IroenMosaic.fromJson(Map<String, dynamic>.from(item)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> saveIroenGallery(List<IroenMosaic> mosaics) async {
+    await _prefs.setString(
+      _keyIroenGallery,
+      jsonEncode([for (final mosaic in mosaics) mosaic.toJson()]),
+    );
+  }
+
+  String? getIroenActiveMosaicId() => _prefs.getString(_keyIroenActiveMosaicId);
+
+  Future<void> setIroenActiveMosaicId(String? id) async {
+    if (id == null || id.isEmpty) {
+      await _prefs.remove(_keyIroenActiveMosaicId);
+    } else {
+      await _prefs.setString(_keyIroenActiveMosaicId, id);
+    }
   }
 }

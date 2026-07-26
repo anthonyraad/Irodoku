@@ -1,9 +1,9 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
+import '../core/bulk_note_rainbow_border.dart';
 import '../core/celebration_colors.dart';
 import '../core/color_cycle.dart';
+import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
@@ -30,7 +30,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
   static const _borderPulseDuration = Duration(milliseconds: 1400);
-  static const _rainbowBorderDuration = Duration(milliseconds: 5200);
+  static const _rainbowBorderDuration = BulkNoteRainbowBorder.duration;
   static const _colorCycleDuration = Duration(milliseconds: 1050);
 
   late final AnimationController _controller;
@@ -39,10 +39,12 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   late final AnimationController _colorCycleController;
   int _lastCelebrationId = 0;
   int _lastColorCycleSeq = 0;
+  bool _holdingGlassMotion = false;
 
   @override
   void initState() {
     super.initState();
+    _syncGlassMotion();
     _controller = AnimationController(vsync: this, duration: _duration);
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -60,7 +62,11 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _colorCycleController = AnimationController(
       vsync: this,
       duration: _colorCycleDuration,
-    );
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _colorCycleController.value = 0;
+        }
+      });
     widget.game.addListener(_onGameChanged);
     _maybeStartCelebration();
     _syncBorderPulse();
@@ -77,16 +83,31 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _maybeStartColorCycle();
     _syncBorderPulse();
     _syncRainbowBorder();
+    _syncGlassMotion();
   }
 
   @override
   void dispose() {
     widget.game.removeListener(_onGameChanged);
+    _syncGlassMotion(forceOff: true);
     _controller.dispose();
     _borderPulseController.dispose();
     _rainbowBorderController.dispose();
     _colorCycleController.dispose();
     super.dispose();
+  }
+
+  void _syncGlassMotion({bool forceOff = false}) {
+    final needs = !forceOff &&
+        (widget.palette == GamePalette.glass ||
+            widget.palette == GamePalette.sunset);
+    if (needs && !_holdingGlassMotion) {
+      OrganicSwatchMotion.retain();
+      _holdingGlassMotion = true;
+    } else if (!needs && _holdingGlassMotion) {
+      OrganicSwatchMotion.release();
+      _holdingGlassMotion = false;
+    }
   }
 
   void _onGameChanged() {
@@ -118,7 +139,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   void _syncRainbowBorder() {
     if (widget.game.bulkNoteSelect && widget.game.selected != null) {
       if (!_rainbowBorderController.isAnimating) {
-        _rainbowBorderController.repeat();
+        _rainbowBorderController.repeat(reverse: true);
       }
     } else {
       _rainbowBorderController.stop();
@@ -145,10 +166,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   }
 
   double? _cellColorCyclePhase(int row, int col) {
-    if (!_colorCycleController.isAnimating &&
-        _colorCycleController.value == 0) {
-      return null;
-    }
+    // Only while animating — a completed controller sits at 1.0, which used to
+    // keep cells stuck on solid representative colors after the shimmer.
+    if (!_colorCycleController.isAnimating) return null;
     final global = Curves.easeInOut.transform(_colorCycleController.value);
     return ColorCycle.staggeredPhase(global, row, col);
   }
@@ -213,9 +233,8 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                       rainbowPhase: bulkNoteSelect
                           ? _rainbowBorderController.value
                           : null,
-                      rainbowColors: bulkNoteSelect
-                          ? IrodokuTheme.bulkNoteBorderRainbow(brightness)
-                          : null,
+                      rainbowBrightness:
+                          bulkNoteSelect ? brightness : null,
                     ),
                   ),
                 ),
@@ -362,35 +381,31 @@ class _PeerUnitBorderPainter extends CustomPainter {
   final int col;
   final Color? color;
   final double? rainbowPhase;
-  final List<Color>? rainbowColors;
+  final Brightness? rainbowBrightness;
 
   const _PeerUnitBorderPainter({
     required this.row,
     required this.col,
     required this.color,
     this.rainbowPhase,
-    this.rainbowColors,
+    this.rainbowBrightness,
   });
 
   Paint _strokePaint(Size size) {
-    final paint = Paint()
+    if (rainbowPhase != null && rainbowBrightness != null) {
+      return BulkNoteRainbowBorder.strokePaint(
+        size: size,
+        phase: rainbowPhase!,
+        brightness: rainbowBrightness!,
+      );
+    }
+
+    return Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.square
-      ..isAntiAlias = true;
-
-    if (rainbowPhase != null && rainbowColors != null) {
-      final rect = Offset.zero & size;
-      paint.shader = SweepGradient(
-        center: Alignment.center,
-        startAngle: rainbowPhase! * 2 * math.pi,
-        endAngle: rainbowPhase! * 2 * math.pi + 2 * math.pi,
-        colors: rainbowColors!,
-      ).createShader(rect);
-    } else {
-      paint.color = color!;
-    }
-    return paint;
+      ..isAntiAlias = true
+      ..color = color!;
   }
 
   @override
@@ -527,6 +542,6 @@ class _PeerUnitBorderPainter extends CustomPainter {
         oldDelegate.col != col ||
         oldDelegate.color != color ||
         oldDelegate.rainbowPhase != rainbowPhase ||
-        oldDelegate.rainbowColors != rainbowColors;
+        oldDelegate.rainbowBrightness != rainbowBrightness;
   }
 }

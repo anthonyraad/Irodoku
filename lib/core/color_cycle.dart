@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 import 'palette.dart';
 
 /// Palette sweep used by the title-tap easter egg on filled cells.
@@ -18,18 +19,18 @@ abstract final class ColorCycle {
   }
 
   /// Cycles [colorValue] through [stepCount] palette steps and back (t=0/1 → original).
-  static Color displayColor(
+  static PaletteSwatch displaySwatch(
     int colorValue,
     double t, {
     required int stepCount,
     required GamePalette palette,
   }) {
-    final colors = IrodokuPalette.colorsFor(palette);
-    final original = IrodokuPalette.colorForValue(colorValue, palette);
-    if (original == null) return colors.first;
+    final swatches = IrodokuPalette.swatchesFor(palette);
+    final original = IrodokuPalette.swatchForValue(colorValue, palette);
+    if (original == null) return swatches.first;
     if (t <= 0 || t >= 1) return original;
 
-    final steps = stepCount.clamp(1, colors.length);
+    final steps = stepCount.clamp(1, swatches.length);
     final eased = Curves.easeInOutCubic.transform(t);
     // Out-and-back: sweep forward through [steps] colors, then return.
     final sweep = eased < 0.5 ? eased * 2 : (1 - eased) * 2;
@@ -39,6 +40,6 @@ abstract final class ColorCycle {
     final i0 = (startIndex + offset.floor()) % 9;
     final i1 = (startIndex + offset.ceil()) % 9;
     final frac = offset - offset.floor();
-    return Color.lerp(colors[i0], colors[i1], frac)!;
+    return PaletteSwatch.lerp(swatches[i0], swatches[i1], frac);
   }
 }

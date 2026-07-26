@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
+import '../models/game_palette.dart';
+import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../services/preferences_service.dart';
 import '../sudoku/sudoku_board.dart';
@@ -12,6 +14,7 @@ enum IroenZoomPhase { off, pickingQuadrant, zoomed }
 /// Free-form 9×9 coloring with optional 3× zoom per sudoku box.
 class IroenProvider extends ChangeNotifier {
   static const int _maxUndo = 60;
+  static const int _maxGallery = 12;
   static const int _detailSize = IroenState.detailSize;
 
   final PreferencesService _prefs;
@@ -23,11 +26,29 @@ class IroenProvider extends ChangeNotifier {
   final List<_IroenUndoSnapshot> _undoStack = [];
   IroenZoomPhase _zoomPhase = IroenZoomPhase.off;
   (int, int)? _zoomBox;
+  List<IroenMosaic> _gallery = [];
+  String? _activeMosaicId;
 
   IroenProvider({required PreferencesService preferences})
       : _prefs = preferences {
     _loadFromPrefs();
   }
+
+  List<IroenMosaic> get gallery => List.unmodifiable(_gallery);
+  String? get activeMosaicId => _activeMosaicId;
+
+  bool get _hasActiveGallerySlot =>
+      _activeMosaicId != null &&
+      _gallery.any((mosaic) => mosaic.id == _activeMosaicId);
+
+  /// Can update the active slot, or create a new one if under the cap.
+  bool get canSaveToGallery {
+    if (_isDetailEmpty) return false;
+    if (_hasActiveGallerySlot) return true;
+    return _gallery.length < _maxGallery;
+  }
+
+  bool get canSaveAsNew => !_isDetailEmpty && _gallery.length < _maxGallery;
 
   IroenZoomPhase get zoomPhase => _zoomPhase;
   bool get isPickingQuadrant => _zoomPhase == IroenZoomPhase.pickingQuadrant;
@@ -382,24 +403,40 @@ class IroenProvider extends ChangeNotifier {
   }
 
   void _loadFromPrefs() {
+    _gallery = _prefs.loadIroenGallery();
+    _activeMosaicId = _prefs.getIroenActiveMosaicId();
     final saved = _prefs.loadIroenState();
     if (saved != null) {
-      _detail = List.generate(_detailSize, (r) {
-        return List.generate(_detailSize, (c) {
-          return saved.detail[r * _detailSize + c];
-        });
-      });
+      _applyDetail(saved.detail);
     } else {
       _resetGrid();
     }
   }
 
   void _persist() {
-    final flat = <int>[
-      for (var r = 0; r < _detailSize; r++)
-        for (var c = 0; c < _detailSize; c++) _detail[r][c],
-    ];
-    unawaited(_prefs.saveIroenState(IroenState(detail: flat)));
+    unawaited(_prefs.saveIroenState(IroenState(detail: _flatDetail())));
+  }
+
+  List<int> _flatDetail() => [
+        for (var r = 0; r < _detailSize; r++)
+          for (var c = 0; c < _detailSize; c++) _detail[r][c],
+      ];
+
+  bool get _isDetailEmpty {
+    for (final row in _detail) {
+      for (final value in row) {
+        if (value != 0) return false;
+      }
+    }
+    return true;
+  }
+
+  void _applyDetail(List<int> flat) {
+    _detail = List.generate(_detailSize, (r) {
+      return List.generate(_detailSize, (c) {
+        return flat[r * _detailSize + c];
+      });
+    });
   }
 
   void _resetGrid() {
@@ -412,6 +449,121 @@ class IroenProvider extends ChangeNotifier {
     _zoomBox = null;
     _exitBulkNoteSelect();
     _undoStack.clear();
+  }
+
+  /// Saves the current canvas into the gallery.
+  /// Updates the active mosaic when one is loaded; otherwise creates a new slot.
+  Future<IroenMosaic?> saveToGallery(GamePalette palette) async {
+    if (!canSaveToGallery) return null;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final flat = _flatDetail();
+
+    final activeIndex = _activeMosaicId == null
+        ? -1
+        : _gallery.indexWhere((m) => m.id == _activeMosaicId);
+
+    if (activeIndex >= 0) {
+      final existing = _gallery[activeIndex];
+      final updated = existing.copyWith(
+        detail: flat,
+        updatedAtMs: now,
+        palette: palette,
+      );
+      _gallery = [..._gallery]..[activeIndex] = updated;
+      await _prefs.saveIroenGallery(_gallery);
+      notifyListeners();
+      return updated;
+    }
+
+    if (_gallery.length >= _maxGallery) return null;
+    final mosaic = IroenMosaic(
+      id: 'm_$now',
+      name: 'Mosaic ${_gallery.length + 1}',
+      detail: flat,
+      updatedAtMs: now,
+      palette: palette,
+    );
+    _gallery = [..._gallery, mosaic];
+    _activeMosaicId = mosaic.id;
+    await _prefs.saveIroenGallery(_gallery);
+    await _prefs.setIroenActiveMosaicId(_activeMosaicId);
+    notifyListeners();
+    return mosaic;
+  }
+
+  /// Always creates a new gallery slot from the current canvas.
+  Future<IroenMosaic?> saveAsNew(GamePalette palette) async {
+    if (!canSaveAsNew) return null;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final mosaic = IroenMosaic(
+      id: 'm_$now',
+      name: 'Mosaic ${_gallery.length + 1}',
+      detail: _flatDetail(),
+      updatedAtMs: now,
+      palette: palette,
+    );
+    _gallery = [..._gallery, mosaic];
+    _activeMosaicId = mosaic.id;
+    await _prefs.saveIroenGallery(_gallery);
+    await _prefs.setIroenActiveMosaicId(_activeMosaicId);
+    notifyListeners();
+    return mosaic;
+  }
+
+  Future<IroenMosaic?> loadMosaic(String id) async {
+    IroenMosaic? mosaic;
+    for (final item in _gallery) {
+      if (item.id == id) {
+        mosaic = item;
+        break;
+      }
+    }
+    if (mosaic == null) return null;
+
+    _pushUndo();
+    _applyDetail(mosaic.detail);
+    _selected = null;
+    _zoomPhase = IroenZoomPhase.off;
+    _zoomBox = null;
+    _exitBulkNoteSelect();
+    _activeMosaicId = mosaic.id;
+    _persist();
+    await _prefs.setIroenActiveMosaicId(_activeMosaicId);
+    notifyListeners();
+    return mosaic;
+  }
+
+  Future<void> deleteMosaic(String id) async {
+    final next = _gallery.where((m) => m.id != id).toList();
+    if (next.length == _gallery.length) return;
+    _gallery = next;
+    if (_activeMosaicId == id) {
+      _activeMosaicId = null;
+      await _prefs.setIroenActiveMosaicId(null);
+    }
+    await _prefs.saveIroenGallery(_gallery);
+    notifyListeners();
+  }
+
+  Future<void> renameMosaic(String id, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final index = _gallery.indexWhere((m) => m.id == id);
+    if (index < 0) return;
+    _gallery = [..._gallery]
+      ..[index] = _gallery[index].copyWith(name: trimmed);
+    await _prefs.saveIroenGallery(_gallery);
+    notifyListeners();
+  }
+
+  /// Clears the working canvas (does not delete gallery slots).
+  Future<void> newCanvas() async {
+    _pushUndo();
+    _resetGrid();
+    _activeMosaicId = null;
+    _persist();
+    await _prefs.setIroenActiveMosaicId(null);
+    notifyListeners();
   }
 }
 

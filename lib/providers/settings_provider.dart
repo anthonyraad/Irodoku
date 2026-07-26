@@ -84,10 +84,12 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setXlPicker(enabled);
   }
 
-  Future<void> setPalette(GamePalette palette) async {
+  Future<void> setPalette(GamePalette palette, {bool force = false}) async {
     if (_palette == palette) return;
-    if (!palette.visibleInMenu) return;
-    if (!_devMode && !_prefs.loadStats().isPaletteUnlocked(palette)) return;
+    if (!force) {
+      if (!palette.visibleInMenu) return;
+      if (!_devMode && !_prefs.loadStats().isPaletteUnlocked(palette)) return;
+    }
     _palette = palette;
     notifyListeners();
     await _prefs.setPalette(palette);

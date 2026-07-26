@@ -109,10 +109,11 @@ abstract final class IrodokuTheme {
           ? const Color(0xFF2A2F38)
           : const Color(0xFFE8EAED);
 
-  static Color selectedCellOverlay(Brightness brightness) =>
-      brightness == Brightness.dark
-          ? Colors.black.withValues(alpha: 0.42)
-          : Colors.black.withValues(alpha: 0.08);
+  static const selectedCellBorderWidth = 3.0;
+
+  /// Tint drawn above cell fills so selection stays visible on colored cells.
+  static Color selectedCellHighlight(Brightness brightness, Color primary) =>
+      primary.withValues(alpha: brightness == Brightness.dark ? 0.34 : 0.28);
 
   /// Powder blue for peer highlights — kept far from picker light-blue (#42A5F5).
   static const _peerAccentLight = Color(0xFFC5DDF0);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 
 class ColorPicker extends StatelessWidget {
   final double swatchSize;
@@ -92,7 +93,7 @@ class ColorPicker extends StatelessWidget {
     final value = index + 1;
     final outline = IrodokuPalette.outlineForValue(value, palette);
     return _ColorSwatch(
-      color: IrodokuPalette.colorsFor(palette)[index],
+      swatch: IrodokuPalette.swatchesFor(palette)[index],
       borderColor: outline ?? line,
       borderWidth: outline != null ? 1.5 : 0.6,
       onTap: () => onColorSelected(value),
@@ -103,7 +104,7 @@ class ColorPicker extends StatelessWidget {
 }
 
 class _ColorSwatch extends StatefulWidget {
-  final Color color;
+  final PaletteSwatch swatch;
   final Color borderColor;
   final double borderWidth;
   final VoidCallback onTap;
@@ -111,7 +112,7 @@ class _ColorSwatch extends StatefulWidget {
   final VoidCallback onSwipeUp;
 
   const _ColorSwatch({
-    required this.color,
+    required this.swatch,
     required this.borderColor,
     required this.borderWidth,
     required this.onTap,
@@ -187,9 +188,11 @@ class _ColorSwatchState extends State<_ColorSwatch> {
       behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: widget.color,
-          border: Border.all(color: widget.borderColor, width: widget.borderWidth),
+        decoration: widget.swatch.boxDecoration(
+          border: Border.all(
+            color: widget.borderColor,
+            width: widget.borderWidth,
+          ),
         ),
       ),
     );

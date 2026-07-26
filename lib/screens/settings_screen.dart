@@ -307,7 +307,7 @@ class _PalettePreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final line = IrodokuTheme.thinGridLine(IrodokuTheme.boardBrightness);
-    final colors = IrodokuPalette.colorsFor(palette);
+    final swatches = IrodokuPalette.swatchesFor(palette);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -322,8 +322,7 @@ class _PalettePreviewRow extends StatelessWidget {
                   width: swatchSize,
                   height: swatchSize,
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: colors[i],
+                    decoration: swatches[i].boxDecoration(
                       border: Border.all(
                         color:
                             IrodokuPalette.outlineForValue(i + 1, palette) ??

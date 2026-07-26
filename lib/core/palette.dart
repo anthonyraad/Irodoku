@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 
 /// The nine Sudoku colors. Indices 0–8 map to values 1–9 internally.
 abstract final class IrodokuPalette {
@@ -17,15 +18,15 @@ abstract final class IrodokuPalette {
   ];
 
   static const List<Color> neonColors = [
-    Color(0xFFFF1744), // Neon red
-    Color(0xFFFF6A00), // Neon orange
-    Color(0xFFFFEA00), // Laser yellow
-    Color(0xFF00E676), // Neon green
-    Color(0xFF006D5B), // Dark green
-    Color(0xFF00E5FF), // Electric cyan
-    Color(0xFF2979FF), // Electric blue
-    Color(0xFF651FFF), // Neon indigo
-    Color(0xFFFC79C3), // Hot pink
+    Color(0xFF450693),
+    Color(0xFF8C00FF),
+    Color(0xFFFF5FCF),
+    Color(0xFFFFC400),
+    Color(0xFF00FF9C),
+    Color(0xFF0065F8),
+    Color(0xFF06D001),
+    Color(0xFFF45B26),
+    Color(0xFFD12052),
   ];
 
   static const List<Color> greyscaleColors = [
@@ -68,7 +69,7 @@ abstract final class IrodokuPalette {
     Color(0xFF0B3C8C), // Deep Navy
     Color(0xFF2563EB), // Royal Blue
     Color(0xFF4FC3F7), // Sky Blue
-    Color(0xFF00E5FF), // Aqua
+    Color(0xFFCFD8DC), // Light grey
     Color(0xFF00C9A7), // Turquoise
     Color(0xFF00A651), // Emerald
     Color(0xFF8BCF00), // Lime Green
@@ -81,23 +82,11 @@ abstract final class IrodokuPalette {
     Color(0xFF54278F), // Violet
     Color(0xFF8E5EA2), // Lavender
     Color(0xFFD45087), // Rose
-    Color(0xFFE76F51), // Coral
-    Color(0xFFF9844A), // Orange coral
-    Color(0xFFF8961E), // Orange
-    Color(0xFFF9C74F), // Gold
-    Color(0xFFFDE2A7), // Sand
-  ];
-
-  static const List<Color> rainbowColors = [
-    Color(0xFFD7263D), // Red
-    Color(0xFFF26B1D), // Orange
-    Color(0xFFFFCA3A), // Yellow
-    Color(0xFF8AC926), // Lime Green
-    Color(0xFF06A77D), // Emerald Green
-    Color(0xFF4361EE), // Blue
-    Color(0xFF3A0CA3), // Indigo
-    Color(0xFF7209B7), // Violet
-    Color(0xFFF72585), // Pink/Magenta
+    Color(0xFFD62828), // Sunset red
+    Color(0xFFE85D04), // Burnt orange
+    Color(0xFFFFB703), // Amber gold
+    Color(0xFFFFD500), // Bright gold
+    Color(0xFFFFF3B0), // Pale sand
   ];
 
   static const List<Color> world11Colors = [
@@ -112,22 +101,119 @@ abstract final class IrodokuPalette {
     Color(0xFF8B4513), // Brick Brown
   ];
 
-  static List<Color> colorsFor(GamePalette palette) => switch (palette) {
-        GamePalette.standard => defaultColors,
-        GamePalette.rainbow => rainbowColors,
-        GamePalette.world11 => world11Colors,
-        GamePalette.neon => neonColors,
-        GamePalette.pkmn => pkmnColors,
-        GamePalette.pkmn2 => pkmn2Colors,
-        GamePalette.glass => glassColors,
-        GamePalette.sunset => sunsetColors,
-        GamePalette.greyscale => greyscaleColors,
+  /// Rainbow organic pairs stay within ~25° of hue so the amorphous HSL blend
+  /// keeps each unit in its own family around the wheel.
+  static const _rainbowStarts = <Color>[
+    Color(0xFFC62828), // Red
+    Color(0xFFEF6C00), // Orange
+    Color(0xFFF9A825), // Gold
+    Color(0xFF7CB342), // Lime
+    Color(0xFF00897B), // Teal
+    Color(0xFF0277BD), // Blue
+    Color(0xFF3949AB), // Indigo
+    Color(0xFF8E24AA), // Violet
+    Color(0xFFD81B60), // Magenta
+  ];
+
+  static const _rainbowStops = <Color>[
+    Color(0xFFFF8A80), // Light coral-red
+    Color(0xFFFFB74D), // Light amber-orange
+    Color(0xFFFFF176), // Light yellow
+    Color(0xFFAED581), // Light leaf
+    Color(0xFF4DB6AC), // Light teal
+    Color(0xFF4FC3F7), // Sky blue
+    Color(0xFF7986CB), // Soft indigo
+    Color(0xFFCE93D8), // Soft lilac
+    Color(0xFFF8BBD0), // Soft pink-magenta
+  ];
+
+  static final List<PaletteSwatch> rainbowSwatches = List.generate(9, (i) {
+    return PaletteSwatch.organic(
+      start: _rainbowStarts[i],
+      stop: _rainbowStops[i],
+      swirlSeed: i + 1,
+    );
+  });
+
+  /// Same-hue light/dark companion for organic palettes (Rainbow, Glass).
+  static Color _organicCompanion(Color color) {
+    final hsl = HSLColor.fromColor(color);
+    final lightness = hsl.lightness;
+    final target = lightness < 0.55
+        ? (lightness + 0.22).clamp(0.0, 0.95)
+        : (lightness - 0.22).clamp(0.05, 1.0);
+    return hsl
+        .withLightness(target)
+        .withSaturation((hsl.saturation * 0.92).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  static List<PaletteSwatch> _organicFromColors(
+    List<Color> colors, {
+    required int seedBase,
+    bool animated = false,
+    double intensity = 1.0,
+    double motionSpeed = 1.0,
+  }) {
+    return List.generate(colors.length, (i) {
+      final start = colors[i];
+      var stop = _organicCompanion(start);
+      if (stop == start) {
+        stop = Color.lerp(start, Colors.white, 0.28)!;
+      }
+      return PaletteSwatch.organic(
+        start: start,
+        stop: stop,
+        swirlSeed: seedBase + i,
+        animated: animated,
+        intensity: intensity,
+        motionSpeed: motionSpeed,
+      );
+    });
+  }
+
+  static final List<PaletteSwatch> glassSwatches = _organicFromColors(
+    glassColors,
+    seedBase: 600,
+    animated: true,
+  );
+
+  /// Same moving organic fill as Glass, with stronger warp and faster drift.
+  static final List<PaletteSwatch> sunsetSwatches = _organicFromColors(
+    sunsetColors,
+    seedBase: 800,
+    animated: true,
+    intensity: 1.85,
+    motionSpeed: 1.0,
+  );
+
+  static List<PaletteSwatch> _solidSwatches(List<Color> colors) =>
+      colors.map(PaletteSwatch.solid).toList();
+
+  static List<PaletteSwatch> swatchesFor(GamePalette palette) => switch (palette) {
+        GamePalette.standard => _solidSwatches(defaultColors),
+        GamePalette.rainbow => rainbowSwatches,
+        GamePalette.world11 => _solidSwatches(world11Colors),
+        GamePalette.neon => _solidSwatches(neonColors),
+        GamePalette.pkmn => _solidSwatches(pkmnColors),
+        GamePalette.pkmn2 => _solidSwatches(pkmn2Colors),
+        GamePalette.glass => glassSwatches,
+        GamePalette.sunset => sunsetSwatches,
+        GamePalette.greyscale => _solidSwatches(greyscaleColors),
       };
+
+  static List<Color> colorsFor(GamePalette palette) =>
+      swatchesFor(palette).map((swatch) => swatch.representative).toList();
 
   /// Value is 1–9. Returns null for empty (0).
   static Color? colorForValue(int value, GamePalette palette) {
     if (value < 1 || value > 9) return null;
-    return colorsFor(palette)[value - 1];
+    return swatchesFor(palette)[value - 1].representative;
+  }
+
+  static PaletteSwatch? swatchForValue(int value, GamePalette palette) {
+    if (value < 1 || value > 9) return null;
+    return swatchesFor(palette)[value - 1];
   }
 
   /// Greyscale white (#FFFFFF) needs an outline so it doesn't match empty cells.

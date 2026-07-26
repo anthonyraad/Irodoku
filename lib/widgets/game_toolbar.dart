@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/bulk_note_rainbow_border.dart';
 import '../core/theme.dart';
 
 /// Minimal undo / erase / note controls under the board.
@@ -38,7 +39,7 @@ class GameToolbar extends StatefulWidget {
 class _GameToolbarState extends State<GameToolbar>
     with TickerProviderStateMixin {
   static const _pulseDuration = Duration(milliseconds: 1400);
-  static const _rainbowDuration = Duration(milliseconds: 5200);
+  static const _rainbowDuration = BulkNoteRainbowBorder.duration;
 
   late final AnimationController _pulseController;
   late final AnimationController _rainbowController;
@@ -86,7 +87,7 @@ class _GameToolbarState extends State<GameToolbar>
 
     if (bulk) {
       if (!_rainbowController.isAnimating) {
-        _rainbowController.repeat();
+        _rainbowController.repeat(reverse: true);
       }
     } else {
       _rainbowController.stop();

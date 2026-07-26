@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/iroen_provider.dart';
 import '../providers/settings_provider.dart';
 import '../widgets/color_picker.dart';
+import '../widgets/iroen_gallery_sheet.dart';
 import '../widgets/iroen_grid.dart';
 import '../widgets/iroen_toolbar.dart';
 import '../widgets/typing_title.dart';
@@ -23,6 +24,28 @@ class IroenScreen extends StatelessWidget {
           child: Scaffold(
             appBar: AppBar(
               title: const TypingTitle(text: 'Iroen'),
+              actions: [
+                IconButton(
+                  tooltip: 'Mosaics',
+                  icon: Badge(
+                    isLabelVisible: iroen.gallery.isNotEmpty,
+                    backgroundColor:
+                        Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Colors.black,
+                    textColor: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.black
+                        : Colors.white,
+                    label: Text('${iroen.gallery.length}'),
+                    child: const Icon(Icons.collections_bookmark_outlined),
+                  ),
+                  onPressed: () => showIroenGallerySheet(
+                    context: context,
+                    iroen: iroen,
+                    settings: settings,
+                  ),
+                ),
+              ],
             ),
             body: SafeArea(
               child: Padding(

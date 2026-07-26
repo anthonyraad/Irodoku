@@ -23,6 +23,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  shaders:
+    - shaders/organic_swatch.frag
+    - shaders/neon_swatch.frag
+
   assets:
     - assets/icons/
     - assets/sounds/

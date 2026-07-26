@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/color_cycle.dart';
+import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/cell.dart';
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 
 class ColorCell extends StatefulWidget {
   final Cell cell;
@@ -102,29 +104,29 @@ class _ColorCellState extends State<ColorCell> {
     final primary = Theme.of(context).colorScheme.primary;
     final colorCyclePhase = widget.colorCyclePhase;
 
-    Color? committedColor;
-    Map<int, Color>? noteColors;
+    PaletteSwatch? committedSwatch;
+    Map<int, PaletteSwatch>? noteSwatches;
     if (!celebrating) {
       if (cell.value != 0 && !cell.hasNotes) {
-        committedColor = colorCyclePhase != null
-            ? ColorCycle.displayColor(
+        committedSwatch = colorCyclePhase != null
+            ? ColorCycle.displaySwatch(
                 cell.value,
                 colorCyclePhase,
                 stepCount: widget.colorCycleSteps,
                 palette: widget.palette,
               )
-            : IrodokuPalette.colorForValue(cell.value, widget.palette);
+            : IrodokuPalette.swatchForValue(cell.value, widget.palette);
       } else if (cell.notes.isNotEmpty) {
-        noteColors = {
+        noteSwatches = {
           for (final value in cell.notes)
             value: colorCyclePhase != null
-                ? ColorCycle.displayColor(
+                ? ColorCycle.displaySwatch(
                     value,
                     colorCyclePhase,
                     stepCount: widget.colorCycleSteps,
                     palette: widget.palette,
                   )
-                : IrodokuPalette.colorForValue(value, widget.palette)!,
+                : IrodokuPalette.swatchForValue(value, widget.palette)!,
         };
       }
     }
@@ -132,7 +134,10 @@ class _ColorCellState extends State<ColorCell> {
     final Border? chromeBorder = cell.hasConflict && !celebrating
         ? Border.all(color: conflictColor, width: 2.5)
         : widget.isSelected
-            ? Border.all(color: primary, width: 2.5)
+            ? Border.all(
+                color: primary,
+                width: IrodokuTheme.selectedCellBorderWidth,
+              )
             : null;
 
     Color? committedOutline;
@@ -160,12 +165,12 @@ class _ColorCellState extends State<ColorCell> {
               emptyFill:
                   celebrating ? widget.celebrationColor! : emptyFill,
               notes: celebrating ? const <int>{} : cell.notes,
-              noteColors: noteColors,
-              committedColor: celebrating ? null : committedColor,
+              noteSwatches: noteSwatches,
+              committedSwatch: celebrating ? null : committedSwatch,
               committedOutline: committedOutline,
               noteOutlines: noteOutlines,
-              selectionWash: widget.isSelected && !celebrating
-                  ? IrodokuTheme.selectedCellOverlay(brightness)
+              selectionHighlight: widget.isSelected && !celebrating
+                  ? IrodokuTheme.selectedCellHighlight(brightness, primary)
                   : null,
               relatedWash: widget.isRelated && !widget.isSelected && !celebrating
                   ? IrodokuTheme.relatedCellOverlay(brightness)
@@ -180,6 +185,9 @@ class _ColorCellState extends State<ColorCell> {
               celebrationShimmer: celebrating && widget.celebrationShimmer > 0
                   ? widget.celebrationShimmer
                   : 0,
+              repaint: _swatchAnimates(committedSwatch, noteSwatches)
+                  ? OrganicSwatchMotion.listenable
+                  : null,
             ),
             child: const SizedBox.expand(),
           ),
@@ -224,33 +232,44 @@ class _ColorCellState extends State<ColorCell> {
   }
 }
 
+bool _swatchAnimates(
+  PaletteSwatch? committed,
+  Map<int, PaletteSwatch>? notes,
+) {
+  if (committed?.animated == true) return true;
+  final noteSwatches = notes;
+  if (noteSwatches == null) return false;
+  return noteSwatches.values.any((swatch) => swatch.animated);
+}
+
 class _CellPainter extends CustomPainter {
   static const _outlineWidth = 1.5;
 
   final Color emptyFill;
   final Set<int> notes;
-  final Map<int, Color>? noteColors;
-  final Color? committedColor;
+  final Map<int, PaletteSwatch>? noteSwatches;
+  final PaletteSwatch? committedSwatch;
   final Color? committedOutline;
   final Map<int, Color>? noteOutlines;
-  final Color? selectionWash;
+  final Color? selectionHighlight;
   final Color? relatedWash;
   final Color? sameColorWash;
   final Color? givenWash;
   final double celebrationShimmer;
 
-  const _CellPainter({
+  _CellPainter({
     required this.emptyFill,
     required this.notes,
-    required this.noteColors,
-    required this.committedColor,
+    required this.noteSwatches,
+    required this.committedSwatch,
     required this.committedOutline,
     required this.noteOutlines,
-    required this.selectionWash,
+    required this.selectionHighlight,
     required this.relatedWash,
     required this.sameColorWash,
     required this.givenWash,
     required this.celebrationShimmer,
+    super.repaint,
   });
 
   @override
@@ -263,24 +282,22 @@ class _CellPainter extends CustomPainter {
     if (relatedWash != null) {
       canvas.drawRect(rect, Paint()..color = relatedWash!);
     }
-    if (selectionWash != null) {
-      canvas.drawRect(rect, Paint()..color = selectionWash!);
-    }
 
-    if (committedColor != null) {
-      canvas.drawRect(rect, Paint()..color = committedColor!);
+    if (committedSwatch != null) {
+      drawSwatchRect(canvas, rect, committedSwatch!);
     } else if (notes.isNotEmpty) {
       final slotW = size.width / 3;
       final slotH = size.height / 3;
       for (var value = 1; value <= 9; value++) {
         if (!notes.contains(value)) continue;
-        final color = noteColors![value];
-        if (color == null) continue;
+        final swatch = noteSwatches![value];
+        if (swatch == null) continue;
         final row = (value - 1) ~/ 3;
         final col = (value - 1) % 3;
-        canvas.drawRect(
+        drawSwatchRect(
+          canvas,
           Rect.fromLTWH(col * slotW, row * slotH, slotW, slotH),
-          Paint()..color = color,
+          swatch,
         );
       }
     }
@@ -294,7 +311,11 @@ class _CellPainter extends CustomPainter {
       canvas.drawRect(rect, Paint()..color = givenWash!);
     }
 
-    if (committedColor != null && committedOutline != null) {
+    if (selectionHighlight != null) {
+      canvas.drawRect(rect, Paint()..color = selectionHighlight!);
+    }
+
+    if (committedSwatch != null && committedOutline != null) {
       _strokeRect(canvas, rect, committedOutline!);
     } else if (notes.isNotEmpty && noteOutlines != null) {
       final slotW = size.width / 3;
@@ -333,11 +354,11 @@ class _CellPainter extends CustomPainter {
   bool shouldRepaint(covariant _CellPainter oldDelegate) {
     return emptyFill != oldDelegate.emptyFill ||
         !setEquals(notes, oldDelegate.notes) ||
-        noteColors != oldDelegate.noteColors ||
-        committedColor != oldDelegate.committedColor ||
+        noteSwatches != oldDelegate.noteSwatches ||
+        committedSwatch != oldDelegate.committedSwatch ||
         committedOutline != oldDelegate.committedOutline ||
         noteOutlines != oldDelegate.noteOutlines ||
-        selectionWash != oldDelegate.selectionWash ||
+        selectionHighlight != oldDelegate.selectionHighlight ||
         relatedWash != oldDelegate.relatedWash ||
         sameColorWash != oldDelegate.sameColorWash ||
         givenWash != oldDelegate.givenWash ||

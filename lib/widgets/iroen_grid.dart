@@ -1,10 +1,11 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
+import '../core/bulk_note_rainbow_border.dart';
+import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 import '../providers/iroen_provider.dart';
 import '../sudoku/sudoku_board.dart';
 import 'color_cell.dart';
@@ -25,14 +26,16 @@ class IroenGrid extends StatefulWidget {
 
 class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   static const _borderPulseDuration = Duration(milliseconds: 1400);
-  static const _rainbowBorderDuration = Duration(milliseconds: 5200);
+  static const _rainbowBorderDuration = BulkNoteRainbowBorder.duration;
 
   late final AnimationController _borderPulseController;
   late final AnimationController _rainbowBorderController;
+  bool _holdingGlassMotion = false;
 
   @override
   void initState() {
     super.initState();
+    _syncGlassMotion();
     _borderPulseController = AnimationController(
       vsync: this,
       duration: _borderPulseDuration,
@@ -55,14 +58,29 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
     }
     _syncBorderPulse();
     _syncRainbowBorder();
+    _syncGlassMotion();
   }
 
   @override
   void dispose() {
     widget.iroen.removeListener(_onIroenChanged);
+    _syncGlassMotion(forceOff: true);
     _borderPulseController.dispose();
     _rainbowBorderController.dispose();
     super.dispose();
+  }
+
+  void _syncGlassMotion({bool forceOff = false}) {
+    final needs = !forceOff &&
+        (widget.palette == GamePalette.glass ||
+            widget.palette == GamePalette.sunset);
+    if (needs && !_holdingGlassMotion) {
+      OrganicSwatchMotion.retain();
+      _holdingGlassMotion = true;
+    } else if (!needs && _holdingGlassMotion) {
+      OrganicSwatchMotion.release();
+      _holdingGlassMotion = false;
+    }
   }
 
   void _onIroenChanged() {
@@ -93,7 +111,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   void _syncRainbowBorder() {
     if (widget.iroen.bulkNoteSelect && widget.iroen.selected != null) {
       if (!_rainbowBorderController.isAnimating) {
-        _rainbowBorderController.repeat();
+        _rainbowBorderController.repeat(reverse: true);
       }
     } else {
       _rainbowBorderController.stop();
@@ -155,9 +173,8 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
                       rainbowPhase: bulkNoteSelect
                           ? _rainbowBorderController.value
                           : null,
-                      rainbowColors: bulkNoteSelect
-                          ? IrodokuTheme.bulkNoteBorderRainbow(brightness)
-                          : null,
+                      rainbowBrightness:
+                          bulkNoteSelect ? brightness : null,
                     ),
                   ),
                 ),
@@ -299,14 +316,18 @@ class _IroenMosaicCell extends StatelessWidget {
             subValues: subValues,
             palette: palette,
             emptyFill: emptyFill,
-            selectionWash: isSelected
-                ? IrodokuTheme.selectedCellOverlay(brightness)
+            selectionHighlight: isSelected
+                ? IrodokuTheme.selectedCellHighlight(brightness, primary)
                 : null,
             relatedWash: isRelated && !isSelected
                 ? IrodokuTheme.relatedCellOverlay(brightness)
                 : null,
             sameColorWash: isSameColor && !isSelected
                 ? IrodokuTheme.sameColorOverlay(brightness)
+                : null,
+            repaint: palette == GamePalette.glass ||
+                    palette == GamePalette.sunset
+                ? OrganicSwatchMotion.listenable
                 : null,
           ),
         ),
@@ -315,7 +336,10 @@ class _IroenMosaicCell extends StatelessWidget {
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  border: Border.all(color: primary, width: 2.5),
+                  border: Border.all(
+                    color: primary,
+                    width: IrodokuTheme.selectedCellBorderWidth,
+                  ),
                 ),
               ),
             ),
@@ -341,17 +365,18 @@ class _MosaicPainter extends CustomPainter {
   final List<int> subValues;
   final GamePalette palette;
   final Color emptyFill;
-  final Color? selectionWash;
+  final Color? selectionHighlight;
   final Color? relatedWash;
   final Color? sameColorWash;
 
-  const _MosaicPainter({
+  _MosaicPainter({
     required this.subValues,
     required this.palette,
     required this.emptyFill,
-    required this.selectionWash,
+    required this.selectionHighlight,
     required this.relatedWash,
     required this.sameColorWash,
+    super.repaint,
   });
 
   @override
@@ -374,17 +399,18 @@ class _MosaicPainter extends CustomPainter {
       for (var col = 0; col < 3; col++) {
         final value = subValues[row * 3 + col];
         if (value == 0) continue;
-        final color = IrodokuPalette.colorForValue(value, palette);
+        final color = IrodokuPalette.swatchForValue(value, palette);
         if (color == null) continue;
-        canvas.drawRect(
+        drawSwatchRect(
+          canvas,
           Rect.fromLTWH(col * tileW, row * tileH, tileW, tileH),
-          Paint()..color = color,
+          color,
         );
       }
     }
 
-    if (selectionWash != null) {
-      canvas.drawRect(rect, Paint()..color = selectionWash!);
+    if (selectionHighlight != null) {
+      canvas.drawRect(rect, Paint()..color = selectionHighlight!);
     }
   }
 
@@ -392,7 +418,7 @@ class _MosaicPainter extends CustomPainter {
   bool shouldRepaint(covariant _MosaicPainter oldDelegate) {
     return oldDelegate.subValues != subValues ||
         oldDelegate.palette != palette ||
-        oldDelegate.selectionWash != selectionWash ||
+        oldDelegate.selectionHighlight != selectionHighlight ||
         oldDelegate.relatedWash != relatedWash ||
         oldDelegate.sameColorWash != sameColorWash;
   }
@@ -437,35 +463,31 @@ class _IroenPeerBorderPainter extends CustomPainter {
   final int col;
   final Color? color;
   final double? rainbowPhase;
-  final List<Color>? rainbowColors;
+  final Brightness? rainbowBrightness;
 
   const _IroenPeerBorderPainter({
     required this.row,
     required this.col,
     required this.color,
     this.rainbowPhase,
-    this.rainbowColors,
+    this.rainbowBrightness,
   });
 
   Paint _strokePaint(Size size) {
-    final paint = Paint()
+    if (rainbowPhase != null && rainbowBrightness != null) {
+      return BulkNoteRainbowBorder.strokePaint(
+        size: size,
+        phase: rainbowPhase!,
+        brightness: rainbowBrightness!,
+      );
+    }
+
+    return Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.square
-      ..isAntiAlias = true;
-
-    if (rainbowPhase != null && rainbowColors != null) {
-      final rect = Offset.zero & size;
-      paint.shader = SweepGradient(
-        center: Alignment.center,
-        startAngle: rainbowPhase! * 2 * math.pi,
-        endAngle: rainbowPhase! * 2 * math.pi + 2 * math.pi,
-        colors: rainbowColors!,
-      ).createShader(rect);
-    } else {
-      paint.color = color!;
-    }
-    return paint;
+      ..isAntiAlias = true
+      ..color = color!;
   }
 
   @override
@@ -539,6 +561,6 @@ class _IroenPeerBorderPainter extends CustomPainter {
         oldDelegate.col != col ||
         oldDelegate.color != color ||
         oldDelegate.rainbowPhase != rainbowPhase ||
-        oldDelegate.rainbowColors != rainbowColors;
+        oldDelegate.rainbowBrightness != rainbowBrightness;
   }
 }

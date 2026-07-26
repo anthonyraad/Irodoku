@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../core/bulk_note_rainbow_border.dart';
 import '../core/theme.dart';
 
 /// Undo, erase, bulk select, and zoom controls for Iroen mode.
@@ -39,7 +40,7 @@ class IroenToolbar extends StatefulWidget {
 
 class _IroenToolbarState extends State<IroenToolbar>
     with TickerProviderStateMixin {
-  static const _rainbowDuration = Duration(milliseconds: 5200);
+  static const _rainbowDuration = BulkNoteRainbowBorder.duration;
 
   late final AnimationController _rainbowController;
 
@@ -70,7 +71,7 @@ class _IroenToolbarState extends State<IroenToolbar>
   void _syncAnimations() {
     if (widget.bulkNoteSelect) {
       if (!_rainbowController.isAnimating) {
-        _rainbowController.repeat();
+        _rainbowController.repeat(reverse: true);
       }
     } else {
       _rainbowController.stop();

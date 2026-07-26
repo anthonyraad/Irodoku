@@ -37,6 +37,8 @@ enum GamePalette {
 
   static GamePalette fromStorageKey(String? key) {
     if (key == 'sea') return GamePalette.glass;
+    // Sunglass was folded into Rainbow.
+    if (key == 'sunglass') return GamePalette.rainbow;
     return GamePalette.values.firstWhere(
       (palette) => palette.storageKey == key,
       orElse: () => GamePalette.standard,
