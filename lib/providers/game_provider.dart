@@ -44,6 +44,8 @@ class GameProvider extends ChangeNotifier {
   bool _hasActiveGame = false;
   bool _winRecorded = false;
   bool _lossRecorded = false;
+  /// True after the player taps/edits any cell this game.
+  bool _hasInteracted = false;
   int _generationToken = 0;
   int _mistakes = 0;
   late Difficulty _gameDifficulty;
@@ -84,6 +86,8 @@ class GameProvider extends ChangeNotifier {
   bool get isGameOver => _isWon || _isLost;
   bool get isGenerating => _isGenerating;
   bool get hasActiveGame => _hasActiveGame;
+  /// Whether the player has interacted with any cell this game.
+  bool get hasInteracted => _hasInteracted;
   int get mistakes => _mistakes;
   Difficulty get difficulty => _gameDifficulty;
   UnitCelebration? get celebration => _celebration;
@@ -158,6 +162,7 @@ class GameProvider extends ChangeNotifier {
     _isLost = false;
     _isPaused = true;
     _hasActiveGame = true;
+    _hasInteracted = true;
     _winRecorded = false;
     _lossRecorded = false;
     _pendingPaletteUnlocks = [];
@@ -192,6 +197,7 @@ class GameProvider extends ChangeNotifier {
     _hasActiveGame = false;
     _winRecorded = false;
     _lossRecorded = false;
+    _hasInteracted = false;
     _mistakes = 0;
     _pendingPaletteUnlocks = [];
     _selected = null;
@@ -290,9 +296,11 @@ class GameProvider extends ChangeNotifier {
         _exitBulkNoteSelect();
         _noteMode = false;
         _selected = (row, col);
+        _hasInteracted = true;
         notifyListeners();
         return;
       }
+      _hasInteracted = true;
       _toggleBulkCell(row, col);
       return;
     }
@@ -304,6 +312,7 @@ class GameProvider extends ChangeNotifier {
       return;
     }
     _selected = (row, col);
+    _hasInteracted = true;
     notifyListeners();
   }
 
@@ -312,6 +321,7 @@ class GameProvider extends ChangeNotifier {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (_cells[row][col].isGiven) return;
 
+    _hasInteracted = true;
     if (_bulkNoteSelect) {
       _exitBulkNoteSelect();
       _noteMode = true;
@@ -542,6 +552,7 @@ class GameProvider extends ChangeNotifier {
 
     _pushUndo();
     _cells[row][col] = next;
+    _playSound(_sounds.playNoteDeselect);
     notifyListeners();
   }
 
@@ -570,9 +581,7 @@ class GameProvider extends ChangeNotifier {
 
     _pushUndo();
     _cells[row][col] = next;
-    if (adding) {
-      _playSound(_sounds.playNote);
-    }
+    _playSound(adding ? _sounds.playNote : _sounds.playNoteDeselect);
     notifyListeners();
   }
 
@@ -599,10 +608,10 @@ class GameProvider extends ChangeNotifier {
         changed = true;
       }
     }
-    if (changed && add) {
-      _playSound(_sounds.playNote);
+    if (changed) {
+      _playSound(add ? _sounds.playNote : _sounds.playNoteDeselect);
+      notifyListeners();
     }
-    if (changed) notifyListeners();
   }
 
   void _playSound(Future<void> Function() play) {
@@ -655,6 +664,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _pushUndo() {
+    _hasInteracted = true;
     _undoStack.add(
       _UndoSnapshot(
         cells: _cloneCells(),

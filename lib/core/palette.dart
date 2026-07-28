@@ -22,10 +22,10 @@ abstract final class IrodokuPalette {
     Color(0xFF8C00FF),
     Color(0xFFFF5FCF),
     Color(0xFFFFC400),
-    Color(0xFF00FF9C),
+    Color(0xFF4DEEEA),
     Color(0xFF0065F8),
     Color(0xFF06D001),
-    Color(0xFFF45B26),
+    Color(0xFFFC7135),
     Color(0xFFD12052),
   ];
 
@@ -68,13 +68,13 @@ abstract final class IrodokuPalette {
   static const List<Color> glassColors = [
     Color(0xFF0B3C8C), // Deep Navy
     Color(0xFF2563EB), // Royal Blue
-    Color(0xFF4FC3F7), // Sky Blue
+    Color(0xFF5BCAFC), // Sky Blue
     Color(0xFFCFD8DC), // Light grey
-    Color(0xFF00C9A7), // Turquoise
-    Color(0xFF00A651), // Emerald
-    Color(0xFF8BCF00), // Lime Green
-    Color(0xFF7B3FF2), // Purple
+    Color(0xFF00D9B4), // Turquoise
+    Color(0xFF009448), // Emerald
+    Color(0xFFE6AFFA), // Soft lilac
     Color(0xFFC026D3), // Magenta-Violet
+    Color(0xFF7B3FF2), // Purple
   ];
 
   static const List<Color> sunsetColors = [
@@ -91,14 +91,14 @@ abstract final class IrodokuPalette {
 
   static const List<Color> world11Colors = [
     Color(0xFFE52521), // Mario Red
-    Color(0xFFF57C00), // Fire Flower Orange
+    Color(0xFF8B4513), // Brick Brown
     Color(0xFFFFC400), // Coin Gold
+    Color(0xFFF57C00), // Fire Flower Orange
     Color(0xFF1E9E3F), // Pipe Green
     Color(0xFF7AC943), // Yoshi Green
     Color(0xFF29B6F6), // Sky Blue
     Color(0xFF1565C0), // Water Blue
     Color(0xFF6A35B1), // Night Sky Purple
-    Color(0xFF8B4513), // Brick Brown
   ];
 
   /// Rainbow organic pairs stay within ~25° of hue so the amorphous HSL blend
@@ -190,11 +190,16 @@ abstract final class IrodokuPalette {
   static List<PaletteSwatch> _solidSwatches(List<Color> colors) =>
       colors.map(PaletteSwatch.solid).toList();
 
+  static final List<PaletteSwatch> neonSwatches = List.generate(
+    neonColors.length,
+    (i) => PaletteSwatch.neon(neonColors[i], swirlSeed: 400 + i),
+  );
+
   static List<PaletteSwatch> swatchesFor(GamePalette palette) => switch (palette) {
         GamePalette.standard => _solidSwatches(defaultColors),
         GamePalette.rainbow => rainbowSwatches,
         GamePalette.world11 => _solidSwatches(world11Colors),
-        GamePalette.neon => _solidSwatches(neonColors),
+        GamePalette.neon => neonSwatches,
         GamePalette.pkmn => _solidSwatches(pkmnColors),
         GamePalette.pkmn2 => _solidSwatches(pkmn2Colors),
         GamePalette.glass => glassSwatches,

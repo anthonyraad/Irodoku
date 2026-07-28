@@ -20,7 +20,7 @@ class ColorCell extends StatefulWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onDoubleTap;
-  final Color? celebrationColor;
+  final PaletteSwatch? celebrationSwatch;
   final double celebrationScale;
   final double celebrationShimmer;
   /// 0–1 local phase for the title-tap palette sweep; null when inactive.
@@ -38,7 +38,7 @@ class ColorCell extends StatefulWidget {
     this.onTap,
     this.onLongPress,
     this.onDoubleTap,
-    this.celebrationColor,
+    this.celebrationSwatch,
     this.celebrationScale = 1,
     this.celebrationShimmer = 0,
     this.colorCyclePhase,
@@ -100,35 +100,35 @@ class _ColorCellState extends State<ColorCell> {
         ? IrodokuTheme.givenCellFill(brightness)
         : IrodokuTheme.emptyCellFill(brightness);
     final conflictColor = IrodokuTheme.conflictBorder(brightness);
-    final celebrating = widget.celebrationColor != null;
+    final celebrating = widget.celebrationSwatch != null;
     final primary = Theme.of(context).colorScheme.primary;
     final colorCyclePhase = widget.colorCyclePhase;
 
     PaletteSwatch? committedSwatch;
     Map<int, PaletteSwatch>? noteSwatches;
-    if (!celebrating) {
-      if (cell.value != 0 && !cell.hasNotes) {
-        committedSwatch = colorCyclePhase != null
-            ? ColorCycle.displaySwatch(
-                cell.value,
-                colorCyclePhase,
-                stepCount: widget.colorCycleSteps,
-                palette: widget.palette,
-              )
-            : IrodokuPalette.swatchForValue(cell.value, widget.palette);
-      } else if (cell.notes.isNotEmpty) {
-        noteSwatches = {
-          for (final value in cell.notes)
-            value: colorCyclePhase != null
-                ? ColorCycle.displaySwatch(
-                    value,
-                    colorCyclePhase,
-                    stepCount: widget.colorCycleSteps,
-                    palette: widget.palette,
-                  )
-                : IrodokuPalette.swatchForValue(value, widget.palette)!,
-        };
-      }
+    if (celebrating) {
+      committedSwatch = widget.celebrationSwatch;
+    } else if (cell.value != 0 && !cell.hasNotes) {
+      committedSwatch = colorCyclePhase != null
+          ? ColorCycle.displaySwatch(
+              cell.value,
+              colorCyclePhase,
+              stepCount: widget.colorCycleSteps,
+              palette: widget.palette,
+            )
+          : IrodokuPalette.swatchForValue(cell.value, widget.palette);
+    } else if (cell.notes.isNotEmpty) {
+      noteSwatches = {
+        for (final value in cell.notes)
+          value: colorCyclePhase != null
+              ? ColorCycle.displaySwatch(
+                  value,
+                  colorCyclePhase,
+                  stepCount: widget.colorCycleSteps,
+                  palette: widget.palette,
+                )
+              : IrodokuPalette.swatchForValue(value, widget.palette)!,
+      };
     }
 
     final Border? chromeBorder = cell.hasConflict && !celebrating
@@ -162,11 +162,10 @@ class _ColorCellState extends State<ColorCell> {
         Positioned.fill(
           child: CustomPaint(
             painter: _CellPainter(
-              emptyFill:
-                  celebrating ? widget.celebrationColor! : emptyFill,
+              emptyFill: emptyFill,
               notes: celebrating ? const <int>{} : cell.notes,
               noteSwatches: noteSwatches,
-              committedSwatch: celebrating ? null : committedSwatch,
+              committedSwatch: committedSwatch,
               committedOutline: committedOutline,
               noteOutlines: noteOutlines,
               selectionHighlight: widget.isSelected && !celebrating

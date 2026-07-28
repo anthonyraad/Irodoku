@@ -22,7 +22,7 @@ class PaletteSwatch {
   /// Per-slot variation for shader fills; ignored for solid swatches.
   final int swirlSeed;
   final PaletteSwatchStyle style;
-  /// When true, organic fill drifts via [OrganicSwatchMotion].
+  /// When true, fill motion is driven by [OrganicSwatchMotion].
   final bool animated;
   /// Organic warp/contrast strength (1.0 = Glass default).
   final double intensity;
@@ -68,6 +68,8 @@ class PaletteSwatch {
         stop: color,
         swirlSeed: swirlSeed,
         style: PaletteSwatchStyle.neon,
+        // Soft glow breathe driven by [OrganicSwatchMotion].
+        animated: true,
       );
 
   bool get isOrganic =>

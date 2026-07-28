@@ -1,16 +1,16 @@
-import 'dart:ui';
-
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 import 'palette.dart';
 
 abstract final class CelebrationColors {
   /// Smooth rainbow sweep through the palette, then settle to [original].
   ///
   /// [t] is 0–1 for this cell (after stagger). [stagger] offsets the wave.
-  static Color colorFor({
+  /// Returns full swatches so organic/neon textures are preserved.
+  static PaletteSwatch swatchFor({
     required double t,
     required int stagger,
-    required Color original,
+    required PaletteSwatch original,
     required GamePalette palette,
   }) {
     const cycleEnd = 0.78;
@@ -23,7 +23,7 @@ abstract final class CelebrationColors {
 
     final settleT = _easeOutCubic((clamped - cycleEnd) / (1 - cycleEnd));
     final from = _rainbow(1.0, stagger, palette);
-    return Color.lerp(from, original, settleT)!;
+    return PaletteSwatch.lerp(from, original, settleT);
   }
 
   static double scaleFor(double t) {
@@ -44,19 +44,25 @@ abstract final class CelebrationColors {
     return 0.08 * (1 - (clamped - 0.75) / 0.25);
   }
 
-  static Color _rainbow(double cycleT, int stagger, GamePalette palette) {
-    final colors = IrodokuPalette.colorsFor(palette);
-    final pos = (cycleT * colors.length + stagger * 0.45) % colors.length;
+  static PaletteSwatch _rainbow(
+    double cycleT,
+    int stagger,
+    GamePalette palette,
+  ) {
+    final swatches = IrodokuPalette.swatchesFor(palette);
+    final pos = (cycleT * swatches.length + stagger * 0.45) % swatches.length;
     final i = pos.floor();
     final f = _easeInOutCubic(pos - i);
-    final a = colors[i % colors.length];
-    final b = colors[(i + 1) % colors.length];
-    return Color.lerp(a, b, f)!;
+    final a = swatches[i % swatches.length];
+    final b = swatches[(i + 1) % swatches.length];
+    return PaletteSwatch.lerp(a, b, f);
   }
 
   static double _easeInOutCubic(double t) {
     final x = t.clamp(0.0, 1.0);
-    return x < 0.5 ? 4 * x * x * x : 1 - (((-2 * x + 2) * (-2 * x + 2) * (-2 * x + 2)) / 2);
+    return x < 0.5
+        ? 4 * x * x * x
+        : 1 - (((-2 * x + 2) * (-2 * x + 2) * (-2 * x + 2)) / 2);
   }
 
   static double _easeOutCubic(double t) {

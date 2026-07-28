@@ -93,11 +93,16 @@ class _MistakeDisplayState extends State<MistakeDisplay>
               if (i > 0) const SizedBox(width: 4),
               Transform.scale(
                 scale: i == _pulsingIndex ? _scale.value : 1.0,
-                child: Icon(
-                  Icons.close,
-                  size: 18,
-                  weight: i < widget.mistakes ? 700 : 400,
-                  color: i < widget.mistakes ? usedColor : unusedColor,
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CustomPaint(
+                    painter: _MistakeXPainter(
+                      color: i < widget.mistakes ? usedColor : unusedColor,
+                      // Filled mistakes use a heavier stroke than empty slots.
+                      strokeWidth: i < widget.mistakes ? 2.6 : 1.6,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -105,5 +110,35 @@ class _MistakeDisplayState extends State<MistakeDisplay>
         );
       },
     );
+  }
+}
+
+class _MistakeXPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+
+  const _MistakeXPainter({
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    final inset = strokeWidth * 0.85;
+    final a = Offset(inset, inset);
+    final b = Offset(size.width - inset, size.height - inset);
+    canvas.drawLine(a, b, paint);
+    canvas.drawLine(Offset(size.width - inset, inset), Offset(inset, size.height - inset), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MistakeXPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.strokeWidth != strokeWidth;
   }
 }

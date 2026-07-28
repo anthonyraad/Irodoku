@@ -7,6 +7,7 @@ import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
 import '../models/unit_celebration.dart';
 import '../providers/game_provider.dart';
 import '../sudoku/sudoku_board.dart';
@@ -44,6 +45,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    // Treat existing seqs as already seen so a remount can't replay them.
+    _lastCelebrationId = widget.game.celebration?.id ?? 0;
+    _lastColorCycleSeq = widget.game.colorCycleSeq;
     _syncGlassMotion();
     _controller = AnimationController(vsync: this, duration: _duration);
     _controller.addStatusListener((status) {
@@ -68,7 +72,6 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
         }
       });
     widget.game.addListener(_onGameChanged);
-    _maybeStartCelebration();
     _syncBorderPulse();
   }
 
@@ -100,7 +103,8 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   void _syncGlassMotion({bool forceOff = false}) {
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sunset);
+            widget.palette == GamePalette.sunset ||
+            widget.palette == GamePalette.neon);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
       _holdingGlassMotion = true;
@@ -282,7 +286,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                   selectedValue != 0 &&
                   cell.value == selectedValue;
 
-              Color? celebrationColor;
+              PaletteSwatch? celebrationSwatch;
               var celebrationScale = 1.0;
               var celebrationShimmer = 0.0;
 
@@ -294,8 +298,8 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                 if (t > 0) {
                   final originalValue = celebration.originalValueFor(row, col);
                   final original =
-                      IrodokuPalette.colorForValue(originalValue, palette)!;
-                  celebrationColor = CelebrationColors.colorFor(
+                      IrodokuPalette.swatchForValue(originalValue, palette)!;
+                  celebrationSwatch = CelebrationColors.swatchFor(
                     t: t,
                     stagger: stagger,
                     original: original,
@@ -326,7 +330,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         bulkNoteSelect: game.bulkNoteSelect,
                         isRelated: isRelated,
                         isSameColor: isSameColor,
-                        celebrationColor: celebrationColor,
+                        celebrationSwatch: celebrationSwatch,
                         celebrationScale: celebrationScale,
                         celebrationShimmer: celebrationShimmer,
                         colorCyclePhase: _cellColorCyclePhase(row, col),

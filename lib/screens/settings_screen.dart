@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/typing_title.dart';
@@ -73,17 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         return;
                       }
                       if (difficulty == settings.difficulty) return;
-                      settings.setDifficulty(difficulty);
-                      ScaffoldMessenger.of(context)
-                        ..hideCurrentSnackBar()
-                        ..showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Changes will apply to the next new game',
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                      _onDifficultyChosen(context, settings, difficulty);
                     },
                   ),
                 ),
@@ -222,6 +213,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       );
+  }
+
+  Future<void> _onDifficultyChosen(
+    BuildContext context,
+    SettingsProvider settings,
+    Difficulty difficulty,
+  ) async {
+    final game = context.read<GameProvider>();
+    await settings.setDifficulty(difficulty);
+    if (!context.mounted) return;
+    if (game.isGenerating) return;
+
+    // Mid-game: ask before discarding progress.
+    if (game.hasInteracted && !game.isGameOver) {
+      final startNew = await _confirmStartNewGame(context);
+      if (!context.mounted) return;
+      if (startNew == true) {
+        await game.startNewGame();
+      }
+      return;
+    }
+
+    // Untouched board (or finished game): apply immediately.
+    if (game.hasActiveGame || game.isGameOver) {
+      await game.startNewGame();
+    }
+  }
+
+  Future<bool?> _confirmStartNewGame(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = dark ? Colors.white : Colors.black;
+    final onInk = dark ? Colors.black : Colors.white;
+
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            'Start new game?',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: ink),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: ink),
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: ink,
+                foregroundColor: onInk,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showUnlockSnackBar(

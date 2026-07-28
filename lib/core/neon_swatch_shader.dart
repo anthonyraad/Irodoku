@@ -1,35 +1,50 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../models/palette_swatch.dart';
+import 'organic_swatch_motion.dart';
 
-/// GPU holographic foil fill for Neon palette swatches.
+/// Soft center glow for Neon palette swatches, with a gentle per-slot breathe.
 abstract final class NeonSwatchShader {
-  static ui.FragmentProgram? _program;
+  /// Kept for call-site compatibility; glow uses a CPU gradient, not a frag.
+  static bool get isReady => true;
 
-  static bool get isReady => _program != null;
-
-  static Future<void> ensureLoaded() async {
-    _program ??= await ui.FragmentProgram.fromAsset('shaders/neon_swatch.frag');
-  }
+  static Future<void> ensureLoaded() async {}
 
   static Shader? forRect(Rect rect, PaletteSwatch swatch) {
-    final program = _program;
-    if (program == null || !swatch.isNeon) return null;
-
-    final shader = program.fragmentShader()
-      ..setFloat(0, rect.width)
-      ..setFloat(1, rect.height)
-      ..setFloat(2, swatch.swirlSeed.toDouble());
+    if (!swatch.isNeon) return null;
 
     final color = swatch.start;
-    shader
-      ..setFloat(3, color.r)
-      ..setFloat(4, color.g)
-      ..setFloat(5, color.b)
-      ..setFloat(6, color.a);
+    final breathe = _breathe(swatch);
 
-    return shader;
+    // Soft lift with a clearer peak so the breathe reads without a hard disk.
+    final hot = Color.lerp(color, Colors.white, 0.09 + 0.04 * breathe)!;
+    final mid = Color.lerp(color, Colors.white, 0.036 + 0.024 * breathe)!;
+    final edge = Color.lerp(color, Colors.black, 0.02)!;
+    final radius = rect.shortestSide * (1.02 + 0.08 * breathe);
+
+    return ui.Gradient.radial(
+      rect.center,
+      radius,
+      [hot, mid, color, edge],
+      const [0.0, 0.42, 0.78, 1.0],
+    );
+  }
+
+  /// 0–1 oscillation unique per [swatch.swirlSeed] (phase + period desynced).
+  static double _breathe(PaletteSwatch swatch) {
+    final t = OrganicSwatchMotion.timeSeconds;
+    final seed = swatch.swirlSeed;
+    // Distinct phase / periods so neighboring slots never pulse in lockstep.
+    final phase = seed * 2.3999632;
+    // Primary breathe ~1.8–4.7s across slots (desynced via seed mods).
+    final period = 1.8 + (seed % 9) * 0.29 + (seed % 5) * 0.145;
+    final period2 = period * 1.41 + 0.9;
+    final wave = 0.5 + 0.5 * math.sin(t * (math.pi * 2.0) / period + phase);
+    final wave2 =
+        0.5 + 0.5 * math.sin(t * (math.pi * 2.0) / period2 + phase * 1.31);
+    return (wave * 0.72 + wave2 * 0.28).clamp(0.0, 1.0);
   }
 }

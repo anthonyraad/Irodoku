@@ -189,11 +189,16 @@ class _GameScreenState extends State<GameScreen> {
                                     child: Stack(
                                       alignment: Alignment.center,
                                       children: [
-                                        if (!game.isPaused)
-                                          SudokuGrid(
+                                        // Keep the grid mounted while paused so
+                                        // resume doesn't remount and replay the
+                                        // title-tap color-cycle shimmer.
+                                        TickerMode(
+                                          enabled: !game.isPaused,
+                                          child: SudokuGrid(
                                             game: game,
                                             palette: settings.palette,
                                           ),
+                                        ),
                                         if (game.isPaused)
                                           _PausedBoard(
                                             size: boardSize,
