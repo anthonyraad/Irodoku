@@ -173,6 +173,11 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     // Only while animating — a completed controller sits at 1.0, which used to
     // keep cells stuck on solid representative colors after the shimmer.
     if (!_colorCycleController.isAnimating) return null;
+    final filter = widget.game.colorCycleFilterValue;
+    if (filter != null) {
+      final cell = widget.game.cellAt(row, col);
+      if (cell.value != filter) return null;
+    }
     final global = Curves.easeInOut.transform(_colorCycleController.value);
     return ColorCycle.staggeredPhase(global, row, col);
   }

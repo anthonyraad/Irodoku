@@ -54,6 +54,8 @@ class GameProvider extends ChangeNotifier {
   int _celebrationSeq = 0;
   int _colorCycleSeq = 0;
   int _colorCycleSteps = 4;
+  /// When non-null, only cells with this committed value join the sweep.
+  int? _colorCycleFilterValue;
   bool _noteMode = false;
   bool _bulkNoteSelect = false;
   final Set<int> _bulkSelected = {};
@@ -93,6 +95,8 @@ class GameProvider extends ChangeNotifier {
   UnitCelebration? get celebration => _celebration;
   int get colorCycleSeq => _colorCycleSeq;
   int get colorCycleSteps => _colorCycleSteps;
+  /// `null` = all filled cells (title tap); otherwise only that color value.
+  int? get colorCycleFilterValue => _colorCycleFilterValue;
   bool get noteMode => _noteMode;
   bool get bulkNoteSelect => _bulkNoteSelect;
 
@@ -133,13 +137,15 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Title-tap easter egg: brief palette sweep on filled cells.
-  void triggerColorCycle() {
+  /// Palette sweep on filled cells. Title tap uses all colors; cell tap can
+  /// limit to [onlyValue] (1–9).
+  void triggerColorCycle({int? onlyValue}) {
     if (_isGenerating || _isPaused || _isLost) return;
     if (!_hasActiveGame && !_isWon) return;
     if (_celebration != null) return;
     final half = IrodokuPalette.colorsFor(_settings.palette).length ~/ 2;
     _colorCycleSteps = half + Random().nextInt(2); // 4 or 5 of 9 colors
+    _colorCycleFilterValue = onlyValue;
     _colorCycleSeq++;
     notifyListeners();
   }
@@ -288,7 +294,13 @@ class GameProvider extends ChangeNotifier {
 
   void selectCell(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
-    if (_cells[row][col].isGiven) return;
+    final cell = _cells[row][col];
+
+    // Givens aren't selectable, but tapping one still pulses matching colors.
+    if (cell.isGiven) {
+      if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
+      return;
+    }
 
     if (_bulkNoteSelect) {
       final key = _cellKey(row, col);
@@ -298,6 +310,7 @@ class GameProvider extends ChangeNotifier {
         _selected = (row, col);
         _hasInteracted = true;
         notifyListeners();
+        if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
         return;
       }
       _hasInteracted = true;
@@ -314,6 +327,7 @@ class GameProvider extends ChangeNotifier {
     _selected = (row, col);
     _hasInteracted = true;
     notifyListeners();
+    if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
   }
 
   /// Hold on a cell: enter bulk note select, or exit bulk to single-cell note mode.

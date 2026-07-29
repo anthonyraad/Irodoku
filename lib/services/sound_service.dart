@@ -10,7 +10,7 @@ class SoundService {
   late final AudioPlayer _player;
 
   Future<void> playNote() => _play('sounds/note.mp3');
-  Future<void> playNoteDeselect() => _play('sounds/deselect.mp3', volume: 0.75);
+  Future<void> playNoteDeselect() => _play('sounds/deselect.mp3', volume: 0.95);
   Future<void> playConfirm() => _play('sounds/confirm.mp3');
   Future<void> playMistake() => _play('sounds/mistake.mp3');
   Future<void> playGameLoss() => _play('sounds/gameloss.mp3');
