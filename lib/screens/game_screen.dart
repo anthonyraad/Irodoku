@@ -11,6 +11,7 @@ import '../widgets/color_picker.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/mistake_display.dart';
+import '../widgets/start_new_game_dialog.dart';
 import '../widgets/sudoku_grid.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/typing_title.dart';
@@ -37,8 +38,17 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _onNewGame() async {
+    final game = context.read<GameProvider>();
+    if (game.isGenerating) return;
+
+    // Mid-match: confirm before discarding progress (same modal as difficulty).
+    if (game.hasInteracted && !game.isGameOver) {
+      final startNew = await showStartNewGameDialog(context);
+      if (!mounted || startNew != true) return;
+    }
+
     _resultDialogShown = false;
-    await context.read<GameProvider>().startNewGame();
+    await game.startNewGame();
   }
 
   void _maybeShowResult(GameProvider game) {

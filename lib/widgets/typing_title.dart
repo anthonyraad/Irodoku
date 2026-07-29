@@ -7,12 +7,18 @@ class TypingTitle extends StatefulWidget {
   final String text;
   final VoidCallback? onTap;
   final int playToken;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final Duration charDelay;
 
   const TypingTitle({
     super.key,
     required this.text,
     this.onTap,
     this.playToken = 0,
+    this.style,
+    this.textAlign,
+    this.charDelay = const Duration(milliseconds: 30),
   });
 
   @override
@@ -20,8 +26,6 @@ class TypingTitle extends StatefulWidget {
 }
 
 class _TypingTitleState extends State<TypingTitle> {
-  static const _charDelay = Duration(milliseconds: 55);
-
   Timer? _timer;
   int _visibleChars = 0;
 
@@ -34,7 +38,8 @@ class _TypingTitleState extends State<TypingTitle> {
   @override
   void didUpdateWidget(TypingTitle oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.playToken != oldWidget.playToken) {
+    if (widget.playToken != oldWidget.playToken ||
+        widget.text != oldWidget.text) {
       _startTyping();
     }
   }
@@ -45,7 +50,7 @@ class _TypingTitleState extends State<TypingTitle> {
     setState(() => _visibleChars = 0);
     if (widget.text.isEmpty) return;
 
-    _timer = Timer.periodic(_charDelay, (timer) {
+    _timer = Timer.periodic(widget.charDelay, (timer) {
       if (!mounted) {
         timer.cancel();
         return;
@@ -71,10 +76,18 @@ class _TypingTitleState extends State<TypingTitle> {
       _visibleChars.clamp(0, widget.text.length),
     );
 
+    final label = Text(
+      visible,
+      style: widget.style,
+      textAlign: widget.textAlign,
+    );
+
+    if (widget.onTap == null) return label;
+
     return GestureDetector(
       onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
-      child: Text(visible),
+      child: label,
     );
   }
 }

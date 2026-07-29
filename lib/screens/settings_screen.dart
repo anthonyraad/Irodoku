@@ -9,6 +9,7 @@ import '../models/game_stats.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
+import '../widgets/start_new_game_dialog.dart';
 import '../widgets/typing_title.dart';
 import 'iroen_screen.dart';
 import 'stats_screen.dart';
@@ -227,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Mid-game: ask before discarding progress.
     if (game.hasInteracted && !game.isGameOver) {
-      final startNew = await _confirmStartNewGame(context);
+      final startNew = await showStartNewGameDialog(context);
       if (!context.mounted) return;
       if (startNew == true) {
         await game.startNewGame();
@@ -239,44 +240,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (game.hasActiveGame || game.isGameOver) {
       await game.startNewGame();
     }
-  }
-
-  Future<bool?> _confirmStartNewGame(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final ink = dark ? Colors.white : Colors.black;
-    final onInk = dark ? Colors.black : Colors.white;
-
-    return showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text(
-            'Start new game?',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: ink),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: ink),
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: ink,
-                foregroundColor: onInk,
-              ),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Yes'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void _showUnlockSnackBar(

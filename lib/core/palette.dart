@@ -66,14 +66,14 @@ abstract final class IrodokuPalette {
   ];
 
   static const List<Color> glassColors = [
+    Color(0xFF243D42),
     Color(0xFF0B3C8C), // Deep Navy
     Color(0xFF2563EB), // Royal Blue
-    Color(0xFF5BCAFC), // Sky Blue
     Color(0xFFCFD8DC), // Light grey
     Color(0xFF00D9B4), // Turquoise
     Color(0xFF009448), // Emerald
-    Color(0xFFE6AFFA), // Soft lilac
-    Color(0xFFC026D3), // Magenta-Violet
+    Color(0xFFF4D1FF),
+    Color(0xFFBE1FCC),
     Color(0xFF7B3FF2), // Purple
   ];
 
@@ -128,10 +128,13 @@ abstract final class IrodokuPalette {
   ];
 
   static final List<PaletteSwatch> rainbowSwatches = List.generate(9, (i) {
+    // Softer stop + lower intensity so the organic texture stays understated.
+    final stop = Color.lerp(_rainbowStarts[i], _rainbowStops[i], 0.62)!;
     return PaletteSwatch.organic(
       start: _rainbowStarts[i],
-      stop: _rainbowStops[i],
+      stop: stop,
       swirlSeed: i + 1,
+      intensity: 0.55,
     );
   });
 
