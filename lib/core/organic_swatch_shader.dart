@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/palette_swatch.dart';
 import 'organic_swatch_motion.dart';
 
-/// GPU swirl fill for gradient palette swatches (Rainbow / Glass / Sunset).
+/// GPU swirl fill for gradient palette swatches (Rainbow / Glass / Sky).
 abstract final class OrganicSwatchShader {
   static ui.FragmentProgram? _program;
 

@@ -77,16 +77,16 @@ abstract final class IrodokuPalette {
     Color(0xFF7B3FF2), // Purple
   ];
 
-  static const List<Color> sunsetColors = [
-    Color(0xFF32104F), // Deep purple
-    Color(0xFF54278F), // Violet
-    Color(0xFF8E5EA2), // Lavender
-    Color(0xFFD45087), // Rose
-    Color(0xFFD62828), // Sunset red
-    Color(0xFFE85D04), // Burnt orange
-    Color(0xFFFFB703), // Amber gold
-    Color(0xFFFFD500), // Bright gold
-    Color(0xFFFFF3B0), // Pale sand
+  static const List<Color> skyColors = [
+    Color(0xFFF5F3FF),
+    Color(0xFF73726F),
+    Color(0xFF282829),
+    Color(0xFFFE6382),
+    Color(0xFFF3D493),
+    Color(0xFF51D6C8),
+    Color(0xFFA3CD79),
+    Color(0xFFC4AFD6),
+    Color(0xFF026468),
   ];
 
   static const List<Color> world11Colors = [
@@ -181,13 +181,13 @@ abstract final class IrodokuPalette {
     animated: true,
   );
 
-  /// Same moving organic fill as Glass, with stronger warp and faster drift.
-  static final List<PaletteSwatch> sunsetSwatches = _organicFromColors(
-    sunsetColors,
+  /// Same moving organic fill as Glass, with stronger warp and a slower drift.
+  static final List<PaletteSwatch> skySwatches = _organicFromColors(
+    skyColors,
     seedBase: 800,
     animated: true,
     intensity: 1.85,
-    motionSpeed: 1.0,
+    motionSpeed: 0.72,
   );
 
   static List<PaletteSwatch> _solidSwatches(List<Color> colors) =>
@@ -206,7 +206,7 @@ abstract final class IrodokuPalette {
         GamePalette.pkmn => _solidSwatches(pkmnColors),
         GamePalette.pkmn2 => _solidSwatches(pkmn2Colors),
         GamePalette.glass => glassSwatches,
-        GamePalette.sunset => sunsetSwatches,
+        GamePalette.sky => skySwatches,
         GamePalette.greyscale => _solidSwatches(greyscaleColors),
       };
 
@@ -224,12 +224,16 @@ abstract final class IrodokuPalette {
     return swatchesFor(palette)[value - 1];
   }
 
-  /// Greyscale white (#FFFFFF) needs an outline so it doesn't match empty cells.
-  static const Color greyscaleWhiteOutline = Color(0xFF444444);
+  /// Near-white fills need an outline so they don't match empty cells.
+  static const Color lightFillOutline = Color(0xFF444444);
 
   static Color? outlineForValue(int value, GamePalette palette) {
     if (palette == GamePalette.greyscale && value == 9) {
-      return greyscaleWhiteOutline;
+      return lightFillOutline;
+    }
+    // Sky first slot (#F5F3FF) is near-white.
+    if (palette == GamePalette.sky && value == 1) {
+      return lightFillOutline;
     }
     return null;
   }

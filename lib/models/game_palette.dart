@@ -8,7 +8,7 @@ enum GamePalette {
   pkmn,
   pkmn2,
   glass,
-  sunset,
+  sky,
   greyscale;
 
   String get label => switch (this) {
@@ -19,7 +19,7 @@ enum GamePalette {
         GamePalette.pkmn => 'Kanto',
         GamePalette.pkmn2 => 'Johto',
         GamePalette.glass => 'Glass',
-        GamePalette.sunset => 'Sunset',
+        GamePalette.sky => 'Sky',
         GamePalette.greyscale => 'Greyscale',
       };
 
@@ -31,7 +31,7 @@ enum GamePalette {
         GamePalette.pkmn => 'pkmn',
         GamePalette.pkmn2 => 'pkmn2',
         GamePalette.glass => 'glass',
-        GamePalette.sunset => 'sunset',
+        GamePalette.sky => 'sky',
         GamePalette.greyscale => 'greyscale',
       };
 
@@ -39,6 +39,8 @@ enum GamePalette {
     if (key == 'sea') return GamePalette.glass;
     // Sunglass was folded into Rainbow.
     if (key == 'sunglass') return GamePalette.rainbow;
+    // Sunset → Stone → Sky.
+    if (key == 'sunset' || key == 'stone') return GamePalette.sky;
     return GamePalette.values.firstWhere(
       (palette) => palette.storageKey == key,
       orElse: () => GamePalette.standard,
@@ -57,7 +59,7 @@ enum GamePalette {
         GamePalette.pkmn ||
         GamePalette.pkmn2 ||
         GamePalette.glass ||
-        GamePalette.sunset =>
+        GamePalette.sky =>
           true,
         _ => false,
       };
@@ -68,7 +70,7 @@ enum GamePalette {
         GamePalette.pkmn => 'Win 3 games in a row',
         GamePalette.pkmn2 => 'Win a Hard game with no mistakes',
         GamePalette.glass => 'Win an Expert game with no mistakes',
-        GamePalette.sunset => 'Win a Master game',
+        GamePalette.sky => 'Win a Master game',
         _ => '',
       };
 
@@ -94,7 +96,7 @@ enum GamePalette {
           (text: Difficulty.expert.label, highlight: true),
           (text: ' game with no mistakes', highlight: false),
         ],
-        GamePalette.sunset => [
+        GamePalette.sky => [
           (text: 'Win a ', highlight: false),
           (text: Difficulty.master.label, highlight: true),
           (text: ' game', highlight: false),

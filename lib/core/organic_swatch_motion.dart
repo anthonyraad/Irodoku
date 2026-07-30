@@ -1,7 +1,7 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/foundation.dart';
 
-/// Shared clock for animated swatches (Glass / Sunset organic, Neon glow).
+/// Shared clock for animated swatches (Glass / Sky organic, Neon glow).
 abstract final class OrganicSwatchMotion {
   static final ValueNotifier<double> seconds = ValueNotifier(0);
 

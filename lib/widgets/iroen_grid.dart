@@ -73,7 +73,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   void _syncGlassMotion({bool forceOff = false}) {
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sunset ||
+            widget.palette == GamePalette.sky ||
             widget.palette == GamePalette.neon);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
@@ -327,7 +327,7 @@ class _IroenMosaicCell extends StatelessWidget {
                 ? IrodokuTheme.sameColorOverlay(brightness)
                 : null,
             repaint: palette == GamePalette.glass ||
-                    palette == GamePalette.sunset
+                    palette == GamePalette.sky
                 ? OrganicSwatchMotion.listenable
                 : null,
           ),

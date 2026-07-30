@@ -132,10 +132,10 @@ class StatsProvider extends ChangeNotifier {
       newlyUnlocked.add(GamePalette.glass);
     }
 
-    if (!unlockedPalettes.contains(GamePalette.sunset) &&
+    if (!unlockedPalettes.contains(GamePalette.sky) &&
         difficulty == Difficulty.master) {
-      unlockedPalettes.add(GamePalette.sunset);
-      newlyUnlocked.add(GamePalette.sunset);
+      unlockedPalettes.add(GamePalette.sky);
+      newlyUnlocked.add(GamePalette.sky);
     }
 
     _stats = _stats.copyWith(

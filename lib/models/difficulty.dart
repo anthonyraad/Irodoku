@@ -33,10 +33,18 @@ enum Difficulty {
         Difficulty.master => Difficulty.expert,
       };
 
-  String get storageKey => name;
+  /// Prefs / paused-game key. Expert is not `"expert"` — that legacy string
+  /// meant today's Hard before the rename.
+  String get storageKey => switch (this) {
+        Difficulty.easy => 'easy',
+        Difficulty.medium => 'medium',
+        Difficulty.hard => 'hard',
+        Difficulty.expert => 'expert_v2',
+        Difficulty.master => 'master',
+      };
 
   static Difficulty fromStorageKey(String? key) {
-    // Hard was previously stored as "expert".
+    // Pre-rename Hard was stored as "expert".
     if (key == 'expert') return Difficulty.hard;
     return Difficulty.values.firstWhere(
       (d) => d.storageKey == key,

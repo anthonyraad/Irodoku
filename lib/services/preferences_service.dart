@@ -36,7 +36,13 @@ class PreferencesService {
   }
 
   Difficulty getDifficulty() {
-    return Difficulty.fromStorageKey(_prefs.getString(_keyDifficulty));
+    final key = _prefs.getString(_keyDifficulty);
+    final difficulty = Difficulty.fromStorageKey(key);
+    // Rewrite legacy Hard key ("expert") to the modern "hard" key.
+    if (key == 'expert') {
+      _prefs.setString(_keyDifficulty, Difficulty.hard.storageKey);
+    }
+    return difficulty;
   }
 
   Future<void> setDifficulty(Difficulty difficulty) async {
@@ -154,6 +160,8 @@ class PreferencesService {
   }
 
   /// Hard was previously stored under the "expert" preference keys.
+  /// Migrates once into Hard's modern keys, then clears the legacy entries so
+  /// they can't collide with a future Expert key or double-count on load.
   void _migrateLegacyHardStats(
     Map<Difficulty, Duration?> bestTimes,
     Map<Difficulty, int> winsByDifficulty,
@@ -161,9 +169,16 @@ class PreferencesService {
     const legacyWinsKey = 'stats_wins_expert';
     const legacyBestKey = 'stats_best_time_expert';
     final legacyWins = _prefs.getInt(legacyWinsKey);
-    if (legacyWins != null && legacyWins > 0) {
-      winsByDifficulty[Difficulty.hard] =
-          (winsByDifficulty[Difficulty.hard] ?? 0) + legacyWins;
+    if (legacyWins != null) {
+      if (legacyWins > 0) {
+        final hardWins = winsByDifficulty[Difficulty.hard] ?? 0;
+        // Prefer the larger value — avoids stacking the same legacy total
+        // onto Hard on every launch before keys were cleared.
+        if (legacyWins > hardWins) {
+          winsByDifficulty[Difficulty.hard] = legacyWins;
+        }
+      }
+      _prefs.remove(legacyWinsKey);
     }
     final legacyBestMs = _prefs.getInt(legacyBestKey);
     if (legacyBestMs != null) {
@@ -172,6 +187,7 @@ class PreferencesService {
       if (current == null || legacyBest < current) {
         bestTimes[Difficulty.hard] = legacyBest;
       }
+      _prefs.remove(legacyBestKey);
     }
   }
 

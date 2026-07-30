@@ -103,7 +103,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   void _syncGlassMotion({bool forceOff = false}) {
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sunset ||
+            widget.palette == GamePalette.sky ||
             widget.palette == GamePalette.neon);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
