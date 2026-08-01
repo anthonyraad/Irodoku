@@ -49,6 +49,8 @@ flutter run
 
 Play online at [https://anthonyraad.github.io/Irodoku/](https://anthonyraad.github.io/Irodoku/) after deployment.
 
+Privacy Policy: [https://anthonyraad.github.io/Irodoku/privacy.html](https://anthonyraad.github.io/Irodoku/privacy.html)
+
 Build locally:
 
 ```bash
