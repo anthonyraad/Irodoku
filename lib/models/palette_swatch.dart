@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../core/gloss_swatch_shader.dart';
 import '../core/neon_swatch_shader.dart';
 import '../core/organic_swatch_motion.dart';
 import '../core/organic_swatch_shader.dart';
@@ -11,6 +12,7 @@ enum PaletteSwatchStyle {
   solid,
   organic,
   neon,
+  gloss,
 }
 
 /// A fill style for one palette slot (solid, organic gradient, or neon texture).
@@ -72,15 +74,25 @@ class PaletteSwatch {
         animated: true,
       );
 
+  factory PaletteSwatch.gloss(Color color, {int swirlSeed = 0}) =>
+      PaletteSwatch(
+        start: color,
+        stop: color,
+        swirlSeed: swirlSeed,
+        style: PaletteSwatchStyle.gloss,
+      );
+
   bool get isOrganic =>
       style == PaletteSwatchStyle.organic ||
       (style == PaletteSwatchStyle.solid && start != stop);
 
   bool get isNeon => style == PaletteSwatchStyle.neon;
 
+  bool get isGloss => style == PaletteSwatchStyle.gloss;
+
   bool get isGradient => isOrganic && start != stop;
 
-  bool get usesShader => isOrganic || isNeon;
+  bool get usesShader => isOrganic || isNeon || isGloss;
 
   /// Midpoint blend used for same-color wash and animation lerps.
   Color get representative => isGradient ? blend(start, stop, 0.5) : start;
@@ -126,6 +138,9 @@ class PaletteSwatch {
   Shader? shaderForRect(Rect rect) {
     if (isNeon) {
       return NeonSwatchShader.forRect(rect, this);
+    }
+    if (isGloss) {
+      return GlossSwatchShader.forRect(rect, this);
     }
     if (!isOrganic) return null;
     return OrganicSwatchShader.forRect(rect, this) ??

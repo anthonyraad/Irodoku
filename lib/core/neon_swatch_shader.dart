@@ -20,8 +20,8 @@ abstract final class NeonSwatchShader {
     final breathe = _breathe(swatch);
 
     // Soft lift with a clearer peak so the breathe reads without a hard disk.
-    final hot = Color.lerp(color, Colors.white, 0.09 + 0.04 * breathe)!;
-    final mid = Color.lerp(color, Colors.white, 0.036 + 0.024 * breathe)!;
+    final hot = Color.lerp(color, Colors.white, 0.13 + 0.02 * breathe)!;
+    final mid = Color.lerp(color, Colors.white, 0.044 + 0.016 * breathe)!;
     final edge = Color.lerp(color, Colors.black, 0.02)!;
     final radius = rect.shortestSide * (1.02 + 0.08 * breathe);
 

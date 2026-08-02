@@ -21,6 +21,10 @@ class StatsProvider extends ChangeNotifier {
   bool isPaletteUnlocked(GamePalette palette) =>
       devMode || _stats.isPaletteUnlocked(palette);
 
+  /// True when every menu palette is available (unlocks Chromatic mode).
+  bool get areAllMenuPalettesUnlocked =>
+      GamePalette.menuValues.every(isPaletteUnlocked);
+
   bool get isIroenUnlocked => devMode || _stats.isIroenUnlocked;
 
   void notifyDevModeChanged() => notifyListeners();
@@ -36,12 +40,14 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool chromatic = false,
   }) async {
     final newlyUnlocked = recordWinSync(
       difficulty: difficulty,
       elapsed: elapsed,
       mistakes: mistakes,
       palette: palette,
+      chromatic: chromatic,
     );
     await persist();
     return newlyUnlocked;
@@ -52,12 +58,14 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool chromatic = false,
   }) {
     final newlyUnlocked = _applyWin(
       difficulty: difficulty,
       elapsed: elapsed,
       mistakes: mistakes,
       palette: palette,
+      chromatic: chromatic,
     );
     notifyListeners();
     return newlyUnlocked;
@@ -70,6 +78,7 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    required bool chromatic,
   }) {
     final newStreak = _stats.currentStreak + 1;
     final bestStreak =
@@ -83,6 +92,21 @@ class StatsProvider extends ChangeNotifier {
 
     final winsByDifficulty = Map<Difficulty, int>.from(_stats.winsByDifficulty);
     winsByDifficulty[difficulty] = _stats.winsFor(difficulty) + 1;
+
+    var chromaticGamesWon = _stats.chromaticGamesWon;
+    final chromaticBestTimes =
+        Map<Difficulty, Duration?>.from(_stats.chromaticBestTimes);
+    final chromaticWinsByDifficulty =
+        Map<Difficulty, int>.from(_stats.chromaticWinsByDifficulty);
+    if (chromatic) {
+      chromaticGamesWon += 1;
+      final chromaticPrevious = chromaticBestTimes[difficulty];
+      if (chromaticPrevious == null || elapsed < chromaticPrevious) {
+        chromaticBestTimes[difficulty] = elapsed;
+      }
+      chromaticWinsByDifficulty[difficulty] =
+          (_stats.chromaticWinsFor(difficulty)) + 1;
+    }
 
     final currentStreakByPalette =
         Map<GamePalette, int>.from(_stats.currentStreakByPalette);
@@ -144,6 +168,9 @@ class StatsProvider extends ChangeNotifier {
       gamesWon: newGamesWon,
       bestTimes: bestTimes,
       winsByDifficulty: winsByDifficulty,
+      chromaticGamesWon: chromaticGamesWon,
+      chromaticBestTimes: chromaticBestTimes,
+      chromaticWinsByDifficulty: chromaticWinsByDifficulty,
       unlockedPalettes: unlockedPalettes,
       bestStreakByPalette: bestStreakByPalette,
       currentStreakByPalette: currentStreakByPalette,

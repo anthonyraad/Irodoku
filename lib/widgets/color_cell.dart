@@ -16,6 +16,8 @@ class ColorCell extends StatefulWidget {
   final bool isRelated;
   final bool isSameColor;
   final GamePalette palette;
+  /// When set (length 9), used for fills instead of [palette] lookups.
+  final List<PaletteSwatch>? displaySwatches;
   final bool bulkNoteSelect;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -32,6 +34,7 @@ class ColorCell extends StatefulWidget {
     required this.cell,
     required this.isSelected,
     required this.palette,
+    this.displaySwatches,
     this.bulkNoteSelect = false,
     this.isRelated = false,
     this.isSameColor = false,
@@ -104,6 +107,10 @@ class _ColorCellState extends State<ColorCell> {
     final primary = Theme.of(context).colorScheme.primary;
     final colorCyclePhase = widget.colorCyclePhase;
 
+    PaletteSwatch swatchFor(int value) =>
+        IrodokuPalette.swatchFromList(value, widget.displaySwatches) ??
+        IrodokuPalette.swatchForValue(value, widget.palette)!;
+
     PaletteSwatch? committedSwatch;
     Map<int, PaletteSwatch>? noteSwatches;
     if (celebrating) {
@@ -116,7 +123,7 @@ class _ColorCellState extends State<ColorCell> {
               stepCount: widget.colorCycleSteps,
               palette: widget.palette,
             )
-          : IrodokuPalette.swatchForValue(cell.value, widget.palette);
+          : swatchFor(cell.value);
     } else if (cell.notes.isNotEmpty) {
       noteSwatches = {
         for (final value in cell.notes)
@@ -127,7 +134,7 @@ class _ColorCellState extends State<ColorCell> {
                   stepCount: widget.colorCycleSteps,
                   palette: widget.palette,
                 )
-              : IrodokuPalette.swatchForValue(value, widget.palette)!,
+              : swatchFor(value),
       };
     }
 

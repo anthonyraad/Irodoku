@@ -8,52 +8,192 @@ import '../models/game_palette.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/typing_title.dart';
 
-class StatsScreen extends StatelessWidget {
+class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
   @override
+  State<StatsScreen> createState() => _StatsScreenState();
+}
+
+class _StatsScreenState extends State<StatsScreen> {
+  bool _showChromatic = false;
+
+  @override
   Widget build(BuildContext context) {
+    final titleStyle = Theme.of(context).appBarTheme.titleTextStyle ??
+        Theme.of(context).textTheme.titleLarge;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Deeper (light mode) / brighter (dark mode) stops so no band washes out
+    // against the app bar — especially yellow on light gray.
+    final rainbowColors = isDark
+        ? const [
+            Color(0xFFFF8A80),
+            Color(0xFFFFB74D),
+            Color(0xFFFFD54F),
+            Color(0xFF81C784),
+            Color(0xFF64B5F6),
+            Color(0xFFCE93D8),
+          ]
+        : const [
+            Color(0xFFB71C1C),
+            Color(0xFFE65100),
+            Color(0xFFF9A825),
+            Color(0xFF2E7D32),
+            Color(0xFF1565C0),
+            Color(0xFF6A1B9A),
+          ];
+    final title = TypingTitle(
+      text: 'Stats',
+      style: _showChromatic
+          ? titleStyle?.copyWith(color: Colors.white)
+          : titleStyle,
+    );
+
     return Scaffold(
       appBar: AppBar(
-        title: const TypingTitle(text: 'Stats'),
+        title: _showChromatic
+            ? Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Soft silhouette so thin Balatro strokes stay legible.
+                  TypingTitle(
+                    text: 'Stats',
+                    style: titleStyle?.copyWith(
+                      color: isDark
+                          ? Colors.black.withValues(alpha: 0.55)
+                          : Colors.white.withValues(alpha: 0.9),
+                      shadows: [
+                        Shadow(
+                          color: isDark
+                              ? Colors.black.withValues(alpha: 0.65)
+                              : Colors.white.withValues(alpha: 0.95),
+                          blurRadius: 2,
+                          offset: const Offset(0, 0.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ShaderMask(
+                    blendMode: BlendMode.srcIn,
+                    shaderCallback: (bounds) => LinearGradient(
+                      colors: rainbowColors,
+                    ).createShader(
+                      Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                    ),
+                    child: title,
+                  ),
+                ],
+              )
+            : title,
       ),
       body: Consumer<StatsProvider>(
         builder: (context, statsProvider, _) {
           final stats = statsProvider.stats;
-          return ListView(
-            padding: const EdgeInsets.all(16),
+          final showChromaticButton = statsProvider.areAllMenuPalettesUnlocked;
+          final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+          return Stack(
             children: [
-              _StatCard(
-                children: [
-                  _StatRow(label: 'Current streak', value: '${stats.currentStreak}'),
-                  _StatRow(label: 'Best streak', value: '${stats.bestStreak}'),
-                  _StatRow(label: 'Games won', value: '${stats.gamesWon}'),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const _DifficultyStatsHeader(),
-              const SizedBox(height: 8),
-              _StatCard(
-                children: [
-                  for (final difficulty in Difficulty.values)
-                    _DifficultyStatsRow(
-                      difficulty: difficulty.label,
-                      bestTime: _formatBest(stats.bestTimeFor(difficulty)),
-                      wins: '${stats.winsFor(difficulty)}',
-                    ),
-                ],
-              ),
-              if (stats.favoritePalette case final favoritePalette?) ...[
-                const SizedBox(height: 20),
-                _StatCard(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: _PalettePreviewRow(palette: favoritePalette),
-                    ),
-                  ],
+              ListView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  showChromaticButton ? 72 + bottomInset : 16,
                 ),
-              ],
+                children: [
+                  if (_showChromatic) ...[
+                    _StatCard(
+                      children: [
+                        _StatRow(
+                          label: 'Games won',
+                          value: '${stats.chromaticGamesWon}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const _DifficultyStatsHeader(),
+                    const SizedBox(height: 8),
+                    _StatCard(
+                      children: [
+                        for (final difficulty in Difficulty.values)
+                          _DifficultyStatsRow(
+                            difficulty: difficulty.label,
+                            bestTime: _formatBest(
+                              stats.chromaticBestTimeFor(difficulty),
+                            ),
+                            wins: '${stats.chromaticWinsFor(difficulty)}',
+                          ),
+                      ],
+                    ),
+                  ] else ...[
+                    _StatCard(
+                      children: [
+                        _StatRow(
+                          label: 'Current streak',
+                          value: '${stats.currentStreak}',
+                        ),
+                        _StatRow(
+                          label: 'Best streak',
+                          value: '${stats.bestStreak}',
+                        ),
+                        _StatRow(
+                          label: 'Games won',
+                          value: '${stats.gamesWon}',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const _DifficultyStatsHeader(),
+                    const SizedBox(height: 8),
+                    _StatCard(
+                      children: [
+                        for (final difficulty in Difficulty.values)
+                          _DifficultyStatsRow(
+                            difficulty: difficulty.label,
+                            bestTime: _formatBest(
+                              stats.bestTimeFor(difficulty),
+                            ),
+                            wins: '${stats.winsFor(difficulty)}',
+                          ),
+                      ],
+                    ),
+                    if (stats.favoritePalette case final favoritePalette?) ...[
+                      const SizedBox(height: 20),
+                      _StatCard(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: _PalettePreviewRow(palette: favoritePalette),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+              if (showChromaticButton)
+                Positioned(
+                  right: 16,
+                  bottom: 12 + bottomInset,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 8,
+                      ),
+                      textStyle: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    onPressed: () {
+                      setState(() => _showChromatic = !_showChromatic);
+                    },
+                    child: Text(
+                      _showChromatic ? '< All' : 'Chromatic >',
+                    ),
+                  ),
+                ),
             ],
           );
         },
@@ -155,7 +295,7 @@ class _DifficultyStatsHeader extends StatelessWidget {
   static TextStyle? _headerStyle(BuildContext context) {
     return Theme.of(context).textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w600,
-          color: Colors.black,
+          color: Theme.of(context).colorScheme.onSurface,
         );
   }
 

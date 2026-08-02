@@ -16,11 +16,14 @@ import 'color_cell.dart';
 class SudokuGrid extends StatefulWidget {
   final GameProvider game;
   final GamePalette palette;
+  /// Optional live swatches (e.g. chromatic crossfade); falls back to [palette].
+  final List<PaletteSwatch>? displaySwatches;
 
   const SudokuGrid({
     super.key,
     required this.game,
     required this.palette,
+    this.displaySwatches,
   });
 
   @override
@@ -214,6 +217,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
               builder: (context, _) => _buildCellLayer(
                 game: game,
                 palette: widget.palette,
+                displaySwatches: widget.displaySwatches,
                 brightness: brightness,
                 thin: thin,
                 thick: thick,
@@ -257,6 +261,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   Widget _buildCellLayer({
     required GameProvider game,
     required GamePalette palette,
+    required List<PaletteSwatch>? displaySwatches,
     required Brightness brightness,
     required Color thin,
     required Color thick,
@@ -303,6 +308,10 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                 if (t > 0) {
                   final originalValue = celebration.originalValueFor(row, col);
                   final original =
+                      IrodokuPalette.swatchFromList(
+                        originalValue,
+                        displaySwatches,
+                      ) ??
                       IrodokuPalette.swatchForValue(originalValue, palette)!;
                   celebrationSwatch = CelebrationColors.swatchFor(
                     t: t,
@@ -332,6 +341,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         cell: cell,
                         isSelected: isSelected,
                         palette: palette,
+                        displaySwatches: displaySwatches,
                         bulkNoteSelect: game.bulkNoteSelect,
                         isRelated: isRelated,
                         isSameColor: isSameColor,

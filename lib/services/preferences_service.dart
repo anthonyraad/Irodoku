@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/achievements_progress.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
@@ -14,17 +15,20 @@ class PreferencesService {
   static const _keyDarkMode = 'dark_mode';
   static const _keySoundEnabled = 'sound_enabled';
   static const _keyXlPicker = 'xl_picker';
+  static const _keyChromatic = 'chromatic';
   static const _keyPalette = 'palette';
   static const _keyCurrentStreak = 'stats_current_streak';
   static const _keyBestStreak = 'stats_best_streak';
   static const _keyGamesPlayed = 'stats_games_played';
   static const _keyGamesWon = 'stats_games_won';
+  static const _keyChromaticGamesWon = 'stats_chromatic_games_won';
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
   static const _keyIroenState = 'iroen_state';
   static const _keyIroenGallery = 'iroen_gallery';
   static const _keyIroenActiveMosaicId = 'iroen_active_mosaic_id';
   static const _keyDevMode = 'dev_mode';
+  static const _keyAchievements = 'achievements_progress';
 
   final SharedPreferences _prefs;
 
@@ -69,6 +73,12 @@ class PreferencesService {
     await _prefs.setBool(_keyXlPicker, enabled);
   }
 
+  bool getChromatic() => _prefs.getBool(_keyChromatic) ?? false;
+
+  Future<void> setChromatic(bool enabled) async {
+    await _prefs.setBool(_keyChromatic, enabled);
+  }
+
   bool getDevMode() => _prefs.getBool(_keyDevMode) ?? false;
 
   Future<void> setDevMode(bool enabled) async {
@@ -86,10 +96,16 @@ class PreferencesService {
   GameStats loadStats() {
     final bestTimes = <Difficulty, Duration?>{};
     final winsByDifficulty = <Difficulty, int>{};
+    final chromaticBestTimes = <Difficulty, Duration?>{};
+    final chromaticWinsByDifficulty = <Difficulty, int>{};
     for (final d in Difficulty.values) {
       final ms = _prefs.getInt(_bestTimeKey(d));
       bestTimes[d] = ms == null ? null : Duration(milliseconds: ms);
       winsByDifficulty[d] = _prefs.getInt(_winsKey(d)) ?? 0;
+      final chromaticMs = _prefs.getInt(_chromaticBestTimeKey(d));
+      chromaticBestTimes[d] =
+          chromaticMs == null ? null : Duration(milliseconds: chromaticMs);
+      chromaticWinsByDifficulty[d] = _prefs.getInt(_chromaticWinsKey(d)) ?? 0;
     }
     _migrateLegacyHardStats(bestTimes, winsByDifficulty);
     final bestStreakByPalette = <GamePalette, int>{};
@@ -107,6 +123,9 @@ class PreferencesService {
       gamesWon: _prefs.getInt(_keyGamesWon) ?? 0,
       bestTimes: bestTimes,
       winsByDifficulty: winsByDifficulty,
+      chromaticGamesWon: _prefs.getInt(_keyChromaticGamesWon) ?? 0,
+      chromaticBestTimes: chromaticBestTimes,
+      chromaticWinsByDifficulty: chromaticWinsByDifficulty,
       unlockedPalettes: _loadUnlockedPalettes(),
       bestStreakByPalette: bestStreakByPalette,
       currentStreakByPalette: currentStreakByPalette,
@@ -118,6 +137,7 @@ class PreferencesService {
     await _prefs.setInt(_keyBestStreak, stats.bestStreak);
     await _prefs.setInt(_keyGamesPlayed, stats.gamesPlayed);
     await _prefs.setInt(_keyGamesWon, stats.gamesWon);
+    await _prefs.setInt(_keyChromaticGamesWon, stats.chromaticGamesWon);
     for (final d in Difficulty.values) {
       final time = stats.bestTimes[d];
       if (time == null) {
@@ -126,6 +146,16 @@ class PreferencesService {
         await _prefs.setInt(_bestTimeKey(d), time.inMilliseconds);
       }
       await _prefs.setInt(_winsKey(d), stats.winsFor(d));
+      final chromaticTime = stats.chromaticBestTimes[d];
+      if (chromaticTime == null) {
+        await _prefs.remove(_chromaticBestTimeKey(d));
+      } else {
+        await _prefs.setInt(
+          _chromaticBestTimeKey(d),
+          chromaticTime.inMilliseconds,
+        );
+      }
+      await _prefs.setInt(_chromaticWinsKey(d), stats.chromaticWinsFor(d));
     }
     await _prefs.setStringList(
       _keyUnlockedPalettes,
@@ -146,6 +176,12 @@ class PreferencesService {
   String _bestTimeKey(Difficulty d) => 'stats_best_time_${d.storageKey}';
 
   String _winsKey(Difficulty d) => 'stats_wins_${d.storageKey}';
+
+  String _chromaticBestTimeKey(Difficulty d) =>
+      'stats_chromatic_best_time_${d.storageKey}';
+
+  String _chromaticWinsKey(Difficulty d) =>
+      'stats_chromatic_wins_${d.storageKey}';
 
   String _paletteBestStreakKey(GamePalette palette) =>
       'stats_palette_best_streak_${palette.storageKey}';
@@ -258,5 +294,21 @@ class PreferencesService {
     } else {
       await _prefs.setString(_keyIroenActiveMosaicId, id);
     }
+  }
+
+  AchievementsProgress loadAchievements() {
+    final raw = _prefs.getString(_keyAchievements);
+    if (raw == null || raw.isEmpty) return const AchievementsProgress();
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const AchievementsProgress();
+      return AchievementsProgress.fromJson(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return const AchievementsProgress();
+    }
+  }
+
+  Future<void> saveAchievements(AchievementsProgress progress) async {
+    await _prefs.setString(_keyAchievements, jsonEncode(progress.toJson()));
   }
 }

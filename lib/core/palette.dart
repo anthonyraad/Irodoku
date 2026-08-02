@@ -83,9 +83,9 @@ abstract final class IrodokuPalette {
     Color(0xFF282829),
     Color(0xFFFE6382),
     Color(0xFFF3D493),
-    Color(0xFF51D6C8),
-    Color(0xFFA3CD79),
-    Color(0xFFC4AFD6),
+    Color(0xFF60F0E1),
+    Color(0xFF02B34E),
+    Color(0xFF8232C7),
     Color(0xFF026468),
   ];
 
@@ -198,13 +198,24 @@ abstract final class IrodokuPalette {
     (i) => PaletteSwatch.neon(neonColors[i], swirlSeed: 400 + i),
   );
 
+  /// Kanto / Johto: stark diagonal gloss (subtle, static).
+  static final List<PaletteSwatch> pkmnSwatches = List.generate(
+    pkmnColors.length,
+    (i) => PaletteSwatch.gloss(pkmnColors[i], swirlSeed: 500 + i),
+  );
+
+  static final List<PaletteSwatch> pkmn2Swatches = List.generate(
+    pkmn2Colors.length,
+    (i) => PaletteSwatch.gloss(pkmn2Colors[i], swirlSeed: 600 + i),
+  );
+
   static List<PaletteSwatch> swatchesFor(GamePalette palette) => switch (palette) {
         GamePalette.standard => _solidSwatches(defaultColors),
         GamePalette.rainbow => rainbowSwatches,
         GamePalette.world11 => _solidSwatches(world11Colors),
         GamePalette.neon => neonSwatches,
-        GamePalette.pkmn => _solidSwatches(pkmnColors),
-        GamePalette.pkmn2 => _solidSwatches(pkmn2Colors),
+        GamePalette.pkmn => pkmnSwatches,
+        GamePalette.pkmn2 => pkmn2Swatches,
         GamePalette.glass => glassSwatches,
         GamePalette.sky => skySwatches,
         GamePalette.greyscale => _solidSwatches(greyscaleColors),
@@ -222,6 +233,12 @@ abstract final class IrodokuPalette {
   static PaletteSwatch? swatchForValue(int value, GamePalette palette) {
     if (value < 1 || value > 9) return null;
     return swatchesFor(palette)[value - 1];
+  }
+
+  /// Swatch for [value] from an explicit 9-slot display list, if valid.
+  static PaletteSwatch? swatchFromList(int value, List<PaletteSwatch>? swatches) {
+    if (swatches == null || value < 1 || value > swatches.length) return null;
+    return swatches[value - 1];
   }
 
   /// Near-white fills need an outline so they don't match empty cells.

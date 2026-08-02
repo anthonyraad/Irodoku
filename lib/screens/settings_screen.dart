@@ -11,6 +11,7 @@ import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/typing_title.dart';
+import 'achievements_screen.dart';
 import 'iroen_screen.dart';
 import 'stats_screen.dart';
 
@@ -85,16 +86,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: settings.soundEnabled,
                 onChanged: settings.setSoundEnabled,
               ),
-              SwitchListTile(
-                title: const Text('XL'),
-                value: settings.xlPicker,
-                onChanged: settings.setXlPicker,
-              ),
+              // XL picker stays on by default; restore this toggle if we want
+              // players to switch back to the compact 1×9 picker.
+              // SwitchListTile(
+              //   title: const Text('XL'),
+              //   value: settings.xlPicker,
+              //   onChanged: settings.setXlPicker,
+              // ),
               SwitchListTile(
                 title: const Text('Dark mode'),
                 value: settings.darkMode,
                 onChanged: settings.setDarkMode,
               ),
+              if (statsProvider.areAllMenuPalettesUnlocked)
+                SwitchListTile(
+                  title: const Text('Chromatic'),
+                  value: settings.chromatic,
+                  onChanged: (enabled) {
+                    if (enabled == settings.chromatic) return;
+                    _onChromaticChosen(context, settings, enabled);
+                  },
+                ),
               ListTile(
                 title: const Text('Palette'),
                 trailing: DropdownButtonHideUnderline(
@@ -125,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         return;
                       }
                       if (palette == settings.palette) return;
-                      settings.setPalette(palette);
+                      _onPaletteChosen(context, settings, palette);
                     },
                   ),
                 ),
@@ -137,12 +149,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(height: 32),
               const _SectionHeader(title: 'Progress'),
               ListTile(
-                leading: const Icon(Icons.bar_chart_rounded),
                 title: const Text('Stats'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const StatsScreen()),
+                  );
+                  if (!mounted) return;
+                  setState(() => _titlePlayToken++);
+                },
+              ),
+              ListTile(
+                title: const Text('Achievements'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AchievementsScreen(),
+                    ),
                   );
                   if (!mounted) return;
                   setState(() => _titlePlayToken++);
@@ -240,6 +264,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (game.hasActiveGame || game.isGameOver) {
       await game.startNewGame();
     }
+  }
+
+  Future<void> _onPaletteChosen(
+    BuildContext context,
+    SettingsProvider settings,
+    GamePalette palette,
+  ) async {
+    final game = context.read<GameProvider>();
+    if (game.isGenerating) return;
+
+    // Mid-game: palette stays put unless the user starts a new puzzle.
+    if (game.hasInteracted && !game.isGameOver) {
+      final startNew = await showStartNewGameDialog(context);
+      if (!context.mounted) return;
+      if (startNew != true) return;
+      await settings.setPalette(palette);
+      await game.startNewGame();
+      return;
+    }
+
+    await settings.setPalette(palette);
+  }
+
+  Future<void> _onChromaticChosen(
+    BuildContext context,
+    SettingsProvider settings,
+    bool enabled,
+  ) async {
+    final game = context.read<GameProvider>();
+    if (game.isGenerating) return;
+
+    // Mid-game: chromatic stays put unless the user starts a new puzzle.
+    if (game.hasInteracted && !game.isGameOver) {
+      final startNew = await showStartNewGameDialog(context);
+      if (!context.mounted) return;
+      if (startNew != true) return;
+      await settings.setChromatic(enabled);
+      await game.startNewGame();
+      return;
+    }
+
+    await settings.setChromatic(enabled);
   }
 
   void _showUnlockSnackBar(

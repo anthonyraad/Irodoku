@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
+import '../widgets/chromatic_palette_transition.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/game_toolbar.dart';
@@ -187,84 +188,95 @@ class _GameScreenState extends State<GameScreen> {
                           final boardSize = cellSize * 9 + boardBorder * 2;
                           final swatchSize = xlPicker ? cellSize * xlSwatchCells : cellSize;
 
-                          return Align(
-                            alignment: Alignment.topCenter,
-                            child: SizedBox(
-                              width: boardSize,
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    width: boardSize,
-                                    height: boardSize,
-                                    child: Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        // Keep the grid mounted while paused so
-                                        // resume doesn't remount and replay the
-                                        // title-tap color-cycle shimmer.
-                                        TickerMode(
-                                          enabled: !game.isPaused,
-                                          child: SudokuGrid(
-                                            game: game,
-                                            palette: settings.palette,
+                          return ChromaticPaletteTransition(
+                            palette: settings.palette,
+                            animate: settings.chromatic,
+                            builder: (context, palette, swatches) {
+                              return Align(
+                                alignment: Alignment.topCenter,
+                                child: SizedBox(
+                                  width: boardSize,
+                                  child: Column(
+                                    children: [
+                                      SizedBox(
+                                        width: boardSize,
+                                        height: boardSize,
+                                        child: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            // Keep the grid mounted while paused so
+                                            // resume doesn't remount and replay the
+                                            // title-tap color-cycle shimmer.
+                                            TickerMode(
+                                              enabled: !game.isPaused,
+                                              child: SudokuGrid(
+                                                game: game,
+                                                palette: palette,
+                                                displaySwatches: swatches,
+                                              ),
+                                            ),
+                                            if (game.isPaused)
+                                              _PausedBoard(
+                                                size: boardSize,
+                                                onResume: game.resumeGame,
+                                              ),
+                                            if (game.isGenerating)
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  color: Theme.of(context)
+                                                      .scaffoldBackgroundColor
+                                                      .withValues(alpha: 0.7),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: const Padding(
+                                                  padding: EdgeInsets.all(24),
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (showControls) ...[
+                                        const SizedBox(height: toolbarGap),
+                                        GestureDetector(
+                                          onTap: () {},
+                                          behavior: HitTestBehavior.opaque,
+                                          child: GameToolbar(
+                                            canUndo: game.canUndo,
+                                            noteMode: game.noteMode,
+                                            bulkNoteSelect: game.bulkNoteSelect,
+                                            canErase: canErase,
+                                            onUndo: game.undo,
+                                            onErase: game.clearSelectedCell,
+                                            onToggleNote: game.toggleNoteMode,
+                                            onNoteLongPress: game
+                                                    .canEnterBulkNoteSelectFromToolbar
+                                                ? game
+                                                    .enterBulkNoteSelectFromToolbar
+                                                : null,
                                           ),
                                         ),
-                                        if (game.isPaused)
-                                          _PausedBoard(
-                                            size: boardSize,
-                                            onResume: game.resumeGame,
-                                          ),
-                                        if (game.isGenerating)
-                                          Container(
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context)
-                                                  .scaffoldBackgroundColor
-                                                  .withValues(alpha: 0.7),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: const Padding(
-                                              padding: EdgeInsets.all(24),
-                                              child:
-                                                  CircularProgressIndicator(),
-                                            ),
-                                          ),
+                                        const SizedBox(height: pickerGap),
+                                        ColorPicker(
+                                          swatchSize: swatchSize,
+                                          xlMode: xlPicker,
+                                          palette: palette,
+                                          displaySwatches: swatches,
+                                          visible: true,
+                                          onColorSelected:
+                                              game.applyPickerColor,
+                                          onNoteAdded: game.addSelectedNote,
+                                          onNoteRemoved:
+                                              game.removeSelectedNote,
+                                        ),
                                       ],
-                                    ),
+                                    ],
                                   ),
-                                  if (showControls) ...[
-                                    const SizedBox(height: toolbarGap),
-                                    GestureDetector(
-                                      onTap: () {},
-                                      behavior: HitTestBehavior.opaque,
-                                      child: GameToolbar(
-                                        canUndo: game.canUndo,
-                                        noteMode: game.noteMode,
-                                        bulkNoteSelect: game.bulkNoteSelect,
-                                        canErase: canErase,
-                                        onUndo: game.undo,
-                                        onErase: game.clearSelectedCell,
-                                        onToggleNote: game.toggleNoteMode,
-                                        onNoteLongPress:
-                                            game.canEnterBulkNoteSelectFromToolbar
-                                                ? game.enterBulkNoteSelectFromToolbar
-                                                : null,
-                                      ),
-                                    ),
-                                    const SizedBox(height: pickerGap),
-                                    ColorPicker(
-                                      swatchSize: swatchSize,
-                                      xlMode: xlPicker,
-                                      palette: settings.palette,
-                                      visible: true,
-                                      onColorSelected: game.applyPickerColor,
-                                      onNoteAdded: game.addSelectedNote,
-                                      onNoteRemoved: game.removeSelectedNote,
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
+                                ),
+                              );
+                            },
                           );
                         },
                       ),

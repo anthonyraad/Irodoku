@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'core/theme.dart';
 import 'core/web_layout.dart';
+import 'providers/achievements_provider.dart';
 import 'providers/game_provider.dart';
 import 'providers/iroen_provider.dart';
 import 'providers/settings_provider.dart';
@@ -24,6 +25,9 @@ class IrodokuApp extends StatelessWidget {
           create: (_) => StatsProvider(preferences),
         ),
         ChangeNotifierProvider(
+          create: (_) => AchievementsProvider(preferences),
+        ),
+        ChangeNotifierProvider(
           create: (context) => SettingsProvider(
             preferences,
             stats: context.read<StatsProvider>(),
@@ -33,6 +37,7 @@ class IrodokuApp extends StatelessWidget {
           create: (context) => GameProvider(
             settings: context.read<SettingsProvider>(),
             stats: context.read<StatsProvider>(),
+            achievements: context.read<AchievementsProvider>(),
             preferences: preferences,
           ),
         ),

@@ -10,6 +10,9 @@ class GameStats {
   final int gamesWon;
   final Map<Difficulty, Duration?> bestTimes;
   final Map<Difficulty, int> winsByDifficulty;
+  final int chromaticGamesWon;
+  final Map<Difficulty, Duration?> chromaticBestTimes;
+  final Map<Difficulty, int> chromaticWinsByDifficulty;
   final Set<GamePalette> unlockedPalettes;
   final Map<GamePalette, int> bestStreakByPalette;
   final Map<GamePalette, int> currentStreakByPalette;
@@ -21,6 +24,9 @@ class GameStats {
     this.gamesWon = 0,
     this.bestTimes = const {},
     this.winsByDifficulty = const {},
+    this.chromaticGamesWon = 0,
+    this.chromaticBestTimes = const {},
+    this.chromaticWinsByDifficulty = const {},
     this.unlockedPalettes = const {},
     this.bestStreakByPalette = const {},
     this.currentStreakByPalette = const {},
@@ -29,6 +35,12 @@ class GameStats {
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
 
   int winsFor(Difficulty difficulty) => winsByDifficulty[difficulty] ?? 0;
+
+  Duration? chromaticBestTimeFor(Difficulty difficulty) =>
+      chromaticBestTimes[difficulty];
+
+  int chromaticWinsFor(Difficulty difficulty) =>
+      chromaticWinsByDifficulty[difficulty] ?? 0;
 
   int bestStreakForPalette(GamePalette palette) =>
       bestStreakByPalette[palette] ?? 0;
@@ -82,6 +94,9 @@ class GameStats {
     int? gamesWon,
     Map<Difficulty, Duration?>? bestTimes,
     Map<Difficulty, int>? winsByDifficulty,
+    int? chromaticGamesWon,
+    Map<Difficulty, Duration?>? chromaticBestTimes,
+    Map<Difficulty, int>? chromaticWinsByDifficulty,
     Set<GamePalette>? unlockedPalettes,
     Map<GamePalette, int>? bestStreakByPalette,
     Map<GamePalette, int>? currentStreakByPalette,
@@ -93,6 +108,10 @@ class GameStats {
       gamesWon: gamesWon ?? this.gamesWon,
       bestTimes: bestTimes ?? this.bestTimes,
       winsByDifficulty: winsByDifficulty ?? this.winsByDifficulty,
+      chromaticGamesWon: chromaticGamesWon ?? this.chromaticGamesWon,
+      chromaticBestTimes: chromaticBestTimes ?? this.chromaticBestTimes,
+      chromaticWinsByDifficulty:
+          chromaticWinsByDifficulty ?? this.chromaticWinsByDifficulty,
       unlockedPalettes: unlockedPalettes ?? this.unlockedPalettes,
       bestStreakByPalette: bestStreakByPalette ?? this.bestStreakByPalette,
       currentStreakByPalette:

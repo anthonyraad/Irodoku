@@ -18,6 +18,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _devMode;
   bool _soundEnabled;
   bool _xlPicker;
+  bool _chromatic;
   GamePalette _palette;
   int _darkModeToggleStreak = 0;
   DateTime? _lastDarkModeToggle;
@@ -29,16 +30,21 @@ class SettingsProvider extends ChangeNotifier {
         _devMode = _prefs.getDevMode(),
         _soundEnabled = _prefs.getSoundEnabled(),
         _xlPicker = _prefs.getXlPicker(),
+        _chromatic = _prefs.getChromatic(),
         _palette = _prefs.getPalette() {
     _clampDifficultyToUnlocked();
     _clampPaletteToUnlocked();
+    _clampChromaticToUnlocked();
   }
 
   Difficulty get difficulty => _difficulty;
   bool get darkMode => _darkMode;
   bool get devMode => _devMode;
   bool get soundEnabled => _soundEnabled;
-  bool get xlPicker => _xlPicker;
+  /// XL is temporarily forced on (Settings toggle hidden). Prefs + [setXlPicker]
+  /// remain so the compact picker can be restored later.
+  bool get xlPicker => true;
+  bool get chromatic => _chromatic;
   GamePalette get palette => _palette;
 
   Future<void> setDifficulty(Difficulty difficulty) async {
@@ -82,6 +88,14 @@ class SettingsProvider extends ChangeNotifier {
     _xlPicker = enabled;
     notifyListeners();
     await _prefs.setXlPicker(enabled);
+  }
+
+  Future<void> setChromatic(bool enabled) async {
+    if (_chromatic == enabled) return;
+    if (enabled && !_stats.areAllMenuPalettesUnlocked) return;
+    _chromatic = enabled;
+    notifyListeners();
+    await _prefs.setChromatic(enabled);
   }
 
   Future<void> setPalette(GamePalette palette, {bool force = false}) async {
@@ -128,6 +142,13 @@ class SettingsProvider extends ChangeNotifier {
     if (stats.isPaletteUnlocked(_palette) && _palette.visibleInMenu) return;
     _palette = stats.fallbackPalette;
     _prefs.setPalette(_palette);
+  }
+
+  void _clampChromaticToUnlocked() {
+    if (!_chromatic) return;
+    if (_stats.areAllMenuPalettesUnlocked) return;
+    _chromatic = false;
+    _prefs.setChromatic(false);
   }
 
   Future<void> _toggleDevMode() async {

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../core/palette.dart';
+import '../models/achievement.dart';
 import '../models/cell.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
@@ -13,6 +14,7 @@ import '../services/preferences_service.dart';
 import '../services/sound_service.dart';
 import '../sudoku/sudoku_board.dart';
 import '../sudoku/sudoku_generator.dart';
+import 'achievements_provider.dart';
 import 'settings_provider.dart';
 import 'stats_provider.dart';
 
@@ -29,6 +31,7 @@ class GameProvider extends ChangeNotifier {
 
   final SettingsProvider _settings;
   final StatsProvider _stats;
+  final AchievementsProvider _achievements;
   final PreferencesService _prefs;
   final SoundService _sounds;
 
@@ -63,13 +66,32 @@ class GameProvider extends ChangeNotifier {
   final List<_UndoSnapshot> _undoStack = [];
   static const int _maxUndo = 60;
 
+  // Per-game achievement tracking (not persisted across pause restore).
+  int? _firstFillColor;
+  int? _lastFillColor;
+  int? _lastFillRow;
+  int? _lastFillCol;
+  bool _usedNotes = false;
+  bool _usedUndo = false;
+  bool _pausedThisGame = false;
+  bool _completedRowColBoxSimultaneously = false;
+  bool _completedNineUnitsInNineSeconds = false;
+  bool _filledNineDistinctColorsConsecutively = false;
+  int _rowsCompletedInFirstMinute = 0;
+  int _colsCompletedInFirstMinute = 0;
+  int _boxesCompletedInFirstMinute = 0;
+  final List<int> _consecutiveDistinctFillColors = [];
+  final List<DateTime> _unitCompletionTimes = [];
+
   GameProvider({
     required SettingsProvider settings,
     required StatsProvider stats,
+    required AchievementsProvider achievements,
     required PreferencesService preferences,
     SoundService? sounds,
   })  : _settings = settings,
         _stats = stats,
+        _achievements = achievements,
         _prefs = preferences,
         _sounds = sounds ?? SoundService() {
     _gameDifficulty = settings.difficulty;
@@ -77,6 +99,7 @@ class GameProvider extends ChangeNotifier {
       SudokuBoard.size,
       (_) => List.generate(SudokuBoard.size, (_) => const Cell()),
     );
+    _achievements.bindAudio(settings: settings, sounds: _sounds);
   }
 
   List<List<Cell>> get cells => _cells;
@@ -189,6 +212,7 @@ class GameProvider extends ChangeNotifier {
     _refreshConflicts();
     _completedUnits = _successfullyCompletedUnits();
     _celebration = null;
+    _resetAchievementSession();
     notifyListeners();
     return true;
   }
@@ -215,6 +239,7 @@ class GameProvider extends ChangeNotifier {
     _celebration = null;
     _noteMode = false;
     _undoStack.clear();
+    _resetAchievementSession();
     await _prefs.clearPausedGame();
     notifyListeners();
 
@@ -248,6 +273,7 @@ class GameProvider extends ChangeNotifier {
   Future<void> pauseGame() async {
     if (!_hasActiveGame || isGameOver || _isGenerating || _isPaused) return;
     _isPaused = true;
+    _pausedThisGame = true;
     _selected = null;
     _exitBulkNoteSelect();
     _timer?.cancel();
@@ -426,13 +452,20 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Tap on a picker color: commit fill, or toggle a note when note mode is on.
+  /// Tap on a picker color: commit fill, toggle a note when note mode is on,
+  /// or glimmer matching filled cells when nothing is selected.
   void applyPickerColor(int value) {
     if (_noteMode) {
       toggleSelectedNote(value);
-    } else {
-      setSelectedColor(value);
+      return;
     }
+    if (_selected == null) {
+      if (!_bulkNoteSelect) {
+        triggerColorCycle(onlyValue: value);
+      }
+      return;
+    }
+    setSelectedColor(value);
   }
 
   void undo() {
@@ -446,6 +479,8 @@ class GameProvider extends ChangeNotifier {
     _selected = snap.selected;
     _exitBulkNoteSelect();
     _celebration = null;
+    _usedUndo = true;
+    _consecutiveDistinctFillColors.clear();
     if (_hasActiveGame && !isGameOver && !_isPaused) {
       _startTimer();
     } else {
@@ -453,6 +488,7 @@ class GameProvider extends ChangeNotifier {
     }
     _refreshConflicts();
     notifyListeners();
+    unawaited(_achievements.recordUndo());
   }
 
   void setSelectedColor(int value) {
@@ -470,7 +506,9 @@ class GameProvider extends ChangeNotifier {
       _selected = null;
       _refreshConflicts();
       _syncCompletedUnits(celebrate: false);
+      _consecutiveDistinctFillColors.clear();
       notifyListeners();
+      unawaited(_achievements.recordErase());
       return;
     }
 
@@ -486,6 +524,7 @@ class GameProvider extends ChangeNotifier {
 
     if (isMistake) {
       _mistakes++;
+      _consecutiveDistinctFillColors.clear();
       if (_mistakes >= maxMistakes) {
         _playSound(_sounds.playGameLoss);
         _handleLoss();
@@ -493,6 +532,8 @@ class GameProvider extends ChangeNotifier {
         return;
       }
       _playSound(_sounds.playMistake);
+    } else {
+      _recordSuccessfulFill(row, col, value);
     }
 
     _refreshConflicts();
@@ -544,6 +585,7 @@ class GameProvider extends ChangeNotifier {
 
     _pushUndo();
     _cells[row][col] = next;
+    _markNoteTaken();
     _playSound(_sounds.playNote);
     // Keep selection so multiple notes can be added.
     notifyListeners();
@@ -595,6 +637,7 @@ class GameProvider extends ChangeNotifier {
 
     _pushUndo();
     _cells[row][col] = next;
+    if (adding) _markNoteTaken();
     _playSound(adding ? _sounds.playNote : _sounds.playNoteDeselect);
     notifyListeners();
   }
@@ -623,6 +666,7 @@ class GameProvider extends ChangeNotifier {
       }
     }
     if (changed) {
+      if (add) _markNoteTaken();
       _playSound(add ? _sounds.playNote : _sounds.playNoteDeselect);
       notifyListeners();
     }
@@ -664,6 +708,7 @@ class GameProvider extends ChangeNotifier {
     final cell = _cells[row][col];
     if (cell.isGiven || cell.isEmpty) return;
 
+    final hadValue = cell.value != 0;
     _pushUndo();
     _cells[row][col] = cell.copyWith(clearValue: true, clearNotes: true);
     if (clearSelection &&
@@ -674,6 +719,11 @@ class GameProvider extends ChangeNotifier {
     }
     _refreshConflicts();
     _syncCompletedUnits(celebrate: false);
+    // Only a committed-color erase breaks the 9-color consecutive chain.
+    if (hadValue) {
+      _consecutiveDistinctFillColors.clear();
+      unawaited(_achievements.recordErase());
+    }
     notifyListeners();
   }
 
@@ -712,15 +762,157 @@ class GameProvider extends ChangeNotifier {
   bool _syncCompletedUnits({required bool celebrate}) {
     final now = _successfullyCompletedUnits();
     var newlyCompleted = false;
-    if (celebrate) {
-      final newly = now.difference(_completedUnits);
-      if (newly.isNotEmpty) {
-        newlyCompleted = true;
-        _celebration = _buildCelebration(newly);
-      }
+    final newly = now.difference(_completedUnits);
+    if (celebrate && newly.isNotEmpty) {
+      newlyCompleted = true;
+      _celebration = _buildCelebration(newly);
+      _trackNewlyCompletedUnits(newly);
+      _maybeChromaticShift();
     }
     _completedUnits = now;
     return newlyCompleted;
+  }
+
+  /// Chromatic mode: after completing any unit, hop to a different menu palette.
+  void _maybeChromaticShift() {
+    if (!_settings.chromatic) return;
+    final options = GamePalette.menuValues
+        .where((palette) => palette != _settings.palette)
+        .toList();
+    if (options.isEmpty) return;
+    final next = options[Random().nextInt(options.length)];
+    unawaited(_settings.setPalette(next));
+  }
+
+  void _trackNewlyCompletedUnits(Set<String> newly) {
+    final stamp = DateTime.now();
+    var newRows = 0;
+    var newCols = 0;
+    var newBoxes = 0;
+    for (final key in newly) {
+      _unitCompletionTimes.add(stamp);
+      if (key.startsWith('r')) {
+        newRows++;
+      } else if (key.startsWith('c')) {
+        newCols++;
+      } else if (key.startsWith('b')) {
+        newBoxes++;
+      }
+    }
+
+    if (_elapsed < const Duration(minutes: 2)) {
+      _rowsCompletedInFirstMinute += newRows;
+      _colsCompletedInFirstMinute += newCols;
+      _boxesCompletedInFirstMinute += newBoxes;
+    }
+
+    if (newRows > 0 && newCols > 0 && newBoxes > 0) {
+      _completedRowColBoxSimultaneously = true;
+    }
+
+    final cutoff = stamp.subtract(const Duration(seconds: 9));
+    _unitCompletionTimes.removeWhere((t) => t.isBefore(cutoff));
+    if (_unitCompletionTimes.length >= 9) {
+      _completedNineUnitsInNineSeconds = true;
+    }
+
+    if (_completedRowColBoxSimultaneously ||
+        _completedNineUnitsInNineSeconds ||
+        _filledNineDistinctColorsConsecutively) {
+      unawaited(
+        _achievements.recordSessionFlags(
+          completedRowColBoxSimultaneously:
+              _completedRowColBoxSimultaneously,
+          completedNineUnitsInNineSeconds:
+              _completedNineUnitsInNineSeconds,
+          filledNineDistinctColorsConsecutively:
+              _filledNineDistinctColorsConsecutively,
+        ),
+      );
+    }
+  }
+
+  void _recordSuccessfulFill(int row, int col, int value) {
+    final isFirstFill = _firstFillColor == null;
+    _firstFillColor ??= value;
+    if (isFirstFill &&
+        _settings.palette == GamePalette.pkmn &&
+        value == 3) {
+      unawaited(
+        _achievements.recordFirstFill(
+          palette: _settings.palette,
+          colorValue: value,
+        ),
+      );
+    }
+
+    _lastFillColor = value;
+    _lastFillRow = row;
+    _lastFillCol = col;
+
+    if (_consecutiveDistinctFillColors.contains(value)) {
+      _consecutiveDistinctFillColors
+        ..clear()
+        ..add(value);
+    } else {
+      _consecutiveDistinctFillColors.add(value);
+    }
+    if (_consecutiveDistinctFillColors.length >= 9) {
+      _filledNineDistinctColorsConsecutively = true;
+      unawaited(
+        _achievements.recordSessionFlags(
+          completedRowColBoxSimultaneously:
+              _completedRowColBoxSimultaneously,
+          completedNineUnitsInNineSeconds:
+              _completedNineUnitsInNineSeconds,
+          filledNineDistinctColorsConsecutively: true,
+        ),
+      );
+    }
+  }
+
+  void _markNoteTaken() {
+    if (!_usedNotes) _usedNotes = true;
+    unawaited(_achievements.recordNoteTaken());
+  }
+
+  void _resetAchievementSession() {
+    _firstFillColor = null;
+    _lastFillColor = null;
+    _lastFillRow = null;
+    _lastFillCol = null;
+    _usedNotes = false;
+    _usedUndo = false;
+    _pausedThisGame = false;
+    _completedRowColBoxSimultaneously = false;
+    _completedNineUnitsInNineSeconds = false;
+    _filledNineDistinctColorsConsecutively = false;
+    _rowsCompletedInFirstMinute = 0;
+    _colsCompletedInFirstMinute = 0;
+    _boxesCompletedInFirstMinute = 0;
+    _consecutiveDistinctFillColors.clear();
+    _unitCompletionTimes.clear();
+  }
+
+  AchievementGameContext _achievementGameContext() {
+    return AchievementGameContext(
+      firstFillColor: _firstFillColor,
+      lastFillColor: _lastFillColor,
+      lastFillRow: _lastFillRow,
+      lastFillCol: _lastFillCol,
+      usedNotes: _usedNotes,
+      usedUndo: _usedUndo,
+      paused: _pausedThisGame,
+      usedDarkMode: _settings.darkMode,
+      chromatic: _settings.chromatic,
+      completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
+      completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
+      filledNineDistinctColorsConsecutively:
+          _filledNineDistinctColorsConsecutively,
+      rowsCompletedInFirstMinute: _rowsCompletedInFirstMinute,
+      colsCompletedInFirstMinute: _colsCompletedInFirstMinute,
+      boxesCompletedInFirstMinute: _boxesCompletedInFirstMinute,
+    );
   }
 
   /// Units that are fully filled with the correct solution colors.
@@ -811,9 +1003,19 @@ class GameProvider extends ChangeNotifier {
         elapsed: _elapsed,
         mistakes: _mistakes,
         palette: _settings.palette,
+        chromatic: _settings.chromatic,
       );
       _settings.ensurePaletteUnlocked(_stats.stats);
       unawaited(_stats.persist());
+      unawaited(
+        _achievements.evaluateWin(
+          difficulty: _gameDifficulty,
+          elapsed: _elapsed,
+          mistakes: _mistakes,
+          palette: _settings.palette,
+          ctx: _achievementGameContext(),
+        ),
+      );
     }
   }
 
