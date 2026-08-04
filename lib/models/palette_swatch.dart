@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../core/cel_shade_swatch.dart';
 import '../core/gloss_swatch_shader.dart';
 import '../core/neon_swatch_shader.dart';
 import '../core/organic_swatch_motion.dart';
@@ -13,6 +14,7 @@ enum PaletteSwatchStyle {
   organic,
   neon,
   gloss,
+  celShade,
 }
 
 /// A fill style for one palette slot (solid, organic gradient, or neon texture).
@@ -82,6 +84,14 @@ class PaletteSwatch {
         style: PaletteSwatchStyle.gloss,
       );
 
+  factory PaletteSwatch.celShade(Color color, {int swirlSeed = 0}) =>
+      PaletteSwatch(
+        start: color,
+        stop: color,
+        swirlSeed: swirlSeed,
+        style: PaletteSwatchStyle.celShade,
+      );
+
   bool get isOrganic =>
       style == PaletteSwatchStyle.organic ||
       (style == PaletteSwatchStyle.solid && start != stop);
@@ -90,9 +100,11 @@ class PaletteSwatch {
 
   bool get isGloss => style == PaletteSwatchStyle.gloss;
 
+  bool get isCelShade => style == PaletteSwatchStyle.celShade;
+
   bool get isGradient => isOrganic && start != stop;
 
-  bool get usesShader => isOrganic || isNeon || isGloss;
+  bool get usesShader => isOrganic || isNeon || isGloss || isCelShade;
 
   /// Midpoint blend used for same-color wash and animation lerps.
   Color get representative => isGradient ? blend(start, stop, 0.5) : start;
@@ -251,6 +263,11 @@ class _ShaderSwatchPainter extends BoxPainter {
 }
 
 void drawSwatchRect(Canvas canvas, Rect rect, PaletteSwatch swatch) {
+  if (swatch.isCelShade) {
+    CelShadeSwatch.paint(canvas, rect, swatch);
+    return;
+  }
+
   if (!swatch.usesShader) {
     canvas.drawRect(rect, Paint()..color = swatch.start);
     return;

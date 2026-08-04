@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 /// Reveals [text] one character at a time. Increment [playToken] to replay.
+///
+/// Typing waits until the current [ModalRoute] enter animation has finished
+/// (plus a short settle delay) so characters aren't consumed during Android
+/// zoom/fade transitions or cold-start first frames.
 class TypingTitle extends StatefulWidget {
   final String text;
   final VoidCallback? onTap;
@@ -26,13 +30,20 @@ class TypingTitle extends StatefulWidget {
 }
 
 class _TypingTitleState extends State<TypingTitle> {
+  static const _postTransitionDelay = Duration(milliseconds: 16);
+
   Timer? _timer;
+  Animation<double>? _routeAnimation;
+  AnimationStatusListener? _statusListener;
   int _visibleChars = 0;
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
-    _startTyping();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scheduleTyping();
+    });
   }
 
   @override
@@ -40,18 +51,71 @@ class _TypingTitleState extends State<TypingTitle> {
     super.didUpdateWidget(oldWidget);
     if (widget.playToken != oldWidget.playToken ||
         widget.text != oldWidget.text) {
-      _startTyping();
+      _scheduleTyping();
     }
   }
 
-  void _startTyping() {
+  void _detachRouteListener() {
+    final animation = _routeAnimation;
+    final listener = _statusListener;
+    if (animation != null && listener != null) {
+      animation.removeStatusListener(listener);
+    }
+    _routeAnimation = null;
+    _statusListener = null;
+  }
+
+  void _scheduleTyping() {
     _timer?.cancel();
+    _detachRouteListener();
+    final gen = ++_generation;
     if (!mounted) return;
+
     setState(() => _visibleChars = 0);
     if (widget.text.isEmpty) return;
 
+    void beginAfterSettle() {
+      Future<void>.delayed(_postTransitionDelay, () {
+        if (!mounted || gen != _generation) return;
+        _runTyping(gen);
+      });
+    }
+
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation == null ||
+        animation.status == AnimationStatus.completed) {
+      beginAfterSettle();
+      return;
+    }
+
+    late final AnimationStatusListener listener;
+    listener = (status) {
+      if (status != AnimationStatus.completed) return;
+      animation.removeStatusListener(listener);
+      if (_statusListener == listener) {
+        _routeAnimation = null;
+        _statusListener = null;
+      }
+      if (!mounted || gen != _generation) return;
+      beginAfterSettle();
+    };
+    _routeAnimation = animation;
+    _statusListener = listener;
+    animation.addStatusListener(listener);
+
+    // Completed between the status check and listener attach.
+    if (animation.status == AnimationStatus.completed) {
+      animation.removeStatusListener(listener);
+      _routeAnimation = null;
+      _statusListener = null;
+      beginAfterSettle();
+    }
+  }
+
+  void _runTyping(int gen) {
+    _timer?.cancel();
     _timer = Timer.periodic(widget.charDelay, (timer) {
-      if (!mounted) {
+      if (!mounted || gen != _generation) {
         timer.cancel();
         return;
       }
@@ -66,6 +130,7 @@ class _TypingTitleState extends State<TypingTitle> {
   @override
   void dispose() {
     _timer?.cancel();
+    _detachRouteListener();
     super.dispose();
   }
 

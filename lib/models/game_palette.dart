@@ -66,8 +66,8 @@ enum GamePalette {
 
   String get unlockRequirementText => switch (this) {
         GamePalette.world11 => 'Win 1 game',
-        GamePalette.neon => 'Win an Easy game under 10 minutes',
-        GamePalette.pkmn => 'Win 3 games in a row',
+        GamePalette.neon => 'Win an Easy game under 8 minutes',
+        GamePalette.pkmn => 'Win 4 games in a row',
         GamePalette.pkmn2 => 'Win a Hard game with no mistakes',
         GamePalette.glass => 'Win an Expert game with no mistakes',
         GamePalette.sky => 'Win a Master game',
@@ -81,10 +81,10 @@ enum GamePalette {
         GamePalette.neon => [
           (text: 'Win an ', highlight: false),
           (text: Difficulty.easy.label, highlight: true),
-          (text: ' game under 10 minutes', highlight: false),
+          (text: ' game under 8 minutes', highlight: false),
         ],
         GamePalette.pkmn => const [
-          (text: 'Win 3 games in a row', highlight: false),
+          (text: 'Win 4 games in a row', highlight: false),
         ],
         GamePalette.pkmn2 => [
           (text: 'Win a ', highlight: false),

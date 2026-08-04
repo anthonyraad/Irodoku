@@ -77,9 +77,9 @@ class GameProvider extends ChangeNotifier {
   bool _completedRowColBoxSimultaneously = false;
   bool _completedNineUnitsInNineSeconds = false;
   bool _filledNineDistinctColorsConsecutively = false;
-  int _rowsCompletedInFirstMinute = 0;
-  int _colsCompletedInFirstMinute = 0;
-  int _boxesCompletedInFirstMinute = 0;
+  int _rowsCompletedInFirst90Seconds = 0;
+  int _colsCompletedInFirst90Seconds = 0;
+  int _boxesCompletedInFirst90Seconds = 0;
   final List<int> _consecutiveDistinctFillColors = [];
   final List<DateTime> _unitCompletionTimes = [];
 
@@ -800,10 +800,11 @@ class GameProvider extends ChangeNotifier {
       }
     }
 
-    if (_elapsed < const Duration(minutes: 2)) {
-      _rowsCompletedInFirstMinute += newRows;
-      _colsCompletedInFirstMinute += newCols;
-      _boxesCompletedInFirstMinute += newBoxes;
+    // R6C4/C5/C7: count only units finished in the first 1:30 of game time.
+    if (_elapsed < const Duration(minutes: 1, seconds: 30)) {
+      _rowsCompletedInFirst90Seconds += newRows;
+      _colsCompletedInFirst90Seconds += newCols;
+      _boxesCompletedInFirst90Seconds += newBoxes;
     }
 
     if (newRows > 0 && newCols > 0 && newBoxes > 0) {
@@ -887,9 +888,9 @@ class GameProvider extends ChangeNotifier {
     _completedRowColBoxSimultaneously = false;
     _completedNineUnitsInNineSeconds = false;
     _filledNineDistinctColorsConsecutively = false;
-    _rowsCompletedInFirstMinute = 0;
-    _colsCompletedInFirstMinute = 0;
-    _boxesCompletedInFirstMinute = 0;
+    _rowsCompletedInFirst90Seconds = 0;
+    _colsCompletedInFirst90Seconds = 0;
+    _boxesCompletedInFirst90Seconds = 0;
     _consecutiveDistinctFillColors.clear();
     _unitCompletionTimes.clear();
   }
@@ -909,9 +910,9 @@ class GameProvider extends ChangeNotifier {
       completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
       filledNineDistinctColorsConsecutively:
           _filledNineDistinctColorsConsecutively,
-      rowsCompletedInFirstMinute: _rowsCompletedInFirstMinute,
-      colsCompletedInFirstMinute: _colsCompletedInFirstMinute,
-      boxesCompletedInFirstMinute: _boxesCompletedInFirstMinute,
+      rowsCompletedInFirst90Seconds: _rowsCompletedInFirst90Seconds,
+      colsCompletedInFirst90Seconds: _colsCompletedInFirst90Seconds,
+      boxesCompletedInFirst90Seconds: _boxesCompletedInFirst90Seconds,
     );
   }
 

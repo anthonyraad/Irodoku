@@ -209,10 +209,16 @@ abstract final class IrodokuPalette {
     (i) => PaletteSwatch.gloss(pkmn2Colors[i], swirlSeed: 600 + i),
   );
 
+  /// 1-1: cell-shaded bands derived from each base color at paint time.
+  static final List<PaletteSwatch> world11Swatches = List.generate(
+    world11Colors.length,
+    (i) => PaletteSwatch.celShade(world11Colors[i], swirlSeed: 300 + i),
+  );
+
   static List<PaletteSwatch> swatchesFor(GamePalette palette) => switch (palette) {
         GamePalette.standard => _solidSwatches(defaultColors),
         GamePalette.rainbow => rainbowSwatches,
-        GamePalette.world11 => _solidSwatches(world11Colors),
+        GamePalette.world11 => world11Swatches,
         GamePalette.neon => neonSwatches,
         GamePalette.pkmn => pkmnSwatches,
         GamePalette.pkmn2 => pkmn2Swatches,

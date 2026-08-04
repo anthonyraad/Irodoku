@@ -76,7 +76,7 @@ class AchievementsProvider extends ChangeNotifier {
       'r2c9' => (p.consecutiveHardNoMistake, 3),
       'r3c7' => (p.undoCount, 100),
       'r5c4' => (_calendarStreak(p.hardWinDayKeys), 5),
-      'r5c7' => (p.notesTaken, 500),
+      'r5c7' => (p.notesTaken, 1000),
       'r7c5' => (p.consecutiveExpertNoMistake, 3),
       'r8c8' => (p.chromaticGamesWon, 30),
       'r8c9' => (p.masterNoMistakeWins, 30),
@@ -154,7 +154,7 @@ class AchievementsProvider extends ChangeNotifier {
   void _addCounterAchievements(Set<String> ids) {
     if (_progress.cellsErased >= 100) ids.add('r2c7');
     if (_progress.undoCount >= 100) ids.add('r3c7');
-    if (_progress.notesTaken >= 500) ids.add('r5c7');
+    if (_progress.notesTaken >= 1000) ids.add('r5c7');
     if (_progress.consecutiveHardNoMistake >= 3) ids.add('r2c9');
     if (_progress.consecutiveExpertNoMistake >= 3) ids.add('r7c5');
     if (_progress.chromaticGamesWon >= 30) ids.add('r8c8');
@@ -173,25 +173,27 @@ class AchievementsProvider extends ChangeNotifier {
       return best != null && best <= limit;
     }
 
-    if (within(Difficulty.easy, const Duration(minutes: 5))) ids.add('r4c4');
-    if (within(Difficulty.medium, const Duration(minutes: 10))) {
+    if (within(Difficulty.easy, const Duration(minutes: 4))) ids.add('r4c4');
+    if (within(Difficulty.medium, const Duration(minutes: 8))) {
       ids.add('r4c5');
     }
-    if (within(Difficulty.hard, const Duration(minutes: 15))) ids.add('r4c7');
-    if (within(Difficulty.expert, const Duration(minutes: 20))) {
+    if (within(Difficulty.hard, const Duration(minutes: 12))) ids.add('r4c7');
+    if (within(Difficulty.expert, const Duration(minutes: 18))) {
       ids.add('r4c8');
     }
-    if (within(Difficulty.master, const Duration(minutes: 60))) {
+    if (within(Difficulty.master, const Duration(minutes: 45))) {
       ids.add('r4c9');
     }
 
     // Exact timer achievements — only if a stored best time is exactly that.
-    for (final d in Difficulty.values) {
-      final best = stats.bestTimeFor(d);
-      if (best?.inSeconds == 11 * 60 + 11) ids.add('r3c9');
-    }
+    final mediumBest = stats.bestTimeFor(Difficulty.medium);
+    if (mediumBest?.inSeconds == 11 * 60 + 11) ids.add('r3c9');
     final expertBest = stats.bestTimeFor(Difficulty.expert);
-    if (expertBest?.inSeconds == 44 * 60 + 44) ids.add('r7c7');
+    final masterBest = stats.bestTimeFor(Difficulty.master);
+    if (expertBest?.inSeconds == 44 * 60 + 44 ||
+        masterBest?.inSeconds == 44 * 60 + 44) {
+      ids.add('r7c7');
+    }
   }
 
   bool _unlock(String id, {bool announce = true}) {
@@ -241,7 +243,7 @@ class AchievementsProvider extends ChangeNotifier {
   Future<void> recordNoteTaken() async {
     final next = _progress.notesTaken + 1;
     _progress = _progress.copyWith(notesTaken: next);
-    if (next >= 500) _unlock('r5c7');
+    if (next >= 1000) _unlock('r5c7');
     notifyListeners();
     await persist();
   }
@@ -390,30 +392,33 @@ class AchievementsProvider extends ChangeNotifier {
     }
     if (_progress.undoCount >= 100) ids.add('r3c7');
     if (difficulty == Difficulty.expert && !ctx.paused) ids.add('r3c8');
-    if (elapsed.inSeconds == 11 * 60 + 11) ids.add('r3c9');
+    if (difficulty == Difficulty.medium &&
+        elapsed.inSeconds == 11 * 60 + 11) {
+      ids.add('r3c9');
+    }
 
     // Neon row
     if (difficulty == Difficulty.easy &&
-        elapsed <= const Duration(minutes: 5)) {
+        elapsed <= const Duration(minutes: 4)) {
       ids.add('r4c4');
     }
     if (difficulty == Difficulty.medium &&
-        elapsed <= const Duration(minutes: 10)) {
+        elapsed <= const Duration(minutes: 8)) {
       ids.add('r4c5');
     }
     if (difficulty == Difficulty.master && palette == GamePalette.neon) {
       ids.add('r4c6');
     }
     if (difficulty == Difficulty.hard &&
-        elapsed <= const Duration(minutes: 15)) {
+        elapsed <= const Duration(minutes: 12)) {
       ids.add('r4c7');
     }
     if (difficulty == Difficulty.expert &&
-        elapsed <= const Duration(minutes: 20)) {
+        elapsed <= const Duration(minutes: 18)) {
       ids.add('r4c8');
     }
     if (difficulty == Difficulty.master &&
-        elapsed <= const Duration(minutes: 60)) {
+        elapsed <= const Duration(minutes: 45)) {
       ids.add('r4c9');
     }
 
@@ -422,7 +427,7 @@ class AchievementsProvider extends ChangeNotifier {
     if (difficulty == Difficulty.master && palette == GamePalette.pkmn) {
       ids.add('r5c6');
     }
-    if (_progress.notesTaken >= 500) ids.add('r5c7');
+    if (_progress.notesTaken >= 1000) ids.add('r5c7');
     if (ctx.completedRowColBoxSimultaneously) ids.add('r5c8');
     if (difficulty == Difficulty.expert &&
         palette == GamePalette.pkmn &&
@@ -431,12 +436,12 @@ class AchievementsProvider extends ChangeNotifier {
     }
 
     // Johto row
-    if (ctx.rowsCompletedInFirstMinute >= 3) ids.add('r6c4');
-    if (ctx.colsCompletedInFirstMinute >= 3) ids.add('r6c5');
+    if (ctx.rowsCompletedInFirst90Seconds >= 3) ids.add('r6c4');
+    if (ctx.colsCompletedInFirst90Seconds >= 3) ids.add('r6c5');
     if (difficulty == Difficulty.master && palette == GamePalette.pkmn2) {
       ids.add('r6c6');
     }
-    if (ctx.boxesCompletedInFirstMinute >= 3) ids.add('r6c7');
+    if (ctx.boxesCompletedInFirst90Seconds >= 3) ids.add('r6c7');
     if (unlockKantoJohtoExpert) ids.add('r6c8');
     if (difficulty == Difficulty.expert &&
         palette == GamePalette.pkmn2 &&
@@ -450,7 +455,8 @@ class AchievementsProvider extends ChangeNotifier {
     if (difficulty == Difficulty.master && palette == GamePalette.glass) {
       ids.add('r7c6');
     }
-    if (difficulty == Difficulty.expert &&
+    if ((difficulty == Difficulty.expert ||
+            difficulty == Difficulty.master) &&
         elapsed.inSeconds == 44 * 60 + 44) {
       ids.add('r7c7');
     }

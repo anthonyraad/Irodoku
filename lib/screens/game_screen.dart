@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/irodoku_page_route.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
@@ -126,7 +127,7 @@ class _GameScreenState extends State<GameScreen> {
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () async {
                     await Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      IrodokuPageRoute(builder: (_) => const SettingsScreen()),
                     );
                     if (!mounted) return;
                     setState(() => _titlePlayToken++);

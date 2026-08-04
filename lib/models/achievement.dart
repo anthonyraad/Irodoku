@@ -66,17 +66,21 @@ class Achievement {
     Achievement(row: 2, col: 5, title: 'Win a Master game with 1-1 palette'),
     Achievement(row: 2, col: 6, title: 'Undo 100 times'),
     Achievement(row: 2, col: 7, title: 'Win an Expert game without pausing'),
-    Achievement(row: 2, col: 8, title: 'Finish a game in exactly 11:11'),
+    Achievement(
+      row: 2,
+      col: 8,
+      title: 'Finish a Medium game in exactly 11:11',
+    ),
     // Row 4 — Neon
     Achievement(row: 3, col: 0, title: 'Win 3 games with Neon palette'),
     Achievement(row: 3, col: 1, title: 'Win 7 games with Neon palette'),
     Achievement(row: 3, col: 2, title: 'Win 10 games with Neon palette'),
-    Achievement(row: 3, col: 3, title: 'Win an Easy game within 5 minutes'),
-    Achievement(row: 3, col: 4, title: 'Win a Medium game within 10 minutes'),
+    Achievement(row: 3, col: 3, title: 'Win an Easy game within 4 minutes'),
+    Achievement(row: 3, col: 4, title: 'Win a Medium game within 8 minutes'),
     Achievement(row: 3, col: 5, title: 'Win a Master game with Neon palette'),
-    Achievement(row: 3, col: 6, title: 'Win a Hard game within 15 minutes'),
-    Achievement(row: 3, col: 7, title: 'Win an Expert game within 20 minutes'),
-    Achievement(row: 3, col: 8, title: 'Win a Master game within 60 minutes'),
+    Achievement(row: 3, col: 6, title: 'Win a Hard game within 12 minutes'),
+    Achievement(row: 3, col: 7, title: 'Win an Expert game within 18 minutes'),
+    Achievement(row: 3, col: 8, title: 'Win a Master game within 45 minutes'),
     // Row 5 — Kanto
     Achievement(row: 4, col: 0, title: 'Win 3 games with Kanto palette'),
     Achievement(row: 4, col: 1, title: 'Win 7 games with Kanto palette'),
@@ -88,7 +92,7 @@ class Achievement {
       title: 'Start a game by filling in a Blue cell [Kanto]',
     ),
     Achievement(row: 4, col: 5, title: 'Win a Master game with Kanto palette'),
-    Achievement(row: 4, col: 6, title: 'Take 500 notes'),
+    Achievement(row: 4, col: 6, title: 'Take 1,000 notes'),
     Achievement(
       row: 4,
       col: 7,
@@ -103,14 +107,14 @@ class Achievement {
     Achievement(row: 5, col: 0, title: 'Win 3 games with Johto palette'),
     Achievement(row: 5, col: 1, title: 'Win 7 games with Johto palette'),
     Achievement(row: 5, col: 2, title: 'Win 10 games with Johto palette'),
-    Achievement(row: 5, col: 3, title: 'Finish 3 rows within 2 minutes'),
+    Achievement(row: 5, col: 3, title: 'Finish 3 rows within 1:30'),
     Achievement(
       row: 5,
       col: 4,
-      title: 'Finish 3 columns within 2 minutes',
+      title: 'Finish 3 columns within 1:30',
     ),
     Achievement(row: 5, col: 5, title: 'Win a Master game with Johto palette'),
-    Achievement(row: 5, col: 6, title: 'Finish 3 boxes within 2 minutes'),
+    Achievement(row: 5, col: 6, title: 'Finish 3 boxes within 1:30'),
     Achievement(
       row: 5,
       col: 7,
@@ -132,7 +136,11 @@ class Achievement {
       title: 'Win 3 consecutive Expert games with no mistakes',
     ),
     Achievement(row: 6, col: 5, title: 'Win a Master game with Glass palette'),
-    Achievement(row: 6, col: 6, title: 'Win an Expert game in exactly 44:44'),
+    Achievement(
+      row: 6,
+      col: 6,
+      title: 'Win an Expert or Master game in exactly 44:44',
+    ),
     Achievement(
       row: 6,
       col: 7,
@@ -189,9 +197,10 @@ class AchievementGameContext {
   final bool completedRowColBoxSimultaneously;
   final bool completedNineUnitsInNineSeconds;
   final bool filledNineDistinctColorsConsecutively;
-  final int rowsCompletedInFirstMinute;
-  final int colsCompletedInFirstMinute;
-  final int boxesCompletedInFirstMinute;
+  /// Units completed while game timer was still under 1:30.
+  final int rowsCompletedInFirst90Seconds;
+  final int colsCompletedInFirst90Seconds;
+  final int boxesCompletedInFirst90Seconds;
 
   const AchievementGameContext({
     this.firstFillColor,
@@ -206,8 +215,8 @@ class AchievementGameContext {
     this.completedRowColBoxSimultaneously = false,
     this.completedNineUnitsInNineSeconds = false,
     this.filledNineDistinctColorsConsecutively = false,
-    this.rowsCompletedInFirstMinute = 0,
-    this.colsCompletedInFirstMinute = 0,
-    this.boxesCompletedInFirstMinute = 0,
+    this.rowsCompletedInFirst90Seconds = 0,
+    this.colsCompletedInFirst90Seconds = 0,
+    this.boxesCompletedInFirst90Seconds = 0,
   });
 }

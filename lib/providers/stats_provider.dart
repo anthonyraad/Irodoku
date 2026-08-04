@@ -132,12 +132,12 @@ class StatsProvider extends ChangeNotifier {
 
     if (!unlockedPalettes.contains(GamePalette.neon) &&
         difficulty == Difficulty.easy &&
-        elapsed < const Duration(minutes: 10)) {
+        elapsed < const Duration(minutes: 8)) {
       unlockedPalettes.add(GamePalette.neon);
       newlyUnlocked.add(GamePalette.neon);
     }
 
-    if (!unlockedPalettes.contains(GamePalette.pkmn) && newStreak >= 3) {
+    if (!unlockedPalettes.contains(GamePalette.pkmn) && newStreak >= 4) {
       unlockedPalettes.add(GamePalette.pkmn);
       newlyUnlocked.add(GamePalette.pkmn);
     }

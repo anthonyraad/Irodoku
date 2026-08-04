@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/irodoku_page_route.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/difficulty.dart';
@@ -153,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const StatsScreen()),
+                    IrodokuPageRoute(builder: (_) => const StatsScreen()),
                   );
                   if (!mounted) return;
                   setState(() => _titlePlayToken++);
@@ -164,7 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   await Navigator.of(context).push(
-                    MaterialPageRoute(
+                    IrodokuPageRoute(
                       builder: (_) => const AchievementsScreen(),
                     ),
                   );
@@ -188,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           return;
                         }
                         Navigator.of(context).push(
-                          MaterialPageRoute(
+                          IrodokuPageRoute(
                             builder: (_) => const IroenScreen(),
                           ),
                         );
