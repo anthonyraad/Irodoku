@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/bulk_note_rainbow_border.dart';
@@ -232,6 +234,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
                       isSelected: isSelected,
                       isRelated: isRelated,
                       isSameColor: isSameColor,
+                      bulkNoteSelect: iroen.bulkNoteSelect,
                       onTap: () => iroen.selectCell(row, col),
                       onLongPress: iroen.isPickingQuadrant
                           ? null
@@ -282,12 +285,13 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   }
 }
 
-class _IroenMosaicCell extends StatelessWidget {
+class _IroenMosaicCell extends StatefulWidget {
   final List<int> subValues;
   final GamePalette palette;
   final bool isSelected;
   final bool isRelated;
   final bool isSameColor;
+  final bool bulkNoteSelect;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onDoubleTap;
@@ -298,10 +302,63 @@ class _IroenMosaicCell extends StatelessWidget {
     required this.isSelected,
     required this.isRelated,
     required this.isSameColor,
+    this.bulkNoteSelect = false,
     this.onTap,
     this.onLongPress,
     this.onDoubleTap,
   });
+
+  @override
+  State<_IroenMosaicCell> createState() => _IroenMosaicCellState();
+}
+
+class _IroenMosaicCellState extends State<_IroenMosaicCell> {
+  /// Match [ColorCell]: select on pointer-down so onDoubleTap doesn't delay taps.
+  static const _longPressDuration = Duration(milliseconds: 500);
+
+  Timer? _longPressTimer;
+  bool _longPressTriggered = false;
+
+  @override
+  void dispose() {
+    _cancelLongPressTimer();
+    super.dispose();
+  }
+
+  void _cancelLongPressTimer() {
+    _longPressTimer?.cancel();
+    _longPressTimer = null;
+  }
+
+  void _onPointerDown(PointerDownEvent event) {
+    _longPressTriggered = false;
+    _cancelLongPressTimer();
+    if (widget.onLongPress != null) {
+      _longPressTimer = Timer(_longPressDuration, () {
+        if (!mounted) return;
+        _longPressTriggered = true;
+        widget.onLongPress!();
+      });
+    }
+    // Immediate select (avoids ~300ms double-tap timeout). In bulk mode,
+    // toggle on pointer-up instead so a long-press can exit without toggling.
+    if (!widget.bulkNoteSelect && widget.onTap != null) {
+      widget.onTap!();
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _cancelLongPressTimer();
+    if (!_longPressTriggered &&
+        widget.bulkNoteSelect &&
+        widget.onTap != null) {
+      widget.onTap!();
+    }
+  }
+
+  void _onPointerCancel(PointerCancelEvent event) {
+    _cancelLongPressTimer();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -314,25 +371,25 @@ class _IroenMosaicCell extends StatelessWidget {
       children: [
         CustomPaint(
           painter: _MosaicPainter(
-            subValues: subValues,
-            palette: palette,
+            subValues: widget.subValues,
+            palette: widget.palette,
             emptyFill: emptyFill,
-            selectionHighlight: isSelected
+            selectionHighlight: widget.isSelected
                 ? IrodokuTheme.selectedCellHighlight(brightness, primary)
                 : null,
-            relatedWash: isRelated && !isSelected
+            relatedWash: widget.isRelated && !widget.isSelected
                 ? IrodokuTheme.relatedCellOverlay(brightness)
                 : null,
-            sameColorWash: isSameColor && !isSelected
+            sameColorWash: widget.isSameColor && !widget.isSelected
                 ? IrodokuTheme.sameColorOverlay(brightness)
                 : null,
-            repaint: palette == GamePalette.glass ||
-                    palette == GamePalette.sky
+            repaint: widget.palette == GamePalette.glass ||
+                    widget.palette == GamePalette.sky
                 ? OrganicSwatchMotion.listenable
                 : null,
           ),
         ),
-        if (isSelected)
+        if (widget.isSelected)
           Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -348,16 +405,29 @@ class _IroenMosaicCell extends StatelessWidget {
       ],
     );
 
-    if (onTap == null && onLongPress == null && onDoubleTap == null) {
-      return body;
-    }
+    final interactive = widget.onTap != null ||
+        widget.onLongPress != null ||
+        widget.onDoubleTap != null;
+    if (!interactive) return body;
 
-    return GestureDetector(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      onDoubleTap: onDoubleTap,
+    return Listener(
       behavior: HitTestBehavior.opaque,
-      child: body,
+      onPointerDown: widget.onTap != null || widget.onLongPress != null
+          ? _onPointerDown
+          : null,
+      onPointerUp: widget.onTap != null || widget.onLongPress != null
+          ? _onPointerUp
+          : null,
+      onPointerCancel:
+          widget.onLongPress != null ? _onPointerCancel : null,
+      child: GestureDetector(
+        // Empty onTap keeps the detector in the arena for double-tap without
+        // delaying selection (selection already ran on pointer-down).
+        onTap: widget.onTap != null ? () {} : null,
+        onDoubleTap: widget.onDoubleTap,
+        behavior: HitTestBehavior.opaque,
+        child: body,
+      ),
     );
   }
 }

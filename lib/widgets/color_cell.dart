@@ -9,6 +9,7 @@ import '../core/theme.dart';
 import '../models/cell.dart';
 import '../models/game_palette.dart';
 import '../models/palette_swatch.dart';
+import 'circle_reveal_clipper.dart';
 
 class ColorCell extends StatefulWidget {
   final Cell cell;
@@ -52,15 +53,54 @@ class ColorCell extends StatefulWidget {
   State<ColorCell> createState() => _ColorCellState();
 }
 
-class _ColorCellState extends State<ColorCell> {
+class _ColorCellState extends State<ColorCell>
+    with SingleTickerProviderStateMixin {
   static const _longPressDuration = Duration(milliseconds: 500);
+  static const _revealDuration = Duration(milliseconds: 280);
 
   Timer? _longPressTimer;
   bool _longPressTriggered = false;
 
+  late final AnimationController _revealController;
+  late final Animation<double> _reveal;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fully revealed by default so givens / restored boards don't bloom in.
+    _revealController = AnimationController(
+      vsync: this,
+      duration: _revealDuration,
+      value: 1,
+    );
+    _reveal = CurvedAnimation(
+      parent: _revealController,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(ColorCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldCommitted = _hasCommittedFill(oldWidget.cell);
+    final newCommitted = _hasCommittedFill(widget.cell);
+    final valueChanged = oldWidget.cell.value != widget.cell.value;
+
+    if (newCommitted && valueChanged && !widget.cell.isGiven) {
+      // User placed or changed a color (picker tap, not a given).
+      _revealController.forward(from: 0);
+    } else if (!newCommitted && oldCommitted) {
+      _revealController.value = 1;
+    }
+  }
+
+  static bool _hasCommittedFill(Cell cell) =>
+      cell.value != 0 && !cell.hasNotes;
+
   @override
   void dispose() {
     _cancelLongPressTimer();
+    _revealController.dispose();
     super.dispose();
   }
 
@@ -93,6 +133,19 @@ class _ColorCellState extends State<ColorCell> {
 
   void _onPointerCancel(PointerCancelEvent event) {
     _cancelLongPressTimer();
+  }
+
+  Listenable _painterRepaint(
+    PaletteSwatch? committed,
+    Map<int, PaletteSwatch>? notes,
+  ) {
+    if (_swatchAnimates(committed, notes)) {
+      return Listenable.merge([
+        _revealController,
+        OrganicSwatchMotion.listenable,
+      ]);
+    }
+    return _revealController;
   }
 
   @override
@@ -167,35 +220,41 @@ class _ColorCellState extends State<ColorCell> {
       children: [
         // One painter owns background + notes/fill so web can't drop the layer.
         Positioned.fill(
-          child: CustomPaint(
-            painter: _CellPainter(
-              emptyFill: emptyFill,
-              notes: celebrating ? const <int>{} : cell.notes,
-              noteSwatches: noteSwatches,
-              committedSwatch: committedSwatch,
-              committedOutline: committedOutline,
-              noteOutlines: noteOutlines,
-              selectionHighlight: widget.isSelected && !celebrating
-                  ? IrodokuTheme.selectedCellHighlight(brightness, primary)
-                  : null,
-              relatedWash: widget.isRelated && !widget.isSelected && !celebrating
-                  ? IrodokuTheme.relatedCellOverlay(brightness)
-                  : null,
-              sameColorWash:
-                  widget.isSameColor && !widget.isSelected && !celebrating
-                      ? IrodokuTheme.sameColorOverlay(brightness)
+          child: AnimatedBuilder(
+            animation: _reveal,
+            builder: (context, _) {
+              return CustomPaint(
+                painter: _CellPainter(
+                  emptyFill: emptyFill,
+                  notes: celebrating ? const <int>{} : cell.notes,
+                  noteSwatches: noteSwatches,
+                  committedSwatch: committedSwatch,
+                  committedOutline: committedOutline,
+                  noteOutlines: noteOutlines,
+                  fillReveal: committedSwatch != null ? _reveal.value : 1,
+                  selectionHighlight: widget.isSelected && !celebrating
+                      ? IrodokuTheme.selectedCellHighlight(brightness, primary)
                       : null,
-              givenWash: cell.isGiven && cell.value != 0 && !celebrating
-                  ? Colors.black.withValues(alpha: 0.08)
-                  : null,
-              celebrationShimmer: celebrating && widget.celebrationShimmer > 0
-                  ? widget.celebrationShimmer
-                  : 0,
-              repaint: _swatchAnimates(committedSwatch, noteSwatches)
-                  ? OrganicSwatchMotion.listenable
-                  : null,
-            ),
-            child: const SizedBox.expand(),
+                  relatedWash:
+                      widget.isRelated && !widget.isSelected && !celebrating
+                          ? IrodokuTheme.relatedCellOverlay(brightness)
+                          : null,
+                  sameColorWash:
+                      widget.isSameColor && !widget.isSelected && !celebrating
+                          ? IrodokuTheme.sameColorOverlay(brightness)
+                          : null,
+                  givenWash: cell.isGiven && cell.value != 0 && !celebrating
+                      ? Colors.black.withValues(alpha: 0.08)
+                      : null,
+                  celebrationShimmer:
+                      celebrating && widget.celebrationShimmer > 0
+                          ? widget.celebrationShimmer
+                          : 0,
+                  repaint: _painterRepaint(committedSwatch, noteSwatches),
+                ),
+                child: const SizedBox.expand(),
+              );
+            },
           ),
         ),
         if (chromeBorder != null)
@@ -257,6 +316,8 @@ class _CellPainter extends CustomPainter {
   final PaletteSwatch? committedSwatch;
   final Color? committedOutline;
   final Map<int, Color>? noteOutlines;
+  /// 0–1 center bloom for committed fill; 1 = fully visible.
+  final double fillReveal;
   final Color? selectionHighlight;
   final Color? relatedWash;
   final Color? sameColorWash;
@@ -270,6 +331,7 @@ class _CellPainter extends CustomPainter {
     required this.committedSwatch,
     required this.committedOutline,
     required this.noteOutlines,
+    required this.fillReveal,
     required this.selectionHighlight,
     required this.relatedWash,
     required this.sameColorWash,
@@ -289,8 +351,16 @@ class _CellPainter extends CustomPainter {
       canvas.drawRect(rect, Paint()..color = relatedWash!);
     }
 
+    final reveal = fillReveal.clamp(0.0, 1.0);
+    final revealing = committedSwatch != null && reveal < 1;
+
     if (committedSwatch != null) {
+      if (revealing) {
+        canvas.save();
+        canvas.clipPath(CircleRevealClipper.pathFor(size, reveal));
+      }
       drawSwatchRect(canvas, rect, committedSwatch!);
+      if (revealing) canvas.restore();
     } else if (notes.isNotEmpty) {
       final slotW = size.width / 3;
       final slotH = size.height / 3;
@@ -322,7 +392,12 @@ class _CellPainter extends CustomPainter {
     }
 
     if (committedSwatch != null && committedOutline != null) {
+      if (revealing) {
+        canvas.save();
+        canvas.clipPath(CircleRevealClipper.pathFor(size, reveal));
+      }
       _strokeRect(canvas, rect, committedOutline!);
+      if (revealing) canvas.restore();
     } else if (notes.isNotEmpty && noteOutlines != null) {
       final slotW = size.width / 3;
       final slotH = size.height / 3;
@@ -364,6 +439,7 @@ class _CellPainter extends CustomPainter {
         committedSwatch != oldDelegate.committedSwatch ||
         committedOutline != oldDelegate.committedOutline ||
         noteOutlines != oldDelegate.noteOutlines ||
+        fillReveal != oldDelegate.fillReveal ||
         selectionHighlight != oldDelegate.selectionHighlight ||
         relatedWash != oldDelegate.relatedWash ||
         sameColorWash != oldDelegate.sameColorWash ||

@@ -13,6 +13,8 @@ class SoundService {
   static const _note = 'sounds/note.mp3';
   static const _deselect = 'sounds/deselect.mp3';
   static const _confirm = 'sounds/confirm.mp3';
+  static const _coin = 'sounds/coin.mp3';
+  static const _plink = 'sounds/plink.mp3';
   static const _mistake = 'sounds/mistake.mp3';
   static const _gameLoss = 'sounds/gameloss.mp3';
   static const _complete = 'sounds/complete.mp3';
@@ -23,6 +25,8 @@ class SoundService {
     _note,
     _deselect,
     _confirm,
+    _coin,
+    _plink,
     _mistake,
     _gameLoss,
     _complete,
@@ -62,7 +66,13 @@ class SoundService {
         );
         await player.setReleaseMode(ReleaseMode.stop);
         await player.setSource(AssetSource(asset));
-        await player.setVolume(asset == _deselect ? 0.95 : 1.0);
+        await player.setVolume(
+          asset == _deselect
+              ? 0.95
+              : asset == _coin
+                  ? 0.7
+                  : 1.0,
+        );
         _players[asset] = player;
       }
     } catch (e, st) {
@@ -73,6 +83,10 @@ class SoundService {
   Future<void> playNote() => _play(_note);
   Future<void> playNoteDeselect() => _play(_deselect);
   Future<void> playConfirm() => _play(_confirm);
+  /// 1-1 palette placement sting (replaces [playConfirm]).
+  Future<void> playCoin() => _play(_coin);
+  /// Kanto / Johto placement sting (replaces [playConfirm]).
+  Future<void> playPlink() => _play(_plink);
   Future<void> playMistake() => _play(_mistake);
   Future<void> playGameLoss() => _play(_gameLoss);
   Future<void> playComplete() => _play(_complete);
@@ -104,7 +118,13 @@ class SoundService {
             : PlayerMode.lowLatency,
       );
       await fallback.stop();
-      await fallback.setVolume(assetPath == _deselect ? 0.95 : 1.0);
+      await fallback.setVolume(
+        assetPath == _deselect
+            ? 0.95
+            : assetPath == _coin
+                ? 0.7
+                : 1.0,
+      );
       await fallback.play(AssetSource(assetPath));
     } catch (e, st) {
       debugPrint('SoundService failed to play $assetPath: $e\n$st');

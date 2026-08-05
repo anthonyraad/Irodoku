@@ -9,7 +9,7 @@ import '../models/palette_swatch.dart';
 abstract final class CelShadeSwatch {
   static const double _highlightEnd = 0.25;
   static const double _shadowStart = 0.80;
-  static const double _outlineWidth = 1.94;
+  static const double _outlineWidth = 1.55;
 
   static void paint(Canvas canvas, Rect rect, PaletteSwatch swatch) {
     if (!swatch.isCelShade || rect.isEmpty) return;

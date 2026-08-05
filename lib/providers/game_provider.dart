@@ -542,11 +542,22 @@ class GameProvider extends ChangeNotifier {
       if (_toBoard().isValidSolution()) {
         _playSound(_sounds.playGameWin);
       } else {
-        _playSound(unitCompleted ? _sounds.playComplete : _sounds.playConfirm);
+        _playSound(
+          unitCompleted ? _sounds.playComplete : _placementConfirmSound(),
+        );
       }
     }
     _checkWin();
     notifyListeners();
+  }
+
+  Future<void> Function() _placementConfirmSound() {
+    final palette = _settings.palette;
+    if (palette == GamePalette.world11) return _sounds.playCoin;
+    if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
+      return _sounds.playPlink;
+    }
+    return _sounds.playConfirm;
   }
 
   /// Removes [value] from notes in peer cells of (row, col).
