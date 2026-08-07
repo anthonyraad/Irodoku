@@ -106,8 +106,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   void _syncGlassMotion({bool forceOff = false}) {
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sky ||
-            widget.palette == GamePalette.neon);
+            widget.palette == GamePalette.sky);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
       _holdingGlassMotion = true;
@@ -279,8 +278,8 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     final selectedCell =
         selected == null ? null : game.cellAt(selected.$1, selected.$2);
     final selectedValue = selectedCell?.value ?? 0;
-    // Given selection: unit borders only — no cell fill washes.
-    final washPeers = selectedCell != null && !selectedCell.isGiven;
+    // Given / locked: unit borders only — no cell fill washes.
+    final washPeers = selectedCell != null && selectedCell.isEditable;
 
     return Column(
       children: List.generate(SudokuBoard.size, (row) {
@@ -350,6 +349,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         celebrationShimmer: celebrationShimmer,
                         colorCyclePhase: _cellColorCyclePhase(row, col),
                         colorCycleSteps: game.colorCycleSteps,
+                        row: row,
+                        col: col,
+                        noteClearWave: game.noteClearWave,
                         onTap: game.isGenerating ||
                                 game.isGameOver ||
                                 game.isPaused
@@ -358,13 +360,13 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         onLongPress: game.isGenerating ||
                                 game.isGameOver ||
                                 game.isPaused ||
-                                cell.isGiven
+                                !cell.isEditable
                             ? null
                             : () => game.handleCellLongPress(row, col),
                         onDoubleTap: game.isGenerating ||
                                 game.isGameOver ||
                                 game.isPaused ||
-                                cell.isGiven
+                                !cell.isEditable
                             ? null
                             : () => game.clearCell(row, col),
                       ),

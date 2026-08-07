@@ -8,6 +8,7 @@ import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/cell.dart';
 import '../models/game_palette.dart';
+import '../models/note_clear_wave.dart';
 import '../models/palette_swatch.dart';
 import 'circle_reveal_clipper.dart';
 
@@ -29,6 +30,10 @@ class ColorCell extends StatefulWidget {
   /// 0–1 local phase for the title-tap palette sweep; null when inactive.
   final double? colorCyclePhase;
   final int colorCycleSteps;
+  /// Board position; used with [noteClearWave] for outward dismiss stagger.
+  final int? row;
+  final int? col;
+  final NoteClearWave? noteClearWave;
 
   const ColorCell({
     super.key,
@@ -47,6 +52,9 @@ class ColorCell extends StatefulWidget {
     this.celebrationShimmer = 0,
     this.colorCyclePhase,
     this.colorCycleSteps = 4,
+    this.row,
+    this.col,
+    this.noteClearWave,
   });
 
   @override
@@ -54,15 +62,26 @@ class ColorCell extends StatefulWidget {
 }
 
 class _ColorCellState extends State<ColorCell>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _longPressDuration = Duration(milliseconds: 500);
   static const _revealDuration = Duration(milliseconds: 280);
+  /// Peer-note clear: quick inverse of the fill bloom.
+  static const _noteDismissDuration = Duration(milliseconds: 160);
 
   Timer? _longPressTimer;
+  Timer? _noteDismissStartTimer;
   bool _longPressTriggered = false;
 
   late final AnimationController _revealController;
   late final Animation<double> _reveal;
+  late final AnimationController _noteDismissController;
+  late final Animation<double> _noteDismiss;
+  /// Notes removed from the model but still painted while shrinking out.
+  final Map<int, PaletteSwatch> _departingNoteSwatches = {};
+  final Map<int, Color> _departingNoteOutlines = {};
+  /// Committed fill removed by erase / undo / toggle-off, shrinking out.
+  PaletteSwatch? _departingCommittedSwatch;
+  Color? _departingCommittedOutline;
 
   @override
   void initState() {
@@ -77,6 +96,34 @@ class _ColorCellState extends State<ColorCell>
       parent: _revealController,
       curve: Curves.easeOutCubic,
     );
+    _revealController.addStatusListener((status) {
+      if (status == AnimationStatus.dismissed && mounted) {
+        if (_departingCommittedSwatch != null) {
+          setState(() {
+            _departingCommittedSwatch = null;
+            _departingCommittedOutline = null;
+          });
+        }
+        _revealController.duration = _revealDuration;
+      }
+    });
+    _noteDismissController = AnimationController(
+      vsync: this,
+      duration: _noteDismissDuration,
+    );
+    _noteDismiss = CurvedAnimation(
+      parent: _noteDismissController,
+      curve: Curves.easeInCubic,
+    );
+    _noteDismissController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() {
+          _departingNoteSwatches.clear();
+          _departingNoteOutlines.clear();
+        });
+        _noteDismissController.value = 0;
+      }
+    });
   }
 
   @override
@@ -88,10 +135,98 @@ class _ColorCellState extends State<ColorCell>
 
     if (newCommitted && valueChanged && !widget.cell.isGiven) {
       // User placed or changed a color (picker tap, not a given).
+      _clearDepartingCommitted();
+      _revealController.duration = _revealDuration;
       _revealController.forward(from: 0);
-    } else if (!newCommitted && oldCommitted) {
+      _clearDepartingNotes();
+    } else if (oldCommitted && !newCommitted && !oldWidget.cell.isGiven) {
+      // Erase / undo / same-color toggle: shrink the fill away.
+      _beginDepartingCommitted(oldWidget.cell.value);
+    }
+
+    // Notes removed while empty (peer clear, note toggle, erase, undo).
+    if (!newCommitted && widget.cell.value == 0) {
+      final removed = oldWidget.cell.notes.difference(widget.cell.notes);
+      if (removed.isNotEmpty) {
+        _queueDepartingNotes(removed);
+        _startNoteDismiss(_noteDismissDelay(removed));
+      }
+    }
+
+    // Undo / re-add: stop dismissing notes that are live again.
+    _departingNoteSwatches.removeWhere((value, _) => widget.cell.hasNote(value));
+    _departingNoteOutlines.removeWhere((value, _) => widget.cell.hasNote(value));
+    if (_hasCommittedFill(widget.cell)) {
+      _clearDepartingCommitted();
+    }
+  }
+
+  PaletteSwatch _swatchFor(int value) =>
+      IrodokuPalette.swatchFromList(value, widget.displaySwatches) ??
+      IrodokuPalette.swatchForValue(value, widget.palette)!;
+
+  void _queueDepartingNotes(Set<int> removed) {
+    for (final value in removed) {
+      _departingNoteSwatches[value] = _swatchFor(value);
+      final outline = IrodokuPalette.outlineForValue(value, widget.palette);
+      if (outline != null) {
+        _departingNoteOutlines[value] = outline;
+      } else {
+        _departingNoteOutlines.remove(value);
+      }
+    }
+  }
+
+  void _beginDepartingCommitted(int value) {
+    _departingCommittedSwatch = _swatchFor(value);
+    _departingCommittedOutline =
+        IrodokuPalette.outlineForValue(value, widget.palette);
+    _revealController.duration = _noteDismissDuration;
+    _revealController.reverse(from: 1);
+  }
+
+  Duration _noteDismissDelay(Set<int> removed) {
+    final wave = widget.noteClearWave;
+    final row = widget.row;
+    final col = widget.col;
+    if (wave == null || row == null || col == null) return Duration.zero;
+    if (!removed.contains(wave.value)) return Duration.zero;
+    return wave.delayFor(row, col);
+  }
+
+  void _startNoteDismiss(Duration delay) {
+    _noteDismissStartTimer?.cancel();
+    _noteDismissController.value = 0;
+    if (delay <= Duration.zero) {
+      _noteDismissController.forward(from: 0);
+      return;
+    }
+    _noteDismissStartTimer = Timer(delay, () {
+      if (!mounted) return;
+      _noteDismissController.forward(from: 0);
+    });
+  }
+
+  void _clearDepartingNotes() {
+    _noteDismissStartTimer?.cancel();
+    _noteDismissStartTimer = null;
+    if (_departingNoteSwatches.isEmpty &&
+        !_noteDismissController.isAnimating &&
+        _noteDismissController.value == 0) {
+      return;
+    }
+    _departingNoteSwatches.clear();
+    _departingNoteOutlines.clear();
+    _noteDismissController.value = 0;
+  }
+
+  void _clearDepartingCommitted() {
+    _departingCommittedSwatch = null;
+    _departingCommittedOutline = null;
+    if (_revealController.status == AnimationStatus.reverse) {
       _revealController.value = 1;
     }
+    _revealController.duration = _revealDuration;
   }
 
   static bool _hasCommittedFill(Cell cell) =>
@@ -100,7 +235,9 @@ class _ColorCellState extends State<ColorCell>
   @override
   void dispose() {
     _cancelLongPressTimer();
+    _noteDismissStartTimer?.cancel();
     _revealController.dispose();
+    _noteDismissController.dispose();
     super.dispose();
   }
 
@@ -139,13 +276,12 @@ class _ColorCellState extends State<ColorCell>
     PaletteSwatch? committed,
     Map<int, PaletteSwatch>? notes,
   ) {
-    if (_swatchAnimates(committed, notes)) {
-      return Listenable.merge([
-        _revealController,
-        OrganicSwatchMotion.listenable,
-      ]);
+    final listenables = <Listenable>[_revealController, _noteDismissController];
+    if (_swatchAnimates(committed, notes) ||
+        _departingNoteSwatches.values.any((s) => s.animated)) {
+      listenables.add(OrganicSwatchMotion.listenable);
     }
-    return _revealController;
+    return Listenable.merge(listenables);
   }
 
   @override
@@ -161,34 +297,35 @@ class _ColorCellState extends State<ColorCell>
     final colorCyclePhase = widget.colorCyclePhase;
 
     PaletteSwatch swatchFor(int value) =>
-        IrodokuPalette.swatchFromList(value, widget.displaySwatches) ??
-        IrodokuPalette.swatchForValue(value, widget.palette)!;
+        colorCyclePhase != null
+            ? ColorCycle.displaySwatch(
+                value,
+                colorCyclePhase,
+                stepCount: widget.colorCycleSteps,
+                palette: widget.palette,
+              )
+            : _swatchFor(value);
 
     PaletteSwatch? committedSwatch;
     Map<int, PaletteSwatch>? noteSwatches;
     if (celebrating) {
       committedSwatch = widget.celebrationSwatch;
     } else if (cell.value != 0 && !cell.hasNotes) {
-      committedSwatch = colorCyclePhase != null
-          ? ColorCycle.displaySwatch(
-              cell.value,
-              colorCyclePhase,
-              stepCount: widget.colorCycleSteps,
-              palette: widget.palette,
-            )
-          : swatchFor(cell.value);
-    } else if (cell.notes.isNotEmpty) {
-      noteSwatches = {
-        for (final value in cell.notes)
-          value: colorCyclePhase != null
-              ? ColorCycle.displaySwatch(
-                  value,
-                  colorCyclePhase,
-                  stepCount: widget.colorCycleSteps,
-                  palette: widget.palette,
-                )
-              : swatchFor(value),
-      };
+      committedSwatch = swatchFor(cell.value);
+    } else if (_departingCommittedSwatch != null) {
+      committedSwatch = _departingCommittedSwatch;
+    } else {
+      final live = cell.notes;
+      final departing = _departingNoteSwatches.keys
+          .where((value) => !live.contains(value))
+          .toSet();
+      if (live.isNotEmpty || departing.isNotEmpty) {
+        noteSwatches = {
+          for (final value in live) value: swatchFor(value),
+          for (final value in departing)
+            value: _departingNoteSwatches[value]!,
+        };
+      }
     }
 
     final Border? chromeBorder = cell.hasConflict && !celebrating
@@ -203,17 +340,24 @@ class _ColorCellState extends State<ColorCell>
     Color? committedOutline;
     Map<int, Color>? noteOutlines;
     if (!celebrating) {
-      committedOutline =
-          IrodokuPalette.outlineForValue(cell.value, widget.palette);
-      if (cell.notes.isNotEmpty) {
+      if (cell.value != 0 && !cell.hasNotes) {
+        committedOutline =
+            IrodokuPalette.outlineForValue(cell.value, widget.palette);
+      } else if (_departingCommittedSwatch != null) {
+        committedOutline = _departingCommittedOutline;
+      }
+      if (noteSwatches != null) {
         noteOutlines = {
-          for (final value in cell.notes)
-            if (IrodokuPalette.outlineForValue(value, widget.palette)
+          for (final value in noteSwatches.keys)
+            if ((IrodokuPalette.outlineForValue(value, widget.palette) ??
+                    _departingNoteOutlines[value])
                 case final outline?)
               value: outline,
         };
       }
     }
+
+    final paintListenables = _painterRepaint(committedSwatch, noteSwatches);
 
     final body = Stack(
       fit: StackFit.expand,
@@ -221,13 +365,26 @@ class _ColorCellState extends State<ColorCell>
         // One painter owns background + notes/fill so web can't drop the layer.
         Positioned.fill(
           child: AnimatedBuilder(
-            animation: _reveal,
+            animation: paintListenables,
             builder: (context, _) {
+              final collapsing = 1.0 - _noteDismiss.value;
+              final Map<int, double>? noteReveal = noteSwatches == null
+                  ? null
+                  : {
+                      for (final value in noteSwatches.keys)
+                        value: cell.notes.contains(value) ? 1.0 : collapsing,
+                    };
               return CustomPaint(
                 painter: _CellPainter(
                   emptyFill: emptyFill,
-                  notes: celebrating ? const <int>{} : cell.notes,
+                  notes: celebrating
+                      ? const <int>{}
+                      : {
+                          ...cell.notes,
+                          ..._departingNoteSwatches.keys,
+                        },
                   noteSwatches: noteSwatches,
+                  noteReveal: noteReveal,
                   committedSwatch: committedSwatch,
                   committedOutline: committedOutline,
                   noteOutlines: noteOutlines,
@@ -243,14 +400,16 @@ class _ColorCellState extends State<ColorCell>
                       widget.isSameColor && !widget.isSelected && !celebrating
                           ? IrodokuTheme.sameColorOverlay(brightness)
                           : null,
-                  givenWash: cell.isGiven && cell.value != 0 && !celebrating
+                  givenWash: (cell.isGiven || cell.isLocked) &&
+                          cell.value != 0 &&
+                          !celebrating
                       ? Colors.black.withValues(alpha: 0.08)
                       : null,
                   celebrationShimmer:
                       celebrating && widget.celebrationShimmer > 0
                           ? widget.celebrationShimmer
                           : 0,
-                  repaint: _painterRepaint(committedSwatch, noteSwatches),
+                  repaint: paintListenables,
                 ),
                 child: const SizedBox.expand(),
               );
@@ -313,6 +472,8 @@ class _CellPainter extends CustomPainter {
   final Color emptyFill;
   final Set<int> notes;
   final Map<int, PaletteSwatch>? noteSwatches;
+  /// Per-note 0–1 circle coverage; null means fully visible (1).
+  final Map<int, double>? noteReveal;
   final PaletteSwatch? committedSwatch;
   final Color? committedOutline;
   final Map<int, Color>? noteOutlines;
@@ -328,6 +489,7 @@ class _CellPainter extends CustomPainter {
     required this.emptyFill,
     required this.notes,
     required this.noteSwatches,
+    required this.noteReveal,
     required this.committedSwatch,
     required this.committedOutline,
     required this.noteOutlines,
@@ -370,11 +532,10 @@ class _CellPainter extends CustomPainter {
         if (swatch == null) continue;
         final row = (value - 1) ~/ 3;
         final col = (value - 1) % 3;
-        drawSwatchRect(
-          canvas,
-          Rect.fromLTWH(col * slotW, row * slotH, slotW, slotH),
-          swatch,
-        );
+        final slot = Rect.fromLTWH(col * slotW, row * slotH, slotW, slotH);
+        final noteT = (noteReveal?[value] ?? 1).clamp(0.0, 1.0);
+        if (noteT <= 0) continue;
+        _paintNoteSlot(canvas, slot, swatch, noteT, noteOutlines?[value]);
       }
     }
 
@@ -398,19 +559,6 @@ class _CellPainter extends CustomPainter {
       }
       _strokeRect(canvas, rect, committedOutline!);
       if (revealing) canvas.restore();
-    } else if (notes.isNotEmpty && noteOutlines != null) {
-      final slotW = size.width / 3;
-      final slotH = size.height / 3;
-      for (final entry in noteOutlines!.entries) {
-        final value = entry.key;
-        final row = (value - 1) ~/ 3;
-        final col = (value - 1) % 3;
-        _strokeRect(
-          canvas,
-          Rect.fromLTWH(col * slotW, row * slotH, slotW, slotH),
-          entry.value,
-        );
-      }
     }
 
     if (celebrationShimmer > 0) {
@@ -419,6 +567,26 @@ class _CellPainter extends CustomPainter {
         Paint()..color = Colors.white.withValues(alpha: celebrationShimmer),
       );
     }
+  }
+
+  void _paintNoteSlot(
+    Canvas canvas,
+    Rect slot,
+    PaletteSwatch swatch,
+    double reveal,
+    Color? outline,
+  ) {
+    canvas.save();
+    canvas.translate(slot.left, slot.top);
+    final local = Size(slot.width, slot.height);
+    if (reveal < 1) {
+      canvas.clipPath(CircleRevealClipper.pathFor(local, reveal));
+    }
+    drawSwatchRect(canvas, Offset.zero & local, swatch);
+    if (outline != null) {
+      _strokeRect(canvas, Offset.zero & local, outline);
+    }
+    canvas.restore();
   }
 
   void _strokeRect(Canvas canvas, Rect rect, Color color) {
@@ -436,6 +604,7 @@ class _CellPainter extends CustomPainter {
     return emptyFill != oldDelegate.emptyFill ||
         !setEquals(notes, oldDelegate.notes) ||
         noteSwatches != oldDelegate.noteSwatches ||
+        noteReveal != oldDelegate.noteReveal ||
         committedSwatch != oldDelegate.committedSwatch ||
         committedOutline != oldDelegate.committedOutline ||
         noteOutlines != oldDelegate.noteOutlines ||

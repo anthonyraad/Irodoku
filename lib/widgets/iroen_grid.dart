@@ -75,8 +75,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   void _syncGlassMotion({bool forceOff = false}) {
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sky ||
-            widget.palette == GamePalette.neon);
+            widget.palette == GamePalette.sky);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
       _holdingGlassMotion = true;

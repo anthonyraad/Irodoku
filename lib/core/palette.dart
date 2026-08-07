@@ -193,6 +193,12 @@ abstract final class IrodokuPalette {
   static List<PaletteSwatch> _solidSwatches(List<Color> colors) =>
       colors.map(PaletteSwatch.solid).toList();
 
+  /// Standard: soft marble overlays on each flat fill color.
+  static final List<PaletteSwatch> standardSwatches = List.generate(
+    defaultColors.length,
+    (i) => PaletteSwatch.marble(defaultColors[i], swirlSeed: 100 + i),
+  );
+
   static final List<PaletteSwatch> neonSwatches = List.generate(
     neonColors.length,
     (i) => PaletteSwatch.neon(neonColors[i], swirlSeed: 400 + i),
@@ -216,7 +222,7 @@ abstract final class IrodokuPalette {
   );
 
   static List<PaletteSwatch> swatchesFor(GamePalette palette) => switch (palette) {
-        GamePalette.standard => _solidSwatches(defaultColors),
+        GamePalette.standard => standardSwatches,
         GamePalette.rainbow => rainbowSwatches,
         GamePalette.world11 => world11Swatches,
         GamePalette.neon => neonSwatches,

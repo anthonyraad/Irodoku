@@ -8,6 +8,7 @@ import '../models/achievement.dart';
 import '../models/cell.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
+import '../models/note_clear_wave.dart';
 import '../models/paused_game.dart';
 import '../models/unit_celebration.dart';
 import '../services/preferences_service.dart';
@@ -66,6 +67,11 @@ class GameProvider extends ChangeNotifier {
   final List<_UndoSnapshot> _undoStack = [];
   static const int _maxUndo = 60;
 
+  /// Origin of the latest peer-note clear, for outward dismiss stagger.
+  NoteClearWave? _noteClearWave;
+  int _noteClearWaveSeq = 0;
+  int _noteClearWaveClearToken = 0;
+
   // Per-game achievement tracking (not persisted across pause restore).
   int? _firstFillColor;
   int? _lastFillColor;
@@ -122,6 +128,7 @@ class GameProvider extends ChangeNotifier {
   int? get colorCycleFilterValue => _colorCycleFilterValue;
   bool get noteMode => _noteMode;
   bool get bulkNoteSelect => _bulkNoteSelect;
+  NoteClearWave? get noteClearWave => _noteClearWave;
 
   List<GamePalette> consumePendingPaletteUnlocks() {
     final pending = List<GamePalette>.from(_pendingPaletteUnlocks);
@@ -137,7 +144,8 @@ class GameProvider extends ChangeNotifier {
     return _selected?.$1 == row && _selected?.$2 == col;
   }
 
-  bool get hasCellSelection => _selected != null || _bulkNoteSelect;
+  bool get hasCellSelection =>
+      _selected != null || _bulkNoteSelect || _noteMode;
 
   bool get canEraseSelection {
     if (isGameOver || _isGenerating || _isPaused) return false;
@@ -147,7 +155,7 @@ class GameProvider extends ChangeNotifier {
     final sel = _selected;
     if (sel == null) return false;
     final cell = _cells[sel.$1][sel.$2];
-    return !cell.isGiven && !cell.isEmpty;
+    return cell.isEditable && !cell.isEmpty;
   }
 
   static int _cellKey(int row, int col) => row * SudokuBoard.size + col;
@@ -322,8 +330,8 @@ class GameProvider extends ChangeNotifier {
     if (isGameOver || _isGenerating || _isPaused) return;
     final cell = _cells[row][col];
 
-    // Givens aren't selectable, but tapping one still pulses matching colors.
-    if (cell.isGiven) {
+    // Givens and locked correct fills aren't selectable — tap pulses matches.
+    if (!cell.isEditable) {
       if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
       return;
     }
@@ -359,7 +367,7 @@ class GameProvider extends ChangeNotifier {
   /// Hold on a cell: enter bulk note select, or exit bulk to single-cell note mode.
   void handleCellLongPress(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
-    if (_cells[row][col].isGiven) return;
+    if (!_cells[row][col].isEditable) return;
 
     _hasInteracted = true;
     if (_bulkNoteSelect) {
@@ -376,7 +384,7 @@ class GameProvider extends ChangeNotifier {
   /// Hold-to-enter: multi-cell note selection with note mode enabled.
   void enterBulkNoteSelect(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
-    if (_cells[row][col].isGiven) return;
+    if (!_cells[row][col].isEditable) return;
 
     _bulkNoteSelect = true;
     if (!_noteMode) _noteMode = true;
@@ -393,7 +401,7 @@ class GameProvider extends ChangeNotifier {
   void enterBulkNoteSelectFromToolbar() {
     if (!canEnterBulkNoteSelectFromToolbar) return;
     final sel = _selected;
-    if (sel != null && !_cells[sel.$1][sel.$2].isGiven) {
+    if (sel != null && _cells[sel.$1][sel.$2].isEditable) {
       enterBulkNoteSelect(sel.$1, sel.$2);
       return;
     }
@@ -404,6 +412,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _toggleBulkCell(int row, int col) {
+    if (!_cells[row][col].isEditable) return;
     final key = _cellKey(row, col);
     if (_bulkSelected.contains(key)) {
       _bulkSelected.remove(key);
@@ -436,9 +445,11 @@ class GameProvider extends ChangeNotifier {
   }
 
   void clearSelection() {
-    if (_selected == null && !_bulkNoteSelect) return;
+    if (_selected == null && !_bulkNoteSelect && !_noteMode) return;
     _exitBulkNoteSelect();
     _selected = null;
+    // Empty-space tap clears selection and fully exits note mode (single or bulk).
+    _noteMode = false;
     notifyListeners();
   }
 
@@ -470,13 +481,17 @@ class GameProvider extends ChangeNotifier {
 
   void undo() {
     if (!canUndo) return;
+    // Correct locks are permanent — keep them across earlier undo snapshots.
+    final locked = _snapshotLockedCells();
     final snap = _undoStack.removeLast();
     _cells = snap.cells;
+    _restoreLockedCells(locked);
     _isWon = snap.isWon;
     _isLost = snap.isLost;
     _hasActiveGame = snap.hasActiveGame;
     _completedUnits = snap.completedUnits;
-    _selected = snap.selected;
+    final sel = snap.selected;
+    _selected = sel != null && _cells[sel.$1][sel.$2].isEditable ? sel : null;
     _exitBulkNoteSelect();
     _celebration = null;
     _usedUndo = true;
@@ -486,6 +501,7 @@ class GameProvider extends ChangeNotifier {
     } else {
       _timer?.cancel();
     }
+    _syncCompletedUnits(celebrate: false);
     _refreshConflicts();
     notifyListeners();
     unawaited(_achievements.recordUndo());
@@ -496,12 +512,14 @@ class GameProvider extends ChangeNotifier {
     if (sel == null || isGameOver || _isGenerating || _isPaused) return;
     final (row, col) = sel;
     final cell = _cells[row][col];
-    if (cell.isGiven) return;
+    if (!cell.isEditable) return;
 
-    _pushUndo();
+    _hasInteracted = true;
 
     // Toggle off if same committed color tapped again — not a mistake.
+    // (Locked correct fills never reach here.)
     if (cell.value == value) {
+      _pushUndo();
       _cells[row][col] = cell.copyWith(clearValue: true, clearNotes: true);
       _selected = null;
       _refreshConflicts();
@@ -516,8 +534,18 @@ class GameProvider extends ChangeNotifier {
     final isMistake =
         solution != null && value != solution.get(row, col);
 
+    // Correct confirms aren't undoable; mistakes / edits still are.
+    if (isMistake) {
+      _pushUndo();
+    }
+
     // Committing a full color clears any notes on this cell.
-    _cells[row][col] = cell.copyWith(value: value, clearNotes: true);
+    // Correct fills lock so they can't be overwritten or erased.
+    _cells[row][col] = cell.copyWith(
+      value: value,
+      clearNotes: true,
+      isLocked: !isMistake,
+    );
     _selected = null;
     // Drop that color from notes in the same row, column, and box.
     _clearPeerNotes(row, col, value);
@@ -561,7 +589,30 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Removes [value] from notes in peer cells of (row, col).
-  void _clearPeerNotes(int row, int col, int value) {
+  void _clearPeerNotes(
+    int row,
+    int col,
+    int value, {
+    bool emitWave = true,
+  }) {
+    if (emitWave) {
+      final seq = ++_noteClearWaveSeq;
+      _noteClearWave = NoteClearWave(
+        row: row,
+        col: col,
+        value: value,
+        seq: seq,
+      );
+      // Drop the wave after the farthest ring can finish animating.
+      final clearToken = ++_noteClearWaveClearToken;
+      Future<void>.delayed(const Duration(milliseconds: 520), () {
+        if (_noteClearWaveClearToken != clearToken) return;
+        if (_noteClearWave?.seq == seq) {
+          _noteClearWave = null;
+        }
+      });
+    }
+
     final boxRow = row ~/ 3;
     final boxCol = col ~/ 3;
     for (var r = 0; r < SudokuBoard.size; r++) {
@@ -573,7 +624,7 @@ class GameProvider extends ChangeNotifier {
         if (!sameUnit) continue;
 
         final peer = _cells[r][c];
-        if (peer.isGiven || !peer.hasNote(value)) continue;
+        if (!peer.isEditable || !peer.hasNote(value)) continue;
         _cells[r][c] = peer.withNoteRemoved(value);
       }
     }
@@ -589,7 +640,7 @@ class GameProvider extends ChangeNotifier {
     if (sel == null || isGameOver || _isGenerating || _isPaused) return;
     final (row, col) = sel;
     final cell = _cells[row][col];
-    if (cell.isGiven) return;
+    if (!cell.isEditable) return;
 
     final next = cell.withNoteAdded(value);
     if (identical(next, cell)) return;
@@ -612,7 +663,7 @@ class GameProvider extends ChangeNotifier {
     if (sel == null || isGameOver || _isGenerating || _isPaused) return;
     final (row, col) = sel;
     final cell = _cells[row][col];
-    if (cell.isGiven) return;
+    if (!cell.isEditable) return;
 
     final next = cell.withNoteRemoved(value);
     if (identical(next, cell)) return;
@@ -638,7 +689,7 @@ class GameProvider extends ChangeNotifier {
     if (sel == null || isGameOver || _isGenerating || _isPaused) return;
     final (row, col) = sel;
     final cell = _cells[row][col];
-    if (cell.isGiven) return;
+    if (!cell.isEditable) return;
 
     final adding = !cell.hasNote(value);
     final next = adding
@@ -657,7 +708,7 @@ class GameProvider extends ChangeNotifier {
     for (final key in _bulkSelected) {
       final row = key ~/ SudokuBoard.size;
       final col = key % SudokuBoard.size;
-      if (!_cells[row][col].isGiven) yield (row, col);
+      if (_cells[row][col].isEditable) yield (row, col);
     }
   }
 
@@ -717,7 +768,7 @@ class GameProvider extends ChangeNotifier {
   void clearCell(int row, int col, {bool clearSelection = true}) {
     if (isGameOver || _isGenerating || _isPaused) return;
     final cell = _cells[row][col];
-    if (cell.isGiven || cell.isEmpty) return;
+    if (!cell.isEditable || cell.isEmpty) return;
 
     final hadValue = cell.value != 0;
     _pushUndo();
@@ -755,6 +806,36 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
+  Map<(int, int), Cell> _snapshotLockedCells() {
+    final locked = <(int, int), Cell>{};
+    for (var r = 0; r < SudokuBoard.size; r++) {
+      for (var c = 0; c < SudokuBoard.size; c++) {
+        final cell = _cells[r][c];
+        if (cell.isLocked) {
+          locked[(r, c)] = Cell(
+            value: cell.value,
+            notes: {...cell.notes},
+            isGiven: cell.isGiven,
+            isLocked: true,
+            hasConflict: cell.hasConflict,
+          );
+        }
+      }
+    }
+    return locked;
+  }
+
+  void _restoreLockedCells(Map<(int, int), Cell> locked) {
+    for (final entry in locked.entries) {
+      final (row, col) = entry.key;
+      final cell = entry.value;
+      _cells[row][col] = cell;
+      if (cell.value != 0) {
+        _clearPeerNotes(row, col, cell.value, emitWave: false);
+      }
+    }
+  }
+
   List<List<Cell>> _cloneCells() {
     return List.generate(
       SudokuBoard.size,
@@ -764,6 +845,7 @@ class GameProvider extends ChangeNotifier {
           value: cell.value,
           notes: {...cell.notes},
           isGiven: cell.isGiven,
+          isLocked: cell.isLocked,
           hasConflict: cell.hasConflict,
         );
       }),

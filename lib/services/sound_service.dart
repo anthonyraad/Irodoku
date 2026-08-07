@@ -34,6 +34,22 @@ class SoundService {
     _achievement,
   ];
 
+  /// Playback gains tuned for typical phone speakers (peak + body vs confirm).
+  static const Map<String, double> _volumes = {
+    _confirm: 1.0,
+    _plink: 1.0,
+    _mistake: 1.0,
+    _gameLoss: 1.0,
+    _note: 1.0,
+    _deselect: 0.95,
+    _coin: 0.50,
+    _complete: 0.57,
+    _gameWin: 0.72,
+    _achievement: 0.79,
+  };
+
+  static double _volumeFor(String asset) => _volumes[asset] ?? 1.0;
+
   /// SFX should layer (e.g. achievement over game win), not steal focus.
   static final AudioContext _mixContext = AudioContextConfig(
     focus: AudioContextConfigFocus.mixWithOthers,
@@ -66,13 +82,7 @@ class SoundService {
         );
         await player.setReleaseMode(ReleaseMode.stop);
         await player.setSource(AssetSource(asset));
-        await player.setVolume(
-          asset == _deselect
-              ? 0.95
-              : asset == _coin
-                  ? 0.7
-                  : 1.0,
-        );
+        await player.setVolume(_volumeFor(asset));
         _players[asset] = player;
       }
     } catch (e, st) {
@@ -118,13 +128,7 @@ class SoundService {
             : PlayerMode.lowLatency,
       );
       await fallback.stop();
-      await fallback.setVolume(
-        assetPath == _deselect
-            ? 0.95
-            : assetPath == _coin
-                ? 0.7
-                : 1.0,
-      );
+      await fallback.setVolume(_volumeFor(assetPath));
       await fallback.play(AssetSource(assetPath));
     } catch (e, st) {
       debugPrint('SoundService failed to play $assetPath: $e\n$st');

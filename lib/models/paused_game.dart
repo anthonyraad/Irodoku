@@ -29,6 +29,7 @@ class PausedGame {
             'v': cell.value,
             'n': cell.notes.toList()..sort(),
             'g': cell.isGiven,
+            'l': cell.isLocked,
           },
       ],
     };
@@ -44,6 +45,7 @@ class PausedGame {
           value: map['v'] as int? ?? 0,
           notes: _notesFromMap(map),
           isGiven: map['g'] as bool? ?? false,
+          isLocked: map['l'] as bool? ?? false,
         ),
       );
     }
@@ -55,6 +57,19 @@ class PausedGame {
     if (cells.length != SudokuBoard.size * SudokuBoard.size ||
         solutionRaw.length != SudokuBoard.size * SudokuBoard.size) {
       throw const FormatException('Invalid paused game payload');
+    }
+
+    // Migrate older saves / repair lock flags from the solution.
+    for (var i = 0; i < cells.length; i++) {
+      final cell = cells[i];
+      if (cell.isGiven || cell.value == 0) {
+        if (cell.isLocked) cells[i] = cell.copyWith(isLocked: false);
+        continue;
+      }
+      final correct = cell.value == solutionRaw[i];
+      if (cell.isLocked != correct) {
+        cells[i] = cell.copyWith(isLocked: correct);
+      }
     }
 
     return PausedGame(

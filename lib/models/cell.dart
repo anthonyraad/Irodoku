@@ -6,12 +6,15 @@ class Cell {
   final Set<int> notes;
 
   final bool isGiven;
+  /// True after the player commits the correct solution color (not editable).
+  final bool isLocked;
   final bool hasConflict;
 
   const Cell({
     this.value = 0,
     this.notes = const {},
     this.isGiven = false,
+    this.isLocked = false,
     this.hasConflict = false,
   });
 
@@ -19,20 +22,27 @@ class Cell {
 
   bool get hasNotes => notes.isNotEmpty;
 
+  /// Player may change value/notes (not a clue and not a confirmed correct fill).
+  bool get isEditable => !isGiven && !isLocked;
+
   bool hasNote(int colorValue) => notes.contains(colorValue);
 
   Cell copyWith({
     int? value,
     Set<int>? notes,
     bool? isGiven,
+    bool? isLocked,
     bool? hasConflict,
     bool clearValue = false,
     bool clearNotes = false,
   }) {
+    final nextValue = clearValue ? 0 : (value ?? this.value);
     return Cell(
-      value: clearValue ? 0 : (value ?? this.value),
+      value: nextValue,
       notes: clearNotes ? const {} : (notes ?? this.notes),
       isGiven: isGiven ?? this.isGiven,
+      // Clearing the fill always unlocks; otherwise keep/override lock flag.
+      isLocked: clearValue ? false : (isLocked ?? this.isLocked),
       hasConflict: hasConflict ?? this.hasConflict,
     );
   }

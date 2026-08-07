@@ -4,8 +4,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../core/cel_shade_swatch.dart';
+import '../core/comic_swatch.dart';
 import '../core/gloss_swatch_shader.dart';
-import '../core/neon_swatch_shader.dart';
+import '../core/marble_swatch.dart';
 import '../core/organic_swatch_motion.dart';
 import '../core/organic_swatch_shader.dart';
 
@@ -15,6 +16,7 @@ enum PaletteSwatchStyle {
   neon,
   gloss,
   celShade,
+  marble,
 }
 
 /// A fill style for one palette slot (solid, organic gradient, or neon texture).
@@ -66,14 +68,13 @@ class PaletteSwatch {
         motionSpeed: motionSpeed,
       );
 
+  /// Neon palette: flat color with comic-book halftone / cel highlight overlays.
   factory PaletteSwatch.neon(Color color, {int swirlSeed = 0}) =>
       PaletteSwatch(
         start: color,
         stop: color,
         swirlSeed: swirlSeed,
         style: PaletteSwatchStyle.neon,
-        // Soft glow breathe driven by [OrganicSwatchMotion].
-        animated: true,
       );
 
   factory PaletteSwatch.gloss(Color color, {int swirlSeed = 0}) =>
@@ -92,6 +93,15 @@ class PaletteSwatch {
         style: PaletteSwatchStyle.celShade,
       );
 
+  /// Standard palette: flat color with soft marble cloud / vein overlays.
+  factory PaletteSwatch.marble(Color color, {int swirlSeed = 0}) =>
+      PaletteSwatch(
+        start: color,
+        stop: color,
+        swirlSeed: swirlSeed,
+        style: PaletteSwatchStyle.marble,
+      );
+
   bool get isOrganic =>
       style == PaletteSwatchStyle.organic ||
       (style == PaletteSwatchStyle.solid && start != stop);
@@ -102,9 +112,12 @@ class PaletteSwatch {
 
   bool get isCelShade => style == PaletteSwatchStyle.celShade;
 
+  bool get isMarble => style == PaletteSwatchStyle.marble;
+
   bool get isGradient => isOrganic && start != stop;
 
-  bool get usesShader => isOrganic || isNeon || isGloss || isCelShade;
+  bool get usesShader =>
+      isOrganic || isNeon || isGloss || isCelShade || isMarble;
 
   /// Midpoint blend used for same-color wash and animation lerps.
   Color get representative => isGradient ? blend(start, stop, 0.5) : start;
@@ -148,9 +161,6 @@ class PaletteSwatch {
   Decoration boxDecoration({BoxBorder? border}) => decoration(border: border);
 
   Shader? shaderForRect(Rect rect) {
-    if (isNeon) {
-      return NeonSwatchShader.forRect(rect, this);
-    }
     if (isGloss) {
       return GlossSwatchShader.forRect(rect, this);
     }
@@ -265,6 +275,14 @@ class _ShaderSwatchPainter extends BoxPainter {
 void drawSwatchRect(Canvas canvas, Rect rect, PaletteSwatch swatch) {
   if (swatch.isCelShade) {
     CelShadeSwatch.paint(canvas, rect, swatch);
+    return;
+  }
+  if (swatch.isNeon) {
+    ComicSwatch.paint(canvas, rect, swatch);
+    return;
+  }
+  if (swatch.isMarble) {
+    MarbleSwatch.paint(canvas, rect, swatch);
     return;
   }
 
