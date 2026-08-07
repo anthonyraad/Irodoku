@@ -24,6 +24,7 @@ class SoundService {
   static const _gsConfirm3 = 'sounds/gsconfirm3.mp3';
   static const _gsConfirm4 = 'sounds/gsconfirm4.mp3';
   static const _gsConfirm5 = 'sounds/gsconfirm5.mp3';
+  static const _gsConfirm6 = 'sounds/gsconfirm6.mp3';
   static const _mistake = 'sounds/mistake.mp3';
   static const _gameLoss = 'sounds/gameloss.mp3';
   static const _complete = 'sounds/complete.mp3';
@@ -37,13 +38,14 @@ class SoundService {
     _gsConfirm3,
   ];
 
-  /// Sky palette: Glass set plus two Sky-only variants.
+  /// Sky palette: shared confirms plus three Sky-only variants.
   static const _skyConfirms = <String>[
     _gsConfirm,
     _gsConfirm2,
     _gsConfirm3,
     _gsConfirm4,
     _gsConfirm5,
+    _gsConfirm6,
   ];
 
   static const _assets = <String>[
@@ -59,6 +61,7 @@ class SoundService {
     _gsConfirm3,
     _gsConfirm4,
     _gsConfirm5,
+    _gsConfirm6,
     _mistake,
     _gameLoss,
     _complete,
@@ -82,6 +85,7 @@ class SoundService {
     _gsConfirm3: 0.45,
     _gsConfirm4: 0.45,
     _gsConfirm5: 0.45,
+    _gsConfirm6: 0.45,
     _coin: 0.50,
     _slide: 0.62,
     _complete: 0.57,
@@ -157,7 +161,7 @@ class SoundService {
         ),
       );
 
-  /// Sky placement sting — shuffled round-robin of five variants.
+  /// Sky placement sting — shuffled round-robin of six variants.
   Future<void> playSkyConfirm() => _play(
         _nextShuffledConfirm(
           pool: _skyConfirms,
