@@ -337,6 +337,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                     fit: StackFit.expand,
                     children: [
                       ColorCell(
+                        // Fresh State each puzzle so reveal/departing don't
+                        // carry across new games (same grid slot reuse).
+                        key: ValueKey('cell-${game.boardEpoch}-$row-$col'),
                         cell: cell,
                         isSelected: isSelected,
                         palette: palette,

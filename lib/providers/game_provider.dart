@@ -117,6 +117,8 @@ class GameProvider extends ChangeNotifier {
   bool get isGameOver => _isWon || _isLost;
   bool get isGenerating => _isGenerating;
   bool get hasActiveGame => _hasActiveGame;
+  /// Bumps when a new puzzle generation starts; use to reset per-cell UI state.
+  int get boardEpoch => _generationToken;
   /// Whether the player has interacted with any cell this game.
   bool get hasInteracted => _hasInteracted;
   int get mistakes => _mistakes;

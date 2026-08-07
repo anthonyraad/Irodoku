@@ -104,9 +104,8 @@ class _ColorCellState extends State<ColorCell>
             _departingCommittedOutline = null;
           });
         }
-        // Idle at fully open so a reused State (new game / new given in this
-        // slot) never keeps a zero-radius reveal clip from a prior erase.
-        _revealController.value = 1;
+        // Leave value at 0 here — resetting to 1 races with forward(from: 0)
+        // and cancels the radial bloom. Givens/locked use paint-time fillReveal.
         _revealController.duration = _revealDuration;
       }
     });
@@ -145,11 +144,13 @@ class _ColorCellState extends State<ColorCell>
     } else if (oldCommitted && !newCommitted && !oldWidget.cell.isGiven) {
       // Erase / undo / same-color toggle: shrink the fill away.
       _beginDepartingCommitted(oldWidget.cell.value);
+    } else if (newCommitted && widget.cell.isGiven) {
+      // New-game / restored givens on a reused cell: never bloom, always open.
+      _ensureFullyRevealed();
     } else if (newCommitted &&
-        (widget.cell.isGiven ||
-            widget.cell.isLocked ||
-            (!_revealController.isAnimating && _revealController.value < 1))) {
-      // Given/locked on a reused cell, or any stuck closed reveal: show fill.
+        !_revealController.isAnimating &&
+        _revealController.value < 1) {
+      // Stuck closed reveal on a player fill (e.g. after odd restore) — show it.
       _ensureFullyRevealed();
     }
 
@@ -232,10 +233,9 @@ class _ColorCellState extends State<ColorCell>
   void _clearDepartingCommitted() {
     _departingCommittedSwatch = null;
     _departingCommittedOutline = null;
-    // Cancel an in-flight shrink, or recover from a finished dismiss at 0.
-    // Do not touch an in-flight forward bloom.
-    if (_revealController.status == AnimationStatus.reverse ||
-        _revealController.status == AnimationStatus.dismissed) {
+    // Cancel an in-flight shrink only. Do not snap dismissed→1 here: that
+    // races with forward(from: 0) when called at the end of didUpdateWidget.
+    if (_revealController.status == AnimationStatus.reverse) {
       _revealController.value = 1;
     }
     _revealController.duration = _revealDuration;
@@ -408,10 +408,12 @@ class _ColorCellState extends State<ColorCell>
                   committedSwatch: committedSwatch,
                   committedOutline: committedOutline,
                   noteOutlines: noteOutlines,
-                  // Givens/locked never bloom; also guards reused State left at 0.
+                  // Givens never bloom (and may reuse State left at reveal 0).
+                  // Locked correct fills still bloom — lock is set on the same
+                  // frame as placement, so forcing 1 here would skip the animation.
                   fillReveal: committedSwatch == null
                       ? 1
-                      : (cell.isGiven || cell.isLocked)
+                      : cell.isGiven
                           ? 1
                           : _reveal.value,
                   selectionHighlight: widget.isSelected && !celebrating
