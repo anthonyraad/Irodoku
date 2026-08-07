@@ -6,8 +6,17 @@ import '../models/palette_swatch.dart';
 import 'organic_swatch_motion.dart';
 
 /// GPU swirl fill for gradient palette swatches (Rainbow / Glass / Sky).
+///
+/// Reuses [FragmentShader] instances across frames. Creating a new shader on
+/// every cell paint (especially while Glass/Sky animate) leaks GPU objects and
+/// can leave occasional cells unfilled on web — showing the given-cell grey
+/// underlay instead of the swatch.
 abstract final class OrganicSwatchShader {
   static ui.FragmentProgram? _program;
+
+  /// One shader per unique swatch + quantized paint size so simultaneous draws
+  /// with different uniforms don't stomp each other.
+  static final Map<int, ui.FragmentShader> _shaders = {};
 
   static bool get isReady => _program != null;
 
@@ -20,9 +29,26 @@ abstract final class OrganicSwatchShader {
     final program = _program;
     if (program == null || !swatch.isOrganic) return null;
 
-    final shader = program.fragmentShader()
-      ..setFloat(0, rect.width)
-      ..setFloat(1, rect.height)
+    final w = rect.width;
+    final h = rect.height;
+    if (w <= 0 || h <= 0) return null;
+
+    final key = Object.hash(
+      swatch.swirlSeed,
+      swatch.start.toARGB32(),
+      swatch.stop.toARGB32(),
+      swatch.intensity,
+      swatch.animated,
+      swatch.motionSpeed,
+      // Quantize so minor float noise doesn't explode the cache.
+      (w * 4).round(),
+      (h * 4).round(),
+    );
+
+    final shader = _shaders.putIfAbsent(key, program.fragmentShader);
+    shader
+      ..setFloat(0, w)
+      ..setFloat(1, h)
       ..setFloat(2, swatch.swirlSeed.toDouble());
 
     _setColor(shader, 3, swatch.start);

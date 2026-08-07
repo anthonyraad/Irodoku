@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../core/cel_shade_swatch.dart';
 import '../core/comic_swatch.dart';
 import '../core/gloss_swatch_shader.dart';
-import '../core/marble_swatch.dart';
 import '../core/organic_swatch_motion.dart';
 import '../core/organic_swatch_shader.dart';
 
@@ -16,7 +15,6 @@ enum PaletteSwatchStyle {
   neon,
   gloss,
   celShade,
-  marble,
 }
 
 /// A fill style for one palette slot (solid, organic gradient, or neon texture).
@@ -93,15 +91,6 @@ class PaletteSwatch {
         style: PaletteSwatchStyle.celShade,
       );
 
-  /// Standard palette: flat color with soft marble cloud / vein overlays.
-  factory PaletteSwatch.marble(Color color, {int swirlSeed = 0}) =>
-      PaletteSwatch(
-        start: color,
-        stop: color,
-        swirlSeed: swirlSeed,
-        style: PaletteSwatchStyle.marble,
-      );
-
   bool get isOrganic =>
       style == PaletteSwatchStyle.organic ||
       (style == PaletteSwatchStyle.solid && start != stop);
@@ -112,12 +101,9 @@ class PaletteSwatch {
 
   bool get isCelShade => style == PaletteSwatchStyle.celShade;
 
-  bool get isMarble => style == PaletteSwatchStyle.marble;
-
   bool get isGradient => isOrganic && start != stop;
 
-  bool get usesShader =>
-      isOrganic || isNeon || isGloss || isCelShade || isMarble;
+  bool get usesShader => isOrganic || isNeon || isGloss || isCelShade;
 
   /// Midpoint blend used for same-color wash and animation lerps.
   Color get representative => isGradient ? blend(start, stop, 0.5) : start;
@@ -281,20 +267,18 @@ void drawSwatchRect(Canvas canvas, Rect rect, PaletteSwatch swatch) {
     ComicSwatch.paint(canvas, rect, swatch);
     return;
   }
-  if (swatch.isMarble) {
-    MarbleSwatch.paint(canvas, rect, swatch);
-    return;
-  }
 
   if (!swatch.usesShader) {
     canvas.drawRect(rect, Paint()..color = swatch.start);
     return;
   }
 
+  // Opaque base first: if a GPU shader fill is dropped (seen on Chrome with
+  // Glass/Sky), the cell still shows the correct color instead of given grey.
+  canvas.drawRect(rect, Paint()..color = swatch.start);
+
   final shader = swatch.shaderForRect(rect);
   if (shader != null) {
     canvas.drawRect(rect, Paint()..shader = shader);
-  } else {
-    canvas.drawRect(rect, Paint()..color = swatch.start);
   }
 }

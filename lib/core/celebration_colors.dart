@@ -6,7 +6,7 @@ abstract final class CelebrationColors {
   /// Smooth rainbow sweep through the palette, then settle to [original].
   ///
   /// [t] is 0–1 for this cell (after stagger). [stagger] offsets the wave.
-  /// Returns full swatches so organic/comic/marble/gloss textures are preserved.
+  /// Returns full swatches so organic/comic/gloss textures are preserved.
   static PaletteSwatch swatchFor({
     required double t,
     required int stagger,

@@ -585,6 +585,10 @@ class GameProvider extends ChangeNotifier {
     if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
       return _sounds.playPlink;
     }
+    if (palette == GamePalette.neon) return _sounds.playSlide;
+    if (palette == GamePalette.rainbow) return _sounds.playRainbowConfirm;
+    if (palette == GamePalette.glass) return _sounds.playGlassConfirm;
+    if (palette == GamePalette.sky) return _sounds.playSkyConfirm;
     return _sounds.playConfirm;
   }
 

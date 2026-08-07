@@ -104,6 +104,9 @@ class _ColorCellState extends State<ColorCell>
             _departingCommittedOutline = null;
           });
         }
+        // Idle at fully open so a reused State (new game / new given in this
+        // slot) never keeps a zero-radius reveal clip from a prior erase.
+        _revealController.value = 1;
         _revealController.duration = _revealDuration;
       }
     });
@@ -142,6 +145,12 @@ class _ColorCellState extends State<ColorCell>
     } else if (oldCommitted && !newCommitted && !oldWidget.cell.isGiven) {
       // Erase / undo / same-color toggle: shrink the fill away.
       _beginDepartingCommitted(oldWidget.cell.value);
+    } else if (newCommitted &&
+        (widget.cell.isGiven ||
+            widget.cell.isLocked ||
+            (!_revealController.isAnimating && _revealController.value < 1))) {
+      // Given/locked on a reused cell, or any stuck closed reveal: show fill.
+      _ensureFullyRevealed();
     }
 
     // Notes removed while empty (peer clear, note toggle, erase, undo).
@@ -223,9 +232,20 @@ class _ColorCellState extends State<ColorCell>
   void _clearDepartingCommitted() {
     _departingCommittedSwatch = null;
     _departingCommittedOutline = null;
-    if (_revealController.status == AnimationStatus.reverse) {
+    // Cancel an in-flight shrink, or recover from a finished dismiss at 0.
+    // Do not touch an in-flight forward bloom.
+    if (_revealController.status == AnimationStatus.reverse ||
+        _revealController.status == AnimationStatus.dismissed) {
       _revealController.value = 1;
     }
+    _revealController.duration = _revealDuration;
+  }
+
+  void _ensureFullyRevealed() {
+    _departingCommittedSwatch = null;
+    _departingCommittedOutline = null;
+    _revealController.stop();
+    _revealController.value = 1;
     _revealController.duration = _revealDuration;
   }
 
@@ -388,7 +408,12 @@ class _ColorCellState extends State<ColorCell>
                   committedSwatch: committedSwatch,
                   committedOutline: committedOutline,
                   noteOutlines: noteOutlines,
-                  fillReveal: committedSwatch != null ? _reveal.value : 1,
+                  // Givens/locked never bloom; also guards reused State left at 0.
+                  fillReveal: committedSwatch == null
+                      ? 1
+                      : (cell.isGiven || cell.isLocked)
+                          ? 1
+                          : _reveal.value,
                   selectionHighlight: widget.isSelected && !celebrating
                       ? IrodokuTheme.selectedCellHighlight(brightness, primary)
                       : null,
