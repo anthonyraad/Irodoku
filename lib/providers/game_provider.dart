@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/cell.dart';
+import '../models/daily_irodoku.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/note_clear_wave.dart';
@@ -20,10 +21,15 @@ import 'settings_provider.dart';
 import 'stats_provider.dart';
 
 /// Top-level entry for isolate-friendly puzzle generation.
+///
+/// Args: `[difficultyKey, seed]` where [seed] `< 0` means unseeded [Random].
 /// Returns `[puzzleFlat, solutionFlat]` as length-81 int lists.
-List<List<int>> generatePuzzleIsolate(String difficultyKey) {
+List<List<int>> generatePuzzleIsolate(List<Object> args) {
+  final difficultyKey = args[0] as String;
+  final seed = args[1] as int;
   final difficulty = Difficulty.fromStorageKey(difficultyKey);
-  final generated = SudokuGenerator().generate(difficulty);
+  final random = seed < 0 ? Random() : Random(seed);
+  final generated = SudokuGenerator(random: random).generate(difficulty);
   return [generated.puzzle.toFlat(), generated.solution.toFlat()];
 }
 
@@ -89,6 +95,21 @@ class GameProvider extends ChangeNotifier {
   final List<int> _consecutiveDistinctFillColors = [];
   final List<DateTime> _unitCompletionTimes = [];
 
+  bool _isDaily = false;
+  String? _dailyDayKey;
+
+  /// Daily-only display palette — never written to [SettingsProvider].
+  GamePalette? _sessionPalette;
+
+  /// Regular puzzle parked while Daily Irodoku is nested under Main Menu.
+  _HeldGameSession? _heldRegular;
+
+  /// In-progress Daily parked while browsing Main Menu.
+  _HeldGameSession? _heldDaily;
+
+  /// After cold restore of a paused Daily, home should open Main Menu → Daily.
+  bool _openDailyRoutePending = false;
+
   GameProvider({
     required SettingsProvider settings,
     required StatsProvider stats,
@@ -131,6 +152,49 @@ class GameProvider extends ChangeNotifier {
   bool get noteMode => _noteMode;
   bool get bulkNoteSelect => _bulkNoteSelect;
   NoteClearWave? get noteClearWave => _noteClearWave;
+  bool get isDaily => _isDaily;
+
+  /// Palette for the live board (daily session override or settings).
+  GamePalette get activePalette => _sessionPalette ?? _settings.palette;
+
+  /// Short date for the active daily (`8.9.26`), or null when not daily.
+  String? get dailyDateLabel {
+    final key = _dailyDayKey;
+    if (key == null) return null;
+    return DailyIrodoku.shortDateLabel(key);
+  }
+
+  /// Whether today's Daily Irodoku has already been won (local calendar).
+  bool get isDailyCompletedToday {
+    final today = DailyIrodoku.forDate().dayKey;
+    return _prefs.getDailyLastCompletedDay() == today;
+  }
+
+  /// True when today's daily is live or parked for resume from Main Menu.
+  bool get hasResumableDaily {
+    final today = DailyIrodoku.forDate().dayKey;
+    if (isDailyCompletedToday) return false;
+    if (_heldDaily?.dailyDayKey == today) return true;
+    return _isDaily && _dailyDayKey == today && !isGameOver;
+  }
+
+  /// Consumes the cold-start flag to auto-open the Daily route once.
+  bool consumeOpenDailyRoutePending() {
+    final pending = _openDailyRoutePending;
+    _openDailyRoutePending = false;
+    return pending;
+  }
+
+  /// Streak shown on the Daily button; 0 if broken by a missed day.
+  int get dailyStreakDisplay {
+    final today = DailyIrodoku.forDate().dayKey;
+    final last = _prefs.getDailyLastCompletedDay();
+    if (last == null) return 0;
+    if (last != today && last != DailyIrodoku.previousDayKey(today)) {
+      return 0;
+    }
+    return _prefs.getDailyStreak();
+  }
 
   List<GamePalette> consumePendingPaletteUnlocks() {
     final pending = List<GamePalette>.from(_pendingPaletteUnlocks);
@@ -176,58 +240,208 @@ class GameProvider extends ChangeNotifier {
     if (_isGenerating || _isPaused || _isLost) return;
     if (!_hasActiveGame && !_isWon) return;
     if (_celebration != null) return;
-    final half = IrodokuPalette.colorsFor(_settings.palette).length ~/ 2;
+    final half = IrodokuPalette.colorsFor(activePalette).length ~/ 2;
     _colorCycleSteps = half + Random().nextInt(2); // 4 or 5 of 9 colors
     _colorCycleFilterValue = onlyValue;
     _colorCycleSeq++;
     notifyListeners();
   }
 
-  /// Restores a paused game if one exists; otherwise starts a new puzzle.
+  /// Restores a paused / parked game if one exists; otherwise starts a new puzzle.
   Future<void> bootstrap() async {
-    final restored = await restorePausedGame();
-    if (!restored) {
-      await startNewGame();
+    await _hydrateParkedHoldsFromDisk();
+
+    final paused = _prefs.loadPausedGame();
+    if (paused != null && paused.isDaily) {
+      final today = DailyIrodoku.forDate().dayKey;
+      if (paused.dailyDayKey != today) {
+        await _prefs.clearPausedGame();
+      } else {
+        // Don't put Daily on the home route — park it and reopen nested.
+        _heldDaily = _heldFromPaused(paused);
+        await _persistParkedDaily();
+        await _prefs.clearPausedGame();
+        _openDailyRoutePending = true;
+
+        if (_heldRegular != null) {
+          _applyHeld(_heldRegular!);
+          _heldRegular = null;
+          await _prefs.clearParkedRegularGame();
+          notifyListeners();
+          return;
+        }
+        await startNewGame(preserveHeldDaily: true);
+        return;
+      }
     }
+
+    final restored = await restorePausedGame();
+    if (restored) return;
+
+    // Killed on Main Menu: both puzzles may exist only as parked holds.
+    if (_heldRegular != null) {
+      _applyHeld(_heldRegular!);
+      _heldRegular = null;
+      await _prefs.clearParkedRegularGame();
+      notifyListeners();
+      return;
+    }
+
+    await startNewGame();
   }
 
   Future<bool> restorePausedGame() async {
     final paused = _prefs.loadPausedGame();
     if (paused == null) return false;
 
-    _timer?.cancel();
-    _isGenerating = false;
-    _isWon = false;
-    _isLost = false;
-    _isPaused = true;
-    _hasActiveGame = true;
-    _hasInteracted = true;
-    _winRecorded = false;
-    _lossRecorded = false;
-    _pendingPaletteUnlocks = [];
-    _selected = null;
-    _exitBulkNoteSelect();
-    _mistakes = paused.mistakes;
-    _elapsed = paused.elapsed;
-    _gameDifficulty = paused.difficulty;
-    _solution = SudokuBoard.fromFlat(paused.solution);
-    _noteMode = false;
-    _undoStack.clear();
+    // Stale / unexpected daily — bootstrap handles today's paused Daily.
+    if (paused.isDaily) {
+      await _prefs.clearPausedGame();
+      return false;
+    }
 
-    _cells = List.generate(SudokuBoard.size, (r) {
-      return List.generate(SudokuBoard.size, (c) {
-        return paused.cells[r * SudokuBoard.size + c];
-      });
-    });
-    _refreshConflicts();
-    _completedUnits = _successfullyCompletedUnits();
-    _celebration = null;
-    _resetAchievementSession();
+    _applyPausedBoard(paused, sessionPalette: null);
     notifyListeners();
     return true;
   }
 
-  Future<void> startNewGame() async {
+  /// Starts or resumes today's seeded Daily Irodoku.
+  ///
+  /// Parks the regular puzzle first so Main Menu back can restore it.
+  Future<bool> startDailyGame() async {
+    final challenge = DailyIrodoku.forDate();
+    if (_prefs.getDailyLastCompletedDay() == challenge.dayKey) return false;
+    if (_isGenerating) return false;
+
+    // Resume a daily parked while browsing Main Menu.
+    if (_heldDaily != null && _heldDaily!.dailyDayKey == challenge.dayKey) {
+      if (!_isDaily) {
+        await _parkRegularFromLive();
+      }
+      _applyHeld(_heldDaily!);
+      _heldDaily = null;
+      await _prefs.clearParkedDailyGame();
+      _sessionPalette = challenge.palette;
+      notifyListeners();
+      return true;
+    }
+
+    // Already on today's live daily board (still in progress).
+    if (_isDaily && _dailyDayKey == challenge.dayKey && !isGameOver) {
+      _sessionPalette = challenge.palette;
+      notifyListeners();
+      return true;
+    }
+
+    // Park the regular puzzle before replacing the live board with daily.
+    if (!_isDaily) {
+      await _parkRegularFromLive();
+    } else {
+      // Lost/won leftover daily on the live board — drop it.
+      _heldDaily = null;
+      await _prefs.clearParkedDailyGame();
+    }
+
+    _sessionPalette = challenge.palette;
+    await startNewGame(
+      difficulty: challenge.difficulty,
+      seed: challenge.seed,
+      dailyDayKey: challenge.dayKey,
+    );
+    return true;
+  }
+
+  /// Park the live Daily when leaving its screen for Main Menu.
+  void parkDailyForMenu() {
+    if (!_isDaily) return;
+    _timer?.cancel();
+    if (!isGameOver) {
+      _heldDaily = _captureHeld();
+      unawaited(_persistParkedDaily());
+    } else {
+      _heldDaily = null;
+      unawaited(_prefs.clearParkedDailyGame());
+    }
+    // Main Menu should reflect the user's real palette, not the daily's.
+    _sessionPalette = null;
+    notifyListeners();
+  }
+
+  /// Restore the parked regular puzzle when leaving Main Menu.
+  Future<void> leaveMenuToRegular() async {
+    var held = _heldRegular;
+    if (held == null) {
+      final parked = _prefs.loadParkedRegularGame();
+      if (parked != null && !parked.isDaily) {
+        held = _heldFromPaused(parked);
+      }
+    }
+    if (held == null) {
+      _sessionPalette = null;
+      // Clear any legacy prefs from older daily palette forcing.
+      await _prefs.clearPaletteBeforeDaily();
+      // Live board may still be Daily after browsing the menu — park it.
+      if (_isDaily) {
+        if (!isGameOver) {
+          _heldDaily = _captureHeld();
+          await _persistParkedDaily();
+        } else {
+          _heldDaily = null;
+          await _prefs.clearParkedDailyGame();
+        }
+        // Home must not keep Daily as the live board.
+        await startNewGame(preserveHeldDaily: true);
+        return;
+      }
+      notifyListeners();
+      return;
+    }
+    if (_isDaily && !isGameOver) {
+      _heldDaily = _captureHeld();
+      await _persistParkedDaily();
+    } else if (_isDaily && isGameOver) {
+      _heldDaily = null;
+      await _prefs.clearParkedDailyGame();
+    }
+    _sessionPalette = null;
+    await _prefs.clearPaletteBeforeDaily();
+    _applyHeld(held);
+    _heldRegular = null;
+    await _prefs.clearParkedRegularGame();
+    notifyListeners();
+  }
+
+  Future<void> startNewGame({
+    Difficulty? difficulty,
+    int? seed,
+    String? dailyDayKey,
+    bool preserveHeldDaily = false,
+  }) async {
+    final startingDaily = dailyDayKey != null;
+    if (startingDaily) {
+      // Fresh Daily replaces any parked Daily; keep parked regular.
+      _heldDaily = null;
+      await _prefs.clearParkedDailyGame();
+    } else if (preserveHeldDaily) {
+      // Main Menu difficulty/palette: regenerate regular without wiping Daily.
+      if (_isDaily && !isGameOver) {
+        _heldDaily = _captureHeld();
+        await _persistParkedDaily();
+      }
+      _heldRegular = null;
+      await _prefs.clearParkedRegularGame();
+      _sessionPalette = null;
+      await _prefs.clearPaletteBeforeDaily();
+    } else {
+      // Starting a fresh regular game abandons nested daily/regular holds.
+      _heldDaily = null;
+      _heldRegular = null;
+      _sessionPalette = null;
+      await _prefs.clearParkedDailyGame();
+      await _prefs.clearParkedRegularGame();
+      await _prefs.clearPaletteBeforeDaily();
+    }
+
     _timer?.cancel();
     final token = ++_generationToken;
     _isGenerating = true;
@@ -244,7 +458,12 @@ class GameProvider extends ChangeNotifier {
     _exitBulkNoteSelect();
     _elapsed = Duration.zero;
     _solution = null;
-    _gameDifficulty = _settings.difficulty;
+    _gameDifficulty = difficulty ?? _settings.difficulty;
+    _isDaily = startingDaily;
+    _dailyDayKey = dailyDayKey;
+    if (startingDaily && _sessionPalette == null) {
+      _sessionPalette = DailyIrodoku.forDate().palette;
+    }
     _completedUnits = {};
     _celebration = null;
     _noteMode = false;
@@ -255,7 +474,7 @@ class GameProvider extends ChangeNotifier {
 
     final boards = await compute(
       generatePuzzleIsolate,
-      _gameDifficulty.storageKey,
+      <Object>[_gameDifficulty.storageKey, seed ?? -1],
     );
 
     if (token != _generationToken) return;
@@ -324,6 +543,8 @@ class GameProvider extends ChangeNotifier {
         mistakes: _mistakes,
         solution: solution.toFlat(),
         cells: flatCells,
+        isDaily: _isDaily,
+        dailyDayKey: _dailyDayKey,
       ),
     );
   }
@@ -582,7 +803,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> Function() _placementConfirmSound() {
-    final palette = _settings.palette;
+    final palette = activePalette;
     if (palette == GamePalette.world11) return _sounds.playCoin;
     if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
       return _sounds.playPlink;
@@ -874,6 +1095,7 @@ class GameProvider extends ChangeNotifier {
 
   /// Chromatic mode: after completing any unit, hop to a different menu palette.
   void _maybeChromaticShift() {
+    if (_isDaily) return;
     if (!_settings.chromatic) return;
     final options = GamePalette.menuValues
         .where((palette) => palette != _settings.palette)
@@ -916,9 +1138,12 @@ class GameProvider extends ChangeNotifier {
       _completedNineUnitsInNineSeconds = true;
     }
 
-    if (_completedRowColBoxSimultaneously ||
-        _completedNineUnitsInNineSeconds ||
-        _filledNineDistinctColorsConsecutively) {
+    // On the winning fill, skip — evaluateWin unlocks these from ctx and
+    // owns the delayed achievement sting (avoids a double play).
+    if (!_toBoard().isValidSolution() &&
+        (_completedRowColBoxSimultaneously ||
+            _completedNineUnitsInNineSeconds ||
+            _filledNineDistinctColorsConsecutively)) {
       unawaited(
         _achievements.recordSessionFlags(
           completedRowColBoxSimultaneously:
@@ -935,12 +1160,14 @@ class GameProvider extends ChangeNotifier {
   void _recordSuccessfulFill(int row, int col, int value) {
     final isFirstFill = _firstFillColor == null;
     _firstFillColor ??= value;
+    // Winning fill: evaluateWin records r5c5 from firstFillColor + delay SFX.
     if (isFirstFill &&
-        _settings.palette == GamePalette.pkmn &&
+        !_toBoard().isValidSolution() &&
+        activePalette == GamePalette.pkmn &&
         value == 3) {
       unawaited(
         _achievements.recordFirstFill(
-          palette: _settings.palette,
+          palette: activePalette,
           colorValue: value,
         ),
       );
@@ -959,15 +1186,17 @@ class GameProvider extends ChangeNotifier {
     }
     if (_consecutiveDistinctFillColors.length >= 9) {
       _filledNineDistinctColorsConsecutively = true;
-      unawaited(
-        _achievements.recordSessionFlags(
-          completedRowColBoxSimultaneously:
-              _completedRowColBoxSimultaneously,
-          completedNineUnitsInNineSeconds:
-              _completedNineUnitsInNineSeconds,
-          filledNineDistinctColorsConsecutively: true,
-        ),
-      );
+      if (!_toBoard().isValidSolution()) {
+        unawaited(
+          _achievements.recordSessionFlags(
+            completedRowColBoxSimultaneously:
+                _completedRowColBoxSimultaneously,
+            completedNineUnitsInNineSeconds:
+                _completedNineUnitsInNineSeconds,
+            filledNineDistinctColorsConsecutively: true,
+          ),
+        );
+      }
     }
   }
 
@@ -1004,7 +1233,7 @@ class GameProvider extends ChangeNotifier {
       usedUndo: _usedUndo,
       paused: _pausedThisGame,
       usedDarkMode: _settings.darkMode,
-      chromatic: _settings.chromatic,
+      chromatic: _settings.chromatic && !_isDaily,
       completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
       completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
       filledNineDistinctColorsConsecutively:
@@ -1064,8 +1293,15 @@ class GameProvider extends ChangeNotifier {
     _refreshConflicts();
     if (!_lossRecorded) {
       _lossRecorded = true;
-      _stats.resetStreakSync(palette: _settings.palette);
-      unawaited(_stats.persist());
+      // Daily losses don't touch the regular palette streak.
+      if (!_isDaily) {
+        _stats.resetStreakSync(palette: _settings.palette);
+        unawaited(_stats.persist());
+      }
+    }
+    if (_isDaily) {
+      _heldDaily = null;
+      unawaited(_prefs.clearParkedDailyGame());
     }
   }
 
@@ -1098,12 +1334,13 @@ class GameProvider extends ChangeNotifier {
 
     if (!_winRecorded) {
       _winRecorded = true;
+      final winPalette = activePalette;
       _pendingPaletteUnlocks = _stats.recordWinSync(
         difficulty: _gameDifficulty,
         elapsed: _elapsed,
         mistakes: _mistakes,
-        palette: _settings.palette,
-        chromatic: _settings.chromatic,
+        palette: winPalette,
+        chromatic: _settings.chromatic && !_isDaily,
       );
       _settings.ensurePaletteUnlocked(_stats.stats);
       unawaited(_stats.persist());
@@ -1112,10 +1349,299 @@ class GameProvider extends ChangeNotifier {
           difficulty: _gameDifficulty,
           elapsed: _elapsed,
           mistakes: _mistakes,
-          palette: _settings.palette,
+          palette: winPalette,
           ctx: _achievementGameContext(),
         ),
       );
+      if (_isDaily) {
+        _heldDaily = null;
+        unawaited(_prefs.clearParkedDailyGame());
+        unawaited(_recordDailyCompletion());
+      }
+    }
+  }
+
+  Future<void> _recordDailyCompletion() async {
+    final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
+    final last = _prefs.getDailyLastCompletedDay();
+    if (last == dayKey) return;
+
+    final yesterday = DailyIrodoku.previousDayKey(dayKey);
+    final streak = last == yesterday ? _prefs.getDailyStreak() + 1 : 1;
+    await _prefs.setDailyProgress(
+      lastCompletedDay: dayKey,
+      streak: streak,
+    );
+    notifyListeners();
+  }
+
+  Future<void> _hydrateParkedHoldsFromDisk() async {
+    final today = DailyIrodoku.forDate().dayKey;
+
+    final parkedRegular = _prefs.loadParkedRegularGame();
+    if (parkedRegular != null && !parkedRegular.isDaily) {
+      _heldRegular = _heldFromPaused(parkedRegular);
+    } else if (parkedRegular != null) {
+      await _prefs.clearParkedRegularGame();
+    }
+
+    final parkedDaily = _prefs.loadParkedDailyGame();
+    if (parkedDaily != null &&
+        parkedDaily.isDaily &&
+        parkedDaily.dailyDayKey == today) {
+      _heldDaily = _heldFromPaused(parkedDaily);
+    } else if (parkedDaily != null) {
+      await _prefs.clearParkedDailyGame();
+    }
+  }
+
+  Future<void> _parkRegularFromLive() async {
+    if (!_hasActiveGame && !isGameOver && _solution == null) return;
+    _heldRegular = _captureHeld();
+    await _persistParkedRegular();
+  }
+
+  Future<void> _persistParkedRegular() async {
+    final held = _heldRegular;
+    if (held == null) {
+      await _prefs.clearParkedRegularGame();
+      return;
+    }
+    final paused = _pausedFromHeld(held);
+    if (paused == null) {
+      await _prefs.clearParkedRegularGame();
+      return;
+    }
+    await _prefs.saveParkedRegularGame(paused);
+  }
+
+  Future<void> _persistParkedDaily() async {
+    final held = _heldDaily;
+    if (held == null) {
+      await _prefs.clearParkedDailyGame();
+      return;
+    }
+    final paused = _pausedFromHeld(held);
+    if (paused == null) {
+      await _prefs.clearParkedDailyGame();
+      return;
+    }
+    await _prefs.saveParkedDailyGame(paused);
+  }
+
+  PausedGame? _pausedFromHeld(_HeldGameSession held) {
+    final solution = held.solution;
+    if (solution == null) return null;
+    final flatCells = <Cell>[
+      for (final row in held.cells)
+        for (final cell in row) cell.copyWith(hasConflict: false),
+    ];
+    return PausedGame(
+      difficulty: held.gameDifficulty,
+      elapsed: held.elapsed,
+      mistakes: held.mistakes,
+      solution: solution,
+      cells: flatCells,
+      isDaily: held.isDaily,
+      dailyDayKey: held.dailyDayKey,
+    );
+  }
+
+  _HeldGameSession _heldFromPaused(PausedGame paused) {
+    final cells = List.generate(SudokuBoard.size, (r) {
+      return List.generate(SudokuBoard.size, (c) {
+        return paused.cells[r * SudokuBoard.size + c].copyWith();
+      });
+    });
+    final sessionPalette = paused.isDaily
+        ? DailyIrodoku.forDate().palette
+        : null;
+    return _HeldGameSession(
+      cells: cells,
+      solution: paused.solution,
+      selected: null,
+      elapsed: paused.elapsed,
+      mistakes: paused.mistakes,
+      isWon: false,
+      isLost: false,
+      isPaused: true,
+      hasActiveGame: true,
+      hasInteracted: true,
+      winRecorded: false,
+      lossRecorded: false,
+      gameDifficulty: paused.difficulty,
+      completedUnits: {},
+      noteMode: false,
+      bulkNoteSelect: false,
+      bulkSelected: {},
+      undoStack: const [],
+      isDaily: paused.isDaily,
+      dailyDayKey: paused.dailyDayKey,
+      sessionPalette: sessionPalette,
+      firstFillColor: null,
+      lastFillColor: null,
+      lastFillRow: null,
+      lastFillCol: null,
+      usedNotes: false,
+      usedUndo: false,
+      pausedThisGame: true,
+      completedRowColBoxSimultaneously: false,
+      completedNineUnitsInNineSeconds: false,
+      filledNineDistinctColorsConsecutively: false,
+      rowsCompletedInFirst90Seconds: 0,
+      colsCompletedInFirst90Seconds: 0,
+      boxesCompletedInFirst90Seconds: 0,
+      consecutiveDistinctFillColors: const [],
+      unitCompletionTimes: const [],
+    );
+  }
+
+  void _applyPausedBoard(PausedGame paused, {GamePalette? sessionPalette}) {
+    _timer?.cancel();
+    _isGenerating = false;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = true;
+    _hasActiveGame = true;
+    _hasInteracted = true;
+    _winRecorded = false;
+    _lossRecorded = false;
+    _pendingPaletteUnlocks = [];
+    _selected = null;
+    _exitBulkNoteSelect();
+    _mistakes = paused.mistakes;
+    _elapsed = paused.elapsed;
+    _gameDifficulty = paused.difficulty;
+    _isDaily = paused.isDaily;
+    _dailyDayKey = paused.dailyDayKey;
+    _sessionPalette = sessionPalette;
+    _solution = SudokuBoard.fromFlat(paused.solution);
+    _noteMode = false;
+    _undoStack.clear();
+
+    _cells = List.generate(SudokuBoard.size, (r) {
+      return List.generate(SudokuBoard.size, (c) {
+        return paused.cells[r * SudokuBoard.size + c];
+      });
+    });
+    _refreshConflicts();
+    _completedUnits = _successfullyCompletedUnits();
+    _celebration = null;
+    _resetAchievementSession();
+  }
+
+  _HeldGameSession _captureHeld() {
+    return _HeldGameSession(
+      cells: _cloneCells(),
+      solution: _solution?.toFlat(),
+      selected: _selected,
+      elapsed: _elapsed,
+      mistakes: _mistakes,
+      isWon: _isWon,
+      isLost: _isLost,
+      isPaused: _isPaused,
+      hasActiveGame: _hasActiveGame,
+      hasInteracted: _hasInteracted,
+      winRecorded: _winRecorded,
+      lossRecorded: _lossRecorded,
+      gameDifficulty: _gameDifficulty,
+      completedUnits: {..._completedUnits},
+      noteMode: _noteMode,
+      bulkNoteSelect: _bulkNoteSelect,
+      bulkSelected: {..._bulkSelected},
+      undoStack: [
+        for (final snap in _undoStack)
+          _UndoSnapshot(
+            cells: [
+              for (final row in snap.cells)
+                [for (final cell in row) cell.copyWith()],
+            ],
+            isWon: snap.isWon,
+            isLost: snap.isLost,
+            hasActiveGame: snap.hasActiveGame,
+            completedUnits: {...snap.completedUnits},
+            selected: snap.selected,
+          ),
+      ],
+      isDaily: _isDaily,
+      dailyDayKey: _dailyDayKey,
+      sessionPalette: _sessionPalette,
+      firstFillColor: _firstFillColor,
+      lastFillColor: _lastFillColor,
+      lastFillRow: _lastFillRow,
+      lastFillCol: _lastFillCol,
+      usedNotes: _usedNotes,
+      usedUndo: _usedUndo,
+      pausedThisGame: _pausedThisGame,
+      completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
+      completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
+      filledNineDistinctColorsConsecutively:
+          _filledNineDistinctColorsConsecutively,
+      rowsCompletedInFirst90Seconds: _rowsCompletedInFirst90Seconds,
+      colsCompletedInFirst90Seconds: _colsCompletedInFirst90Seconds,
+      boxesCompletedInFirst90Seconds: _boxesCompletedInFirst90Seconds,
+      consecutiveDistinctFillColors: [..._consecutiveDistinctFillColors],
+      unitCompletionTimes: [..._unitCompletionTimes],
+    );
+  }
+
+  void _applyHeld(_HeldGameSession held) {
+    _timer?.cancel();
+    _generationToken++;
+    _cells = [
+      for (final row in held.cells) [for (final cell in row) cell.copyWith()],
+    ];
+    _solution =
+        held.solution == null ? null : SudokuBoard.fromFlat(held.solution!);
+    _selected = held.selected;
+    _elapsed = held.elapsed;
+    _mistakes = held.mistakes;
+    _isWon = held.isWon;
+    _isLost = held.isLost;
+    _isPaused = held.isPaused;
+    _hasActiveGame = held.hasActiveGame;
+    _hasInteracted = held.hasInteracted;
+    _winRecorded = held.winRecorded;
+    _lossRecorded = held.lossRecorded;
+    _gameDifficulty = held.gameDifficulty;
+    _celebration = null;
+    _noteMode = held.noteMode;
+    _bulkNoteSelect = held.bulkNoteSelect;
+    _bulkSelected
+      ..clear()
+      ..addAll(held.bulkSelected);
+    _undoStack
+      ..clear()
+      ..addAll(held.undoStack);
+    _isDaily = held.isDaily;
+    _dailyDayKey = held.dailyDayKey;
+    _sessionPalette = held.sessionPalette;
+    _isGenerating = false;
+    _pendingPaletteUnlocks = [];
+    _noteClearWave = null;
+    _firstFillColor = held.firstFillColor;
+    _lastFillColor = held.lastFillColor;
+    _lastFillRow = held.lastFillRow;
+    _lastFillCol = held.lastFillCol;
+    _usedNotes = held.usedNotes;
+    _usedUndo = held.usedUndo;
+    _pausedThisGame = held.pausedThisGame;
+    _completedRowColBoxSimultaneously = held.completedRowColBoxSimultaneously;
+    _completedNineUnitsInNineSeconds = held.completedNineUnitsInNineSeconds;
+    _filledNineDistinctColorsConsecutively =
+        held.filledNineDistinctColorsConsecutively;
+    _rowsCompletedInFirst90Seconds = held.rowsCompletedInFirst90Seconds;
+    _colsCompletedInFirst90Seconds = held.colsCompletedInFirst90Seconds;
+    _boxesCompletedInFirst90Seconds = held.boxesCompletedInFirst90Seconds;
+    _consecutiveDistinctFillColors
+      ..clear()
+      ..addAll(held.consecutiveDistinctFillColors);
+    _unitCompletionTimes
+      ..clear()
+      ..addAll(held.unitCompletionTimes);
+    _completedUnits = _successfullyCompletedUnits();
+    if (_hasActiveGame && !isGameOver && !_isPaused) {
+      _startTimer();
     }
   }
 
@@ -1167,5 +1693,84 @@ class _UndoSnapshot {
     required this.hasActiveGame,
     required this.completedUnits,
     required this.selected,
+  });
+}
+
+/// In-memory puzzle session for nesting Daily under Main Menu.
+class _HeldGameSession {
+  final List<List<Cell>> cells;
+  final List<int>? solution;
+  final (int, int)? selected;
+  final Duration elapsed;
+  final int mistakes;
+  final bool isWon;
+  final bool isLost;
+  final bool isPaused;
+  final bool hasActiveGame;
+  final bool hasInteracted;
+  final bool winRecorded;
+  final bool lossRecorded;
+  final Difficulty gameDifficulty;
+  final Set<String> completedUnits;
+  final bool noteMode;
+  final bool bulkNoteSelect;
+  final Set<int> bulkSelected;
+  final List<_UndoSnapshot> undoStack;
+  final bool isDaily;
+  final String? dailyDayKey;
+  final GamePalette? sessionPalette;
+  final int? firstFillColor;
+  final int? lastFillColor;
+  final int? lastFillRow;
+  final int? lastFillCol;
+  final bool usedNotes;
+  final bool usedUndo;
+  final bool pausedThisGame;
+  final bool completedRowColBoxSimultaneously;
+  final bool completedNineUnitsInNineSeconds;
+  final bool filledNineDistinctColorsConsecutively;
+  final int rowsCompletedInFirst90Seconds;
+  final int colsCompletedInFirst90Seconds;
+  final int boxesCompletedInFirst90Seconds;
+  final List<int> consecutiveDistinctFillColors;
+  final List<DateTime> unitCompletionTimes;
+
+  const _HeldGameSession({
+    required this.cells,
+    required this.solution,
+    required this.selected,
+    required this.elapsed,
+    required this.mistakes,
+    required this.isWon,
+    required this.isLost,
+    required this.isPaused,
+    required this.hasActiveGame,
+    required this.hasInteracted,
+    required this.winRecorded,
+    required this.lossRecorded,
+    required this.gameDifficulty,
+    required this.completedUnits,
+    required this.noteMode,
+    required this.bulkNoteSelect,
+    required this.bulkSelected,
+    required this.undoStack,
+    required this.isDaily,
+    required this.dailyDayKey,
+    required this.sessionPalette,
+    required this.firstFillColor,
+    required this.lastFillColor,
+    required this.lastFillRow,
+    required this.lastFillCol,
+    required this.usedNotes,
+    required this.usedUndo,
+    required this.pausedThisGame,
+    required this.completedRowColBoxSimultaneously,
+    required this.completedNineUnitsInNineSeconds,
+    required this.filledNineDistinctColorsConsecutively,
+    required this.rowsCompletedInFirst90Seconds,
+    required this.colsCompletedInFirst90Seconds,
+    required this.boxesCompletedInFirst90Seconds,
+    required this.consecutiveDistinctFillColors,
+    required this.unitCompletionTimes,
   });
 }

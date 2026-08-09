@@ -21,7 +21,10 @@ import '../widgets/win_dialog.dart';
 import 'settings_screen.dart';
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key});
+  /// When true, this route is the nested Daily Irodoku under Main Menu.
+  final bool isDailyRoute;
+
+  const GameScreen({super.key, this.isDailyRoute = false});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -34,9 +37,21 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<GameProvider>().bootstrap();
-    });
+    if (!widget.isDailyRoute) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final game = context.read<GameProvider>();
+        await game.bootstrap();
+        if (!mounted) return;
+        if (!game.consumeOpenDailyRoutePending()) return;
+        await Navigator.of(context).push(
+          IrodokuPageRoute(
+            builder: (_) => const SettingsScreen(openDailyOnLaunch: true),
+          ),
+        );
+        if (!mounted) return;
+        setState(() => _titlePlayToken++);
+      });
+    }
   }
 
   Future<void> _onNewGame() async {
@@ -54,6 +69,10 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _maybeShowResult(GameProvider game) {
+    // Home and Daily routes share one provider — only the matching route
+    // should present win/loss dialogs.
+    if (widget.isDailyRoute != game.isDaily) return;
+
     if (game.isWon && !_resultDialogShown) {
       _resultDialogShown = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -65,6 +84,7 @@ class _GameScreenState extends State<GameScreen> {
         showWinDialog(
           context,
           time: game.formatElapsed(),
+          showNewGame: !widget.isDailyRoute,
           onNewGame: _onNewGame,
         );
       });
@@ -74,6 +94,7 @@ class _GameScreenState extends State<GameScreen> {
         if (!mounted) return;
         showLoseDialog(
           context,
+          showNewGame: !widget.isDailyRoute,
           onNewGame: _onNewGame,
         );
       });
@@ -88,24 +109,34 @@ class _GameScreenState extends State<GameScreen> {
       builder: (context, game, settings, _) {
         _maybeShowResult(game);
         final hasSelection = game.hasCellSelection;
-        final showControls = game.hasActiveGame &&
-            !game.isGenerating &&
-            !game.isGameOver &&
-            !game.isPaused;
+        // Win/loss sets hasActiveGame=false; still reserve toolbar/picker space
+        // so the board doesn't resize under the result dialog.
+        final showControls = !game.isGenerating &&
+            !game.isPaused &&
+            (game.hasActiveGame || game.isGameOver);
+        final controlsEnabled = game.hasActiveGame && !game.isGameOver;
         final canErase = game.canEraseSelection;
         final canPause = game.hasActiveGame &&
             !game.isGenerating &&
             !game.isGameOver;
 
-        return GestureDetector(
+        final scaffold = GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: hasSelection
               ? game.clearSelection
               : (game.isPaused ? game.resumeGame : null),
           child: Scaffold(
             appBar: AppBar(
+              automaticallyImplyLeading: false,
+              leading: widget.isDailyRoute
+                  ? IconButton(
+                      tooltip: 'Main Menu',
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.of(context).pop(),
+                    )
+                  : null,
               title: TypingTitle(
-                text: 'Irodoku',
+                text: widget.isDailyRoute ? 'Daily Iro' : 'Irodoku',
                 playToken: _titlePlayToken,
                 onTap: game.triggerColorCycle,
               ),
@@ -119,20 +150,29 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   onPressed: canPause ? game.togglePause : null,
                 ),
-                DiceNewGameButton(
-                  onPressed: game.isGenerating ? null : _onNewGame,
-                ),
-                IconButton(
-                  tooltip: 'Settings',
-                  icon: const Icon(Icons.settings_outlined),
-                  onPressed: () async {
-                    await Navigator.of(context).push(
-                      IrodokuPageRoute(builder: (_) => const SettingsScreen()),
-                    );
-                    if (!mounted) return;
-                    setState(() => _titlePlayToken++);
-                  },
-                ),
+                if (!widget.isDailyRoute)
+                  DiceNewGameButton(
+                    onPressed: game.isGenerating ? null : _onNewGame,
+                  ),
+                if (!widget.isDailyRoute)
+                  IconButton(
+                    tooltip: 'Main Menu',
+                    icon: Image.asset(
+                      'assets/icons/settings.png',
+                      width: 24,
+                      height: 24,
+                      filterQuality: FilterQuality.none,
+                    ),
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        IrodokuPageRoute(
+                          builder: (_) => const SettingsScreen(),
+                        ),
+                      );
+                      if (!mounted) return;
+                      setState(() => _titlePlayToken++);
+                    },
+                  ),
               ],
             ),
             body: SafeArea(
@@ -147,7 +187,9 @@ class _GameScreenState extends State<GameScreen> {
                         MistakeDisplay(mistakes: game.mistakes),
                         const Spacer(),
                         Text(
-                          game.difficulty.label,
+                          widget.isDailyRoute
+                              ? (game.dailyDateLabel ?? '')
+                              : game.difficulty.label,
                           style:
                               Theme.of(context).textTheme.labelLarge?.copyWith(
                                     color: Theme.of(context)
@@ -190,8 +232,8 @@ class _GameScreenState extends State<GameScreen> {
                           final swatchSize = xlPicker ? cellSize * xlSwatchCells : cellSize;
 
                           return ChromaticPaletteTransition(
-                            palette: settings.palette,
-                            animate: settings.chromatic,
+                            palette: game.activePalette,
+                            animate: settings.chromatic && !game.isDaily,
                             builder: (context, palette, swatches) {
                               return Align(
                                 alignment: Alignment.topCenter,
@@ -241,36 +283,45 @@ class _GameScreenState extends State<GameScreen> {
                                       ),
                                       if (showControls) ...[
                                         const SizedBox(height: toolbarGap),
-                                        GestureDetector(
-                                          onTap: () {},
-                                          behavior: HitTestBehavior.opaque,
-                                          child: GameToolbar(
-                                            canUndo: game.canUndo,
-                                            noteMode: game.noteMode,
-                                            bulkNoteSelect: game.bulkNoteSelect,
-                                            canErase: canErase,
-                                            onUndo: game.undo,
-                                            onErase: game.clearSelectedCell,
-                                            onToggleNote: game.toggleNoteMode,
-                                            onNoteLongPress: game
-                                                    .canEnterBulkNoteSelectFromToolbar
-                                                ? game
-                                                    .enterBulkNoteSelectFromToolbar
-                                                : null,
+                                        IgnorePointer(
+                                          ignoring: !controlsEnabled,
+                                          child: GestureDetector(
+                                            onTap: () {},
+                                            behavior: HitTestBehavior.opaque,
+                                            child: GameToolbar(
+                                              canUndo: controlsEnabled &&
+                                                  game.canUndo,
+                                              noteMode: game.noteMode,
+                                              bulkNoteSelect:
+                                                  game.bulkNoteSelect,
+                                              canErase:
+                                                  controlsEnabled && canErase,
+                                              onUndo: game.undo,
+                                              onErase: game.clearSelectedCell,
+                                              onToggleNote: game.toggleNoteMode,
+                                              onNoteLongPress: game
+                                                      .canEnterBulkNoteSelectFromToolbar
+                                                  ? game
+                                                      .enterBulkNoteSelectFromToolbar
+                                                  : null,
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(height: pickerGap),
-                                        ColorPicker(
-                                          swatchSize: swatchSize,
-                                          xlMode: xlPicker,
-                                          palette: palette,
-                                          displaySwatches: swatches,
-                                          visible: true,
-                                          onColorSelected:
-                                              game.applyPickerColor,
-                                          onNoteAdded: game.addSelectedNote,
-                                          onNoteRemoved:
-                                              game.removeSelectedNote,
+                                        IgnorePointer(
+                                          ignoring: !controlsEnabled,
+                                          child: ColorPicker(
+                                            swatchSize: swatchSize,
+                                            xlMode: xlPicker,
+                                            palette: palette,
+                                            displaySwatches: swatches,
+                                            visible: true,
+                                            onColorSelected:
+                                                game.applyPickerColor,
+                                            onNoteAdded: game.addSelectedNote,
+                                            onNoteRemoved:
+                                                game.removeSelectedNote,
+                                          ),
                                         ),
                                       ],
                                     ],
@@ -287,6 +338,16 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
+        );
+
+        if (!widget.isDailyRoute) return scaffold;
+
+        return PopScope(
+          canPop: true,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) game.parkDailyForMenu();
+          },
+          child: scaffold,
         );
       },
     );

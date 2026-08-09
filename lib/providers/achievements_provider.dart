@@ -13,10 +13,15 @@ import '../services/sound_service.dart';
 import 'settings_provider.dart';
 
 class AchievementsProvider extends ChangeNotifier {
+  /// Pause before the achievement sting after a game-win SFX so the file's
+  /// leading silence isn't covered by the win sound.
+  static const _winAchievementSoundDelay = Duration(milliseconds: 1200);
+
   final PreferencesService _prefs;
   AchievementsProgress _progress;
   SettingsProvider? _settings;
   SoundService? _sounds;
+  int _unlockSoundEpoch = 0;
 
   AchievementsProvider(this._prefs) : _progress = _prefs.loadAchievements() {
     // Unlock anything already implied by persisted stats/counters.
@@ -196,15 +201,23 @@ class AchievementsProvider extends ChangeNotifier {
     }
   }
 
-  bool _unlock(String id, {bool announce = true}) {
+  bool _unlock(
+    String id, {
+    bool announce = true,
+    Duration announceDelay = Duration.zero,
+  }) {
     if (_progress.isUnlocked(id)) return false;
     final unlocked = Set<String>.from(_progress.unlockedIds)..add(id);
     _progress = _progress.copyWith(unlockedIds: unlocked);
-    if (announce) _playUnlockSound();
+    if (announce) _playUnlockSound(delay: announceDelay);
     return true;
   }
 
-  bool _unlockMany(Iterable<String> ids, {bool announce = true}) {
+  bool _unlockMany(
+    Iterable<String> ids, {
+    bool announce = true,
+    Duration announceDelay = Duration.zero,
+  }) {
     var changed = false;
     final unlocked = Set<String>.from(_progress.unlockedIds);
     for (final id in ids) {
@@ -212,16 +225,27 @@ class AchievementsProvider extends ChangeNotifier {
     }
     if (changed) {
       _progress = _progress.copyWith(unlockedIds: unlocked);
-      if (announce) _playUnlockSound();
+      if (announce) _playUnlockSound(delay: announceDelay);
     }
     return changed;
   }
 
-  void _playUnlockSound() {
+  void _playUnlockSound({Duration delay = Duration.zero}) {
     if (_settings?.soundEnabled != true) return;
     final sounds = _sounds;
     if (sounds == null) return;
-    unawaited(sounds.playAchievement());
+    final epoch = ++_unlockSoundEpoch;
+    if (delay <= Duration.zero) {
+      unawaited(sounds.playAchievement());
+      return;
+    }
+    unawaited(
+      Future<void>.delayed(delay, () {
+        if (epoch != _unlockSoundEpoch) return;
+        if (_settings?.soundEnabled != true) return;
+        unawaited(sounds.playAchievement());
+      }),
+    );
   }
 
   Future<void> recordErase() async {
@@ -484,7 +508,7 @@ class AchievementsProvider extends ChangeNotifier {
       ids.add('r5c5');
     }
 
-    _unlockMany(ids);
+    _unlockMany(ids, announceDelay: _winAchievementSoundDelay);
     notifyListeners();
     await persist();
   }

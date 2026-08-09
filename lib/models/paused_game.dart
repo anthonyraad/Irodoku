@@ -8,6 +8,8 @@ class PausedGame {
   final int mistakes;
   final List<int> solution;
   final List<Cell> cells;
+  final bool isDaily;
+  final String? dailyDayKey;
 
   const PausedGame({
     required this.difficulty,
@@ -15,6 +17,8 @@ class PausedGame {
     required this.mistakes,
     required this.solution,
     required this.cells,
+    this.isDaily = false,
+    this.dailyDayKey,
   });
 
   Map<String, Object?> toJson() {
@@ -23,6 +27,8 @@ class PausedGame {
       'elapsedMs': elapsed.inMilliseconds,
       'mistakes': mistakes,
       'solution': solution,
+      'isDaily': isDaily,
+      'dailyDayKey': dailyDayKey,
       'cells': [
         for (final cell in cells)
           {
@@ -78,6 +84,8 @@ class PausedGame {
       mistakes: json['mistakes'] as int? ?? 0,
       solution: solutionRaw,
       cells: cells,
+      isDaily: json['isDaily'] as bool? ?? false,
+      dailyDayKey: json['dailyDayKey'] as String?,
     );
   }
 

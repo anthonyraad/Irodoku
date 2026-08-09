@@ -1,7 +1,7 @@
 name: irodoku
 description: A color-based Sudoku puzzle game.
 publish_to: 'none'
-version: 1.0.5+9
+version: 1.0.6+10
 
 environment:
   sdk: ^3.9.0
@@ -28,6 +28,7 @@ flutter:
 
   assets:
     - assets/icons/
+    - assets/icon/
     - assets/sounds/
 
   fonts:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,11 +15,15 @@ import '../providers/stats_provider.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/typing_title.dart';
 import 'achievements_screen.dart';
+import 'game_screen.dart';
 import 'iroen_screen.dart';
 import 'stats_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  /// Cold-start: immediately push today's Daily after this menu appears.
+  final bool openDailyOnLaunch;
+
+  const SettingsScreen({super.key, this.openDailyOnLaunch = false});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -25,20 +31,62 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   int _titlePlayToken = 0;
+  Timer? _midnightTimer;
+  bool _openingDaily = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleMidnightRefresh();
+    if (widget.openDailyOnLaunch) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _onDailyPressed(context, context.read<GameProvider>());
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Rebuild at local midnight so the Daily button unlocks without relaunch.
+  void _scheduleMidnightRefresh() {
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    _midnightTimer?.cancel();
+    _midnightTimer = Timer(
+      nextMidnight.difference(now) + const Duration(seconds: 1),
+      () {
+        if (!mounted) return;
+        setState(() {});
+        _scheduleMidnightRefresh();
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Theme(
       data: IrodokuTheme.settingsTheme(Theme.of(context)),
-      child: Scaffold(
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          await context.read<GameProvider>().leaveMenuToRegular();
+          if (context.mounted) Navigator.of(context).pop();
+        },
+        child: Scaffold(
         appBar: AppBar(
           title: TypingTitle(
-            text: 'Settings',
+            text: 'Main Menu',
             playToken: _titlePlayToken,
           ),
         ),
-        body: Consumer2<SettingsProvider, StatsProvider>(
-        builder: (context, settings, statsProvider, _) {
+        body: Consumer3<SettingsProvider, StatsProvider, GameProvider>(
+        builder: (context, settings, statsProvider, game, _) {
           final stats = statsProvider.stats;
           return Column(
             children: [
@@ -46,6 +94,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: _DailyIrodokuButton(
+                  completed: game.isDailyCompletedToday,
+                  streak: game.dailyStreakDisplay,
+                  busy: game.isGenerating,
+                  onPressed: () => _onDailyPressed(context, game),
+                ),
+              ),
               const _SectionHeader(title: 'Config'),
               ListTile(
                 title: const Text('Difficulty'),
@@ -203,7 +260,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
       ),
+      ),
     );
+  }
+
+  Future<void> _onDailyPressed(BuildContext context, GameProvider game) async {
+    if (_openingDaily || game.isDailyCompletedToday || game.isGenerating) {
+      return;
+    }
+    _openingDaily = true;
+    try {
+      final started = await game.startDailyGame();
+      if (!context.mounted || !started) return;
+      await Navigator.of(context).push(
+        IrodokuPageRoute(builder: (_) => const GameScreen(isDailyRoute: true)),
+      );
+    } finally {
+      _openingDaily = false;
+    }
   }
 
   void _showIroenLockedSnackBar(BuildContext context, GameStats stats) {
@@ -251,19 +325,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!context.mounted) return;
     if (game.isGenerating) return;
 
+    final preserveDaily = game.hasResumableDaily || game.isDaily;
+
     // Mid-game: ask before discarding progress.
     if (game.hasInteracted && !game.isGameOver) {
       final startNew = await showStartNewGameDialog(context);
       if (!context.mounted) return;
       if (startNew == true) {
-        await game.startNewGame();
+        await game.startNewGame(preserveHeldDaily: preserveDaily);
       }
       return;
     }
 
     // Untouched board (or finished game): apply immediately.
     if (game.hasActiveGame || game.isGameOver) {
-      await game.startNewGame();
+      await game.startNewGame(preserveHeldDaily: preserveDaily);
     }
   }
 
@@ -275,13 +351,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final game = context.read<GameProvider>();
     if (game.isGenerating) return;
 
+    final preserveDaily = game.hasResumableDaily || game.isDaily;
+
     // Mid-game: palette stays put unless the user starts a new puzzle.
     if (game.hasInteracted && !game.isGameOver) {
       final startNew = await showStartNewGameDialog(context);
       if (!context.mounted) return;
       if (startNew != true) return;
+      // Start first so a departing Daily can restore the prior palette,
+      // then apply the user's new choice.
+      await game.startNewGame(preserveHeldDaily: preserveDaily);
       await settings.setPalette(palette);
-      await game.startNewGame();
       return;
     }
 
@@ -296,13 +376,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final game = context.read<GameProvider>();
     if (game.isGenerating) return;
 
+    final preserveDaily = game.hasResumableDaily || game.isDaily;
+
     // Mid-game: chromatic stays put unless the user starts a new puzzle.
     if (game.hasInteracted && !game.isGameOver) {
       final startNew = await showStartNewGameDialog(context);
       if (!context.mounted) return;
       if (startNew != true) return;
+      await game.startNewGame(preserveHeldDaily: preserveDaily);
       await settings.setChromatic(enabled);
-      await game.startNewGame();
       return;
     }
 
@@ -424,6 +506,96 @@ class _PalettePreviewRow extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _DailyIrodokuButton extends StatelessWidget {
+  static const _borderRadius = BorderRadius.all(Radius.circular(8));
+
+  final bool completed;
+  final int streak;
+  final bool busy;
+  final VoidCallback onPressed;
+
+  const _DailyIrodokuButton({
+    required this.completed,
+    required this.streak,
+    required this.busy,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = !completed && !busy;
+    final ink = scheme.onSurface.withValues(alpha: enabled ? 1 : 0.38);
+    final border = enabled ? scheme.onSurface : scheme.outlineVariant;
+    final fill = enabled ? scheme.surface : scheme.surfaceContainerHighest;
+
+    return SizedBox(
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: _borderRadius,
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: scheme.shadow.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Material(
+          color: fill,
+          shape: RoundedRectangleBorder(
+            borderRadius: _borderRadius,
+            side: BorderSide(color: border, width: 2.5),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: enabled ? onPressed : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Daily Iro',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: ink,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                  ),
+                  const SizedBox(width: 10),
+                  Image.asset(
+                    'assets/icons/settings.png',
+                    width: 28 * 0.85 * 0.95,
+                    height: 28 * 0.85 * 0.95,
+                    filterQuality: FilterQuality.none,
+                    opacity: AlwaysStoppedAnimation(enabled ? 1 : 0.4),
+                  ),
+                  if (streak > 0) ...[
+                    const SizedBox(width: 10),
+                    Text(
+                      'x$streak',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: ink,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

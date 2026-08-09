@@ -24,11 +24,16 @@ class PreferencesService {
   static const _keyChromaticGamesWon = 'stats_chromatic_games_won';
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
+  static const _keyParkedRegularGame = 'parked_regular_game';
+  static const _keyParkedDailyGame = 'parked_daily_game';
   static const _keyIroenState = 'iroen_state';
   static const _keyIroenGallery = 'iroen_gallery';
   static const _keyIroenActiveMosaicId = 'iroen_active_mosaic_id';
   static const _keyDevMode = 'dev_mode';
   static const _keyAchievements = 'achievements_progress';
+  static const _keyDailyLastCompleted = 'daily_last_completed_day';
+  static const _keyDailyStreak = 'daily_streak';
+  static const _keyPaletteBeforeDaily = 'palette_before_daily';
 
   final SharedPreferences _prefs;
 
@@ -83,6 +88,35 @@ class PreferencesService {
 
   Future<void> setDevMode(bool enabled) async {
     await _prefs.setBool(_keyDevMode, enabled);
+  }
+
+  /// `yyyy-MM-dd` of the last completed Daily Irodoku, or null.
+  String? getDailyLastCompletedDay() =>
+      _prefs.getString(_keyDailyLastCompleted);
+
+  int getDailyStreak() => _prefs.getInt(_keyDailyStreak) ?? 0;
+
+  Future<void> setDailyProgress({
+    required String lastCompletedDay,
+    required int streak,
+  }) async {
+    await _prefs.setString(_keyDailyLastCompleted, lastCompletedDay);
+    await _prefs.setInt(_keyDailyStreak, streak);
+  }
+
+  /// Palette to restore after leaving a Daily Irodoku session.
+  GamePalette? getPaletteBeforeDaily() {
+    final key = _prefs.getString(_keyPaletteBeforeDaily);
+    if (key == null || key.isEmpty) return null;
+    return GamePalette.fromStorageKey(key);
+  }
+
+  Future<void> setPaletteBeforeDaily(GamePalette palette) async {
+    await _prefs.setString(_keyPaletteBeforeDaily, palette.storageKey);
+  }
+
+  Future<void> clearPaletteBeforeDaily() async {
+    await _prefs.remove(_keyPaletteBeforeDaily);
   }
 
   GamePalette getPalette() {
@@ -227,8 +261,38 @@ class PreferencesService {
     }
   }
 
-  PausedGame? loadPausedGame() {
-    final raw = _prefs.getString(_keyPausedGame);
+  PausedGame? loadPausedGame() => _loadPaused(_keyPausedGame);
+
+  Future<void> savePausedGame(PausedGame game) async {
+    await _prefs.setString(_keyPausedGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearPausedGame() async {
+    await _prefs.remove(_keyPausedGame);
+  }
+
+  PausedGame? loadParkedRegularGame() => _loadPaused(_keyParkedRegularGame);
+
+  Future<void> saveParkedRegularGame(PausedGame game) async {
+    await _prefs.setString(_keyParkedRegularGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearParkedRegularGame() async {
+    await _prefs.remove(_keyParkedRegularGame);
+  }
+
+  PausedGame? loadParkedDailyGame() => _loadPaused(_keyParkedDailyGame);
+
+  Future<void> saveParkedDailyGame(PausedGame game) async {
+    await _prefs.setString(_keyParkedDailyGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearParkedDailyGame() async {
+    await _prefs.remove(_keyParkedDailyGame);
+  }
+
+  PausedGame? _loadPaused(String key) {
+    final raw = _prefs.getString(key);
     if (raw == null || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
@@ -237,14 +301,6 @@ class PreferencesService {
     } catch (_) {
       return null;
     }
-  }
-
-  Future<void> savePausedGame(PausedGame game) async {
-    await _prefs.setString(_keyPausedGame, jsonEncode(game.toJson()));
-  }
-
-  Future<void> clearPausedGame() async {
-    await _prefs.remove(_keyPausedGame);
   }
 
   IroenState? loadIroenState() {
