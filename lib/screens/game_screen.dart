@@ -72,6 +72,11 @@ class _GameScreenState extends State<GameScreen> {
     // Home and Daily routes share one provider — only the matching route
     // should present win/loss dialogs.
     if (widget.isDailyRoute != game.isDaily) return;
+    // Reopening a finished Daily — show the frozen board only.
+    if (game.isDailyReview) {
+      _resultDialogShown = true;
+      return;
+    }
 
     if (game.isWon && !_resultDialogShown) {
       _resultDialogShown = true;
@@ -109,12 +114,13 @@ class _GameScreenState extends State<GameScreen> {
       builder: (context, game, settings, _) {
         _maybeShowResult(game);
         final hasSelection = game.hasCellSelection;
-        // Win/loss sets hasActiveGame=false; still reserve toolbar/picker space
-        // so the board doesn't resize under the result dialog.
-        final showControls = !game.isGenerating &&
+        // Keep control-slot layout after win/loss so the board doesn't resize
+        // under the result dialog; only the widgets themselves are removed.
+        final reserveControlsLayout = !game.isGenerating &&
             !game.isPaused &&
             (game.hasActiveGame || game.isGameOver);
-        final controlsEnabled = game.hasActiveGame && !game.isGameOver;
+        final showControls = reserveControlsLayout && !game.isGameOver;
+        final controlsEnabled = showControls;
         final canErase = game.canEraseSelection;
         final canPause = game.hasActiveGame &&
             !game.isGenerating &&
@@ -136,7 +142,9 @@ class _GameScreenState extends State<GameScreen> {
                     )
                   : null,
               title: TypingTitle(
-                text: widget.isDailyRoute ? 'Daily Iro' : 'Irodoku',
+                text: widget.isDailyRoute
+                    ? 'Daily Challenge'
+                    : (settings.chromatic ? 'Chromatic' : 'Irodoku'),
                 playToken: _titlePlayToken,
                 onTap: game.triggerColorCycle,
               ),
@@ -209,7 +217,7 @@ class _GameScreenState extends State<GameScreen> {
                           const toolbarGap = 8.0;
                           final xlPicker = settings.xlPicker;
                           const xlSwatchCells = 3 * 0.85 * 0.85;
-                          final belowFixed = showControls
+                          final belowFixed = reserveControlsLayout
                               ? toolbarGap +
                                   GameToolbar.height +
                                   pickerGap
@@ -217,7 +225,7 @@ class _GameScreenState extends State<GameScreen> {
                           final pickerRows = xlPicker ? xlSwatchCells * 3 : 1.0;
                           final cellFromWidth =
                               (constraints.maxWidth - boardBorder * 2) / 9;
-                          final cellFromHeight = showControls
+                          final cellFromHeight = reserveControlsLayout
                               ? (constraints.maxHeight -
                                       belowFixed -
                                       boardBorder * 2) /
@@ -230,10 +238,12 @@ class _GameScreenState extends State<GameScreen> {
                               math.min(cellFromWidth, cellFromHeight);
                           final boardSize = cellSize * 9 + boardBorder * 2;
                           final swatchSize = xlPicker ? cellSize * xlSwatchCells : cellSize;
+                          final pickerHeight =
+                              swatchSize * (xlPicker ? 3.0 : 1.0);
 
                           return ChromaticPaletteTransition(
                             palette: game.activePalette,
-                            animate: settings.chromatic && !game.isDaily,
+                            animate: settings.chromatic || game.isDaily,
                             builder: (context, palette, swatches) {
                               return Align(
                                 alignment: Alignment.topCenter,
@@ -281,48 +291,57 @@ class _GameScreenState extends State<GameScreen> {
                                           ],
                                         ),
                                       ),
-                                      if (showControls) ...[
+                                      if (reserveControlsLayout) ...[
                                         const SizedBox(height: toolbarGap),
-                                        IgnorePointer(
-                                          ignoring: !controlsEnabled,
-                                          child: GestureDetector(
-                                            onTap: () {},
-                                            behavior: HitTestBehavior.opaque,
-                                            child: GameToolbar(
-                                              canUndo: controlsEnabled &&
-                                                  game.canUndo,
-                                              noteMode: game.noteMode,
-                                              bulkNoteSelect:
-                                                  game.bulkNoteSelect,
-                                              canErase:
-                                                  controlsEnabled && canErase,
-                                              onUndo: game.undo,
-                                              onErase: game.clearSelectedCell,
-                                              onToggleNote: game.toggleNoteMode,
-                                              onNoteLongPress: game
-                                                      .canEnterBulkNoteSelectFromToolbar
-                                                  ? game
-                                                      .enterBulkNoteSelectFromToolbar
-                                                  : null,
+                                        if (showControls)
+                                          IgnorePointer(
+                                            ignoring: !controlsEnabled,
+                                            child: GestureDetector(
+                                              onTap: () {},
+                                              behavior: HitTestBehavior.opaque,
+                                              child: GameToolbar(
+                                                canUndo: controlsEnabled &&
+                                                    game.canUndo,
+                                                noteMode: game.noteMode,
+                                                bulkNoteSelect:
+                                                    game.bulkNoteSelect,
+                                                canErase: controlsEnabled &&
+                                                    canErase,
+                                                onUndo: game.undo,
+                                                onErase: game.clearSelectedCell,
+                                                onToggleNote:
+                                                    game.toggleNoteMode,
+                                                onNoteLongPress: game
+                                                        .canEnterBulkNoteSelectFromToolbar
+                                                    ? game
+                                                        .enterBulkNoteSelectFromToolbar
+                                                    : null,
+                                              ),
                                             ),
+                                          )
+                                        else
+                                          const SizedBox(
+                                            height: GameToolbar.height,
                                           ),
-                                        ),
                                         const SizedBox(height: pickerGap),
-                                        IgnorePointer(
-                                          ignoring: !controlsEnabled,
-                                          child: ColorPicker(
-                                            swatchSize: swatchSize,
-                                            xlMode: xlPicker,
-                                            palette: palette,
-                                            displaySwatches: swatches,
-                                            visible: true,
-                                            onColorSelected:
-                                                game.applyPickerColor,
-                                            onNoteAdded: game.addSelectedNote,
-                                            onNoteRemoved:
-                                                game.removeSelectedNote,
-                                          ),
-                                        ),
+                                        if (showControls)
+                                          IgnorePointer(
+                                            ignoring: !controlsEnabled,
+                                            child: ColorPicker(
+                                              swatchSize: swatchSize,
+                                              xlMode: xlPicker,
+                                              palette: palette,
+                                              displaySwatches: swatches,
+                                              visible: true,
+                                              onColorSelected:
+                                                  game.applyPickerColor,
+                                              onNoteAdded: game.addSelectedNote,
+                                              onNoteRemoved:
+                                                  game.removeSelectedNote,
+                                            ),
+                                          )
+                                        else
+                                          SizedBox(height: pickerHeight),
                                       ],
                                     ],
                                   ),

@@ -71,9 +71,8 @@ void main() {
             .length;
         final (minGiven, maxGiven) = difficulty.givenCellRange;
 
-        // Uniqueness may leave slightly more givens than the target max.
-        expect(givenCount, greaterThanOrEqualTo(minGiven - 2));
-        expect(givenCount, lessThanOrEqualTo(maxGiven + 8));
+        expect(givenCount, greaterThanOrEqualTo(minGiven));
+        expect(givenCount, lessThanOrEqualTo(maxGiven));
         expect(SudokuSolver().hasUniqueSolution(result.puzzle), isTrue);
       }
     });

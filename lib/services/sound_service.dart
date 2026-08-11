@@ -80,12 +80,12 @@ class SoundService {
     // Hotter source assets — attenuated to sit with confirm/note.
     _rainbowConfirm: 0.70, // ~3 dB hotter mean than confirm.mp3
     // Glass/Sky confirms are hotter in mean than confirm.mp3.
-    _gsConfirm: 0.45,
-    _gsConfirm2: 0.45,
-    _gsConfirm3: 0.45,
-    _gsConfirm4: 0.45,
-    _gsConfirm5: 0.45,
-    _gsConfirm6: 0.45,
+    _gsConfirm: 0.55,
+    _gsConfirm2: 0.55,
+    _gsConfirm3: 0.55,
+    _gsConfirm4: 0.55,
+    _gsConfirm5: 0.55,
+    _gsConfirm6: 0.55,
     _coin: 0.50,
     _slide: 0.62,
     _complete: 0.57,

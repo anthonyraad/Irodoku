@@ -5,6 +5,7 @@ import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
+import '../providers/game_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/typing_title.dart';
 
@@ -86,8 +87,8 @@ class _StatsScreenState extends State<StatsScreen> {
               )
             : title,
       ),
-      body: Consumer<StatsProvider>(
-        builder: (context, statsProvider, _) {
+      body: Consumer2<StatsProvider, GameProvider>(
+        builder: (context, statsProvider, game, _) {
           final stats = statsProvider.stats;
           final showChromaticButton = statsProvider.areAllMenuPalettesUnlocked;
           final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -130,16 +131,18 @@ class _StatsScreenState extends State<StatsScreen> {
                     _StatCard(
                       children: [
                         _StatRow(
-                          label: 'Current streak',
-                          value: '${stats.currentStreak}',
-                        ),
-                        _StatRow(
-                          label: 'Best streak',
-                          value: '${stats.bestStreak}',
-                        ),
-                        _StatRow(
                           label: 'Games won',
                           value: '${stats.gamesWon}',
+                        ),
+                        _StatRow(
+                          label: 'Game streak',
+                          value: '${stats.bestStreak}',
+                          indent: true,
+                        ),
+                        _StatRow(
+                          label: 'Daily streak',
+                          value: '${game.dailyBestStreak}',
+                          indent: true,
                         ),
                       ],
                     ),
@@ -368,13 +371,18 @@ class _DifficultyStatsRow extends StatelessWidget {
 class _StatRow extends StatelessWidget {
   final String label;
   final String value;
+  final bool indent;
 
-  const _StatRow({required this.label, required this.value});
+  const _StatRow({
+    required this.label,
+    required this.value,
+    this.indent = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: EdgeInsets.fromLTRB(indent ? 28 : 16, 14, 16, 14),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

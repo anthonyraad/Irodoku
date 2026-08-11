@@ -14,6 +14,7 @@ import '../models/paused_game.dart';
 import '../models/unit_celebration.dart';
 import '../services/preferences_service.dart';
 import '../services/sound_service.dart';
+import '../sudoku/master_board_bank.dart';
 import '../sudoku/sudoku_board.dart';
 import '../sudoku/sudoku_generator.dart';
 import 'achievements_provider.dart';
@@ -101,14 +102,26 @@ class GameProvider extends ChangeNotifier {
   /// Daily-only display palette — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
 
-  /// Regular puzzle parked while Daily Irodoku is nested under Main Menu.
+  /// Classic (non-chromatic) puzzle parked while Daily/Chromatic is active.
   _HeldGameSession? _heldRegular;
+
+  /// Chromatic puzzle parked while Classic/Daily is active.
+  _HeldGameSession? _heldChromatic;
 
   /// In-progress Daily parked while browsing Main Menu.
   _HeldGameSession? _heldDaily;
 
   /// After cold restore of a paused Daily, home should open Main Menu → Daily.
   bool _openDailyRoutePending = false;
+
+  /// Viewing today's already-won Daily (frozen board; no result dialog).
+  bool _dailyReviewMode = false;
+
+  /// Warm Master puzzle: `[puzzleFlat, solutionFlat]` ready for instant start.
+  List<List<int>>? _cachedMasterBoards;
+
+  /// In-flight Master prefetch so New Game can await instead of double-generating.
+  Future<void>? _masterPrefetchFuture;
 
   GameProvider({
     required SettingsProvider settings,
@@ -154,6 +167,9 @@ class GameProvider extends ChangeNotifier {
   NoteClearWave? get noteClearWave => _noteClearWave;
   bool get isDaily => _isDaily;
 
+  /// True when reopening today's completed Daily for viewing only.
+  bool get isDailyReview => _dailyReviewMode;
+
   /// Palette for the live board (daily session override or settings).
   GamePalette get activePalette => _sessionPalette ?? _settings.palette;
 
@@ -164,16 +180,26 @@ class GameProvider extends ChangeNotifier {
     return DailyIrodoku.shortDateLabel(key);
   }
 
-  /// Whether today's Daily Irodoku has already been won (local calendar).
+  /// Whether today's Daily Irodoku has already been won (PST day).
   bool get isDailyCompletedToday {
     final today = DailyIrodoku.forDate().dayKey;
     return _prefs.getDailyLastCompletedDay() == today;
   }
 
+  /// Whether today's Daily Irodoku has already been lost (PST day).
+  bool get isDailyFailedToday {
+    final today = DailyIrodoku.forDate().dayKey;
+    return _prefs.getDailyLastFailedDay() == today;
+  }
+
+  /// Won or lost today's Daily — no fresh attempt allowed.
+  bool get isDailyFinishedToday =>
+      isDailyCompletedToday || isDailyFailedToday;
+
   /// True when today's daily is live or parked for resume from Main Menu.
   bool get hasResumableDaily {
     final today = DailyIrodoku.forDate().dayKey;
-    if (isDailyCompletedToday) return false;
+    if (isDailyFinishedToday) return false;
     if (_heldDaily?.dailyDayKey == today) return true;
     return _isDaily && _dailyDayKey == today && !isGameOver;
   }
@@ -195,6 +221,9 @@ class GameProvider extends ChangeNotifier {
     }
     return _prefs.getDailyStreak();
   }
+
+  /// All-time highest Daily Iro win streak (survives losses / missed days).
+  int get dailyBestStreak => _prefs.getDailyBestStreak();
 
   List<GamePalette> consumePendingPaletteUnlocks() {
     final pending = List<GamePalette>.from(_pendingPaletteUnlocks);
@@ -262,32 +291,114 @@ class GameProvider extends ChangeNotifier {
         await _persistParkedDaily();
         await _prefs.clearPausedGame();
         _openDailyRoutePending = true;
-
-        if (_heldRegular != null) {
-          _applyHeld(_heldRegular!);
-          _heldRegular = null;
-          await _prefs.clearParkedRegularGame();
-          notifyListeners();
-          return;
-        }
-        await startNewGame(preserveHeldDaily: true);
+        await _restoreHomeFromParkedHolds(preserveDaily: true);
+        unawaited(prefetchMasterPuzzle());
         return;
       }
     }
 
     final restored = await restorePausedGame();
-    if (restored) return;
+    if (restored) {
+      unawaited(prefetchMasterPuzzle());
+      return;
+    }
 
-    // Killed on Main Menu: both puzzles may exist only as parked holds.
+    // Killed on Main Menu: puzzles may exist only as parked holds.
+    await _restoreHomeFromParkedHolds(preserveDaily: _heldDaily != null);
+    unawaited(prefetchMasterPuzzle());
+  }
+
+  /// Pre-generates one Master puzzle when the shipped bank is unavailable.
+  Future<void> prefetchMasterPuzzle() async {
+    if (MasterBoardBank.isLoaded) return;
+    if (!_stats.isUnlocked(Difficulty.master)) return;
+    if (_cachedMasterBoards != null) return;
+    if (_masterPrefetchFuture != null) {
+      await _masterPrefetchFuture;
+      return;
+    }
+
+    final future = _runMasterPrefetch();
+    _masterPrefetchFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_masterPrefetchFuture, future)) {
+        _masterPrefetchFuture = null;
+      }
+    }
+  }
+
+  Future<void> _runMasterPrefetch() async {
+    try {
+      final boards = await compute(
+        generatePuzzleIsolate,
+        <Object>[Difficulty.master.storageKey, -1],
+      );
+      _cachedMasterBoards ??= boards;
+    } catch (_) {
+      // Prefetch is best-effort; New Game can still generate on demand.
+    }
+  }
+
+  /// Prefers the shipped Master board bank; falls back to warm cache / generate.
+  Future<List<List<int>>> _obtainMasterBoards({required int? seed}) async {
+    if (seed != null) {
+      return compute(
+        generatePuzzleIsolate,
+        <Object>[Difficulty.master.storageKey, seed],
+      );
+    }
+
+    // Instant path: precomputed Master puzzles.
+    if (MasterBoardBank.isLoaded) {
+      return MasterBoardBank.takeRandom();
+    }
+
+    final cached = _cachedMasterBoards;
+    if (cached != null) {
+      _cachedMasterBoards = null;
+      unawaited(prefetchMasterPuzzle());
+      return cached;
+    }
+
+    if (_masterPrefetchFuture != null) {
+      await _masterPrefetchFuture;
+      final warmed = _cachedMasterBoards;
+      if (warmed != null) {
+        _cachedMasterBoards = null;
+        unawaited(prefetchMasterPuzzle());
+        return warmed;
+      }
+    }
+
+    final boards = await compute(
+      generatePuzzleIsolate,
+      <Object>[Difficulty.master.storageKey, -1],
+    );
+    unawaited(prefetchMasterPuzzle());
+    return boards;
+  }
+
+  /// Prefer Classic hold, then Chromatic; otherwise start a new home game.
+  Future<void> _restoreHomeFromParkedHolds({required bool preserveDaily}) async {
     if (_heldRegular != null) {
+      await _settings.setChromatic(false);
       _applyHeld(_heldRegular!);
       _heldRegular = null;
       await _prefs.clearParkedRegularGame();
       notifyListeners();
       return;
     }
-
-    await startNewGame();
+    if (_heldChromatic != null) {
+      await _settings.setChromatic(true);
+      _applyHeld(_heldChromatic!);
+      _heldChromatic = null;
+      await _prefs.clearParkedChromaticGame();
+      notifyListeners();
+      return;
+    }
+    await startNewGame(preserveHeldDaily: preserveDaily);
   }
 
   Future<bool> restorePausedGame() async {
@@ -300,7 +411,7 @@ class GameProvider extends ChangeNotifier {
       return false;
     }
 
-    _applyPausedBoard(paused, sessionPalette: null);
+    _applyPausedBoard(paused, sessionPalette: paused.sessionPalette);
     notifyListeners();
     return true;
   }
@@ -308,10 +419,43 @@ class GameProvider extends ChangeNotifier {
   /// Starts or resumes today's seeded Daily Irodoku.
   ///
   /// Parks the regular puzzle first so Main Menu back can restore it.
+  /// If today's Daily is already finished, opens the frozen board (no retry).
   Future<bool> startDailyGame() async {
     final challenge = DailyIrodoku.forDate();
-    if (_prefs.getDailyLastCompletedDay() == challenge.dayKey) return false;
     if (_isGenerating) return false;
+    if (!_stats.devMode && !_stats.stats.isDailyChallengeUnlocked) {
+      return false;
+    }
+
+    // Reopen today's completed Daily (frozen win, same as post-victory board).
+    if (_prefs.getDailyLastCompletedDay() == challenge.dayKey) {
+      final completed = _prefs.loadCompletedDailyGame();
+      if (completed == null || completed.dailyDayKey != challenge.dayKey) {
+        return false;
+      }
+      if (!_isDaily) {
+        await _parkRegularFromLive();
+      }
+      _applyFinishedDailyReview(completed, won: true);
+      notifyListeners();
+      return true;
+    }
+
+    // Reopen today's failed Daily — no fresh retry for the PST day.
+    if (_prefs.getDailyLastFailedDay() == challenge.dayKey) {
+      final failed = _prefs.loadFailedDailyGame();
+      if (failed == null || failed.dailyDayKey != challenge.dayKey) {
+        return false;
+      }
+      if (!_isDaily) {
+        await _parkRegularFromLive();
+      }
+      _applyFinishedDailyReview(failed, won: false);
+      notifyListeners();
+      return true;
+    }
+
+    _dailyReviewMode = false;
 
     // Resume a daily parked while browsing Main Menu.
     if (_heldDaily != null && _heldDaily!.dailyDayKey == challenge.dayKey) {
@@ -321,23 +465,39 @@ class GameProvider extends ChangeNotifier {
       _applyHeld(_heldDaily!);
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
-      _sessionPalette = challenge.palette;
+      // Keep parked session palette (may already be the second hop).
+      _sessionPalette ??= challenge.palette;
+      _ensureDailyPaletteForProgress();
       notifyListeners();
       return true;
     }
 
     // Already on today's live daily board (still in progress).
     if (_isDaily && _dailyDayKey == challenge.dayKey && !isGameOver) {
-      _sessionPalette = challenge.palette;
+      _sessionPalette ??= challenge.palette;
+      _ensureDailyPaletteForProgress();
       notifyListeners();
       return true;
+    }
+
+    // Live board already lost today — persist failure and freeze (no retry).
+    if (_isDaily && _dailyDayKey == challenge.dayKey && isLost) {
+      final failed = _snapshotLiveGame();
+      await _recordDailyFailure(failedBoard: failed);
+      if (failed != null) {
+        _applyFinishedDailyReview(failed, won: false);
+      } else {
+        _dailyReviewMode = true;
+      }
+      notifyListeners();
+      return failed != null;
     }
 
     // Park the regular puzzle before replacing the live board with daily.
     if (!_isDaily) {
       await _parkRegularFromLive();
     } else {
-      // Lost/won leftover daily on the live board — drop it.
+      // Stale leftover daily on the live board — drop it.
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
     }
@@ -355,59 +515,87 @@ class GameProvider extends ChangeNotifier {
   void parkDailyForMenu() {
     if (!_isDaily) return;
     _timer?.cancel();
-    if (!isGameOver) {
+    if (!isGameOver && !_dailyReviewMode) {
       _heldDaily = _captureHeld();
       unawaited(_persistParkedDaily());
     } else {
       _heldDaily = null;
       unawaited(_prefs.clearParkedDailyGame());
     }
+    _dailyReviewMode = false;
     // Main Menu should reflect the user's real palette, not the daily's.
     _sessionPalette = null;
     notifyListeners();
   }
 
-  /// Restore the parked regular puzzle when leaving Main Menu.
+  /// Restore the parked Classic/Chromatic puzzle when leaving Main Menu.
   Future<void> leaveMenuToRegular() async {
-    var held = _heldRegular;
-    if (held == null) {
-      final parked = _prefs.loadParkedRegularGame();
-      if (parked != null && !parked.isDaily) {
-        held = _heldFromPaused(parked);
-      }
-    }
-    if (held == null) {
-      _sessionPalette = null;
-      // Clear any legacy prefs from older daily palette forcing.
-      await _prefs.clearPaletteBeforeDaily();
-      // Live board may still be Daily after browsing the menu — park it.
-      if (_isDaily) {
-        if (!isGameOver) {
-          _heldDaily = _captureHeld();
-          await _persistParkedDaily();
-        } else {
-          _heldDaily = null;
-          await _prefs.clearParkedDailyGame();
-        }
-        // Home must not keep Daily as the live board.
-        await startNewGame(preserveHeldDaily: true);
-        return;
-      }
+    // Clear any legacy prefs from older daily palette forcing.
+    await _prefs.clearPaletteBeforeDaily();
+
+    // Classic / Chromatic buttons already swapped the live board before pop.
+    // Don't restore a parked hold on top of that (it was undoing Chromatic).
+    // Keep [_sessionPalette] when returning to a live Chromatic game so hops
+    // survive a Main Menu visit (Config still shows the saved palette).
+    if (!_isDaily) {
       notifyListeners();
       return;
     }
-    if (_isDaily && !isGameOver) {
+
+    final preferChromatic = _settings.chromatic;
+    var held = preferChromatic ? _heldChromatic : _heldRegular;
+    var heldIsChromatic = preferChromatic && held != null;
+    if (held == null) {
+      held = _heldRegular ?? _heldChromatic;
+      heldIsChromatic = held != null && identical(held, _heldChromatic);
+    }
+    if (held == null) {
+      final parked = preferChromatic
+          ? _prefs.loadParkedChromaticGame()
+          : _prefs.loadParkedRegularGame();
+      if (parked != null && !parked.isDaily) {
+        held = _heldFromPaused(parked);
+        heldIsChromatic = preferChromatic;
+      }
+    }
+    if (held == null) {
+      final parkedAlt = preferChromatic
+          ? _prefs.loadParkedRegularGame()
+          : _prefs.loadParkedChromaticGame();
+      if (parkedAlt != null && !parkedAlt.isDaily) {
+        held = _heldFromPaused(parkedAlt);
+        heldIsChromatic = !preferChromatic;
+      }
+    }
+    if (held == null) {
+      // Live board is still Daily — park it and start a fresh home game.
+      if (!isGameOver) {
+        _heldDaily = _captureHeld();
+        await _persistParkedDaily();
+      } else {
+        _heldDaily = null;
+        await _prefs.clearParkedDailyGame();
+      }
+      await startNewGame(preserveHeldDaily: true);
+      return;
+    }
+
+    if (!isGameOver) {
       _heldDaily = _captureHeld();
       await _persistParkedDaily();
-    } else if (_isDaily && isGameOver) {
+    } else {
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
     }
-    _sessionPalette = null;
-    await _prefs.clearPaletteBeforeDaily();
+    await _settings.setChromatic(heldIsChromatic);
     _applyHeld(held);
-    _heldRegular = null;
-    await _prefs.clearParkedRegularGame();
+    if (heldIsChromatic) {
+      _heldChromatic = null;
+      await _prefs.clearParkedChromaticGame();
+    } else {
+      _heldRegular = null;
+      await _prefs.clearParkedRegularGame();
+    }
     notifyListeners();
   }
 
@@ -418,27 +606,44 @@ class GameProvider extends ChangeNotifier {
     bool preserveHeldDaily = false,
   }) async {
     final startingDaily = dailyDayKey != null;
+    _dailyReviewMode = false;
     if (startingDaily) {
       // Fresh Daily replaces any parked Daily; keep parked regular.
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
     } else if (preserveHeldDaily) {
-      // Main Menu difficulty/palette: regenerate regular without wiping Daily.
-      if (_isDaily && !isGameOver) {
-        _heldDaily = _captureHeld();
-        await _persistParkedDaily();
+      // Regenerate the live Classic/Chromatic board without wiping Daily.
+      // When Daily is still the live board (under Main Menu), only re-park it —
+      // do not clear parked Classic/Chromatic and do not replace the Daily board.
+      if (_isDaily) {
+        if (!isGameOver && !_dailyReviewMode) {
+          _heldDaily = _captureHeld();
+          await _persistParkedDaily();
+        }
+        _sessionPalette = null;
+        await _prefs.clearPaletteBeforeDaily();
+        // Keep parked Classic/Chromatic; do not replace the live Daily board.
+        notifyListeners();
+        return;
       }
-      _heldRegular = null;
-      await _prefs.clearParkedRegularGame();
+      if (_settings.chromatic) {
+        _heldChromatic = null;
+        await _prefs.clearParkedChromaticGame();
+      } else {
+        _heldRegular = null;
+        await _prefs.clearParkedRegularGame();
+      }
       _sessionPalette = null;
       await _prefs.clearPaletteBeforeDaily();
     } else {
-      // Starting a fresh regular game abandons nested daily/regular holds.
+      // Starting a fresh regular game abandons nested holds.
       _heldDaily = null;
       _heldRegular = null;
+      _heldChromatic = null;
       _sessionPalette = null;
       await _prefs.clearParkedDailyGame();
       await _prefs.clearParkedRegularGame();
+      await _prefs.clearParkedChromaticGame();
       await _prefs.clearPaletteBeforeDaily();
     }
 
@@ -472,12 +677,27 @@ class GameProvider extends ChangeNotifier {
     await _prefs.clearPausedGame();
     notifyListeners();
 
-    final boards = await compute(
-      generatePuzzleIsolate,
-      <Object>[_gameDifficulty.storageKey, seed ?? -1],
-    );
+    final List<List<int>> boards;
+    final usedMasterWarmPath =
+        !startingDaily && _gameDifficulty == Difficulty.master && seed == null;
+    if (!startingDaily && _gameDifficulty == Difficulty.master) {
+      boards = await _obtainMasterBoards(seed: seed);
+    } else {
+      boards = await compute(
+        generatePuzzleIsolate,
+        <Object>[_gameDifficulty.storageKey, seed ?? -1],
+      );
+      unawaited(prefetchMasterPuzzle());
+    }
 
-    if (token != _generationToken) return;
+    if (token != _generationToken) {
+      // Generation was superseded (mode switch / rapid New Game). Put an
+      // unused unseeded Master board back so the warm cache isn't burned.
+      if (usedMasterWarmPath) {
+        _cachedMasterBoards ??= boards;
+      }
+      return;
+    }
 
     final puzzle = SudokuBoard.fromFlat(boards[0]);
     _solution = SudokuBoard.fromFlat(boards[1]);
@@ -527,8 +747,15 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> _savePausedGame() async {
+    if (!_hasActiveGame || isGameOver) return;
+    final snapshot = _snapshotLiveGame();
+    if (snapshot == null) return;
+    await _prefs.savePausedGame(snapshot);
+  }
+
+  PausedGame? _snapshotLiveGame() {
     final solution = _solution;
-    if (solution == null || !_hasActiveGame || isGameOver) return;
+    if (solution == null) return null;
 
     final flatCells = <Cell>[
       for (var r = 0; r < SudokuBoard.size; r++)
@@ -536,16 +763,15 @@ class GameProvider extends ChangeNotifier {
           _cells[r][c].copyWith(hasConflict: false),
     ];
 
-    await _prefs.savePausedGame(
-      PausedGame(
-        difficulty: _gameDifficulty,
-        elapsed: _elapsed,
-        mistakes: _mistakes,
-        solution: solution.toFlat(),
-        cells: flatCells,
-        isDaily: _isDaily,
-        dailyDayKey: _dailyDayKey,
-      ),
+    return PausedGame(
+      difficulty: _gameDifficulty,
+      elapsed: _elapsed,
+      mistakes: _mistakes,
+      solution: solution.toFlat(),
+      cells: flatCells,
+      isDaily: _isDaily,
+      dailyDayKey: _dailyDayKey,
+      sessionPalette: _sessionPalette,
     );
   }
 
@@ -1088,21 +1314,51 @@ class GameProvider extends ChangeNotifier {
       _celebration = _buildCelebration(newly);
       _trackNewlyCompletedUnits(newly);
       _maybeChromaticShift();
+      _maybeDailyPaletteShift(now);
     }
     _completedUnits = now;
     return newlyCompleted;
   }
 
+  /// Daily: after ⅔ of units (18/27), switch to the day's second palette.
+  void _maybeDailyPaletteShift(Set<String> completedUnits) {
+    if (!_isDaily) return;
+    if (completedUnits.length < DailyIrodoku.paletteSwitchUnitThreshold) {
+      return;
+    }
+    final challenge = DailyIrodoku.forDate();
+    if (_dailyDayKey != null && _dailyDayKey != challenge.dayKey) return;
+    if (_sessionPalette == challenge.secondPalette) return;
+    _sessionPalette = challenge.secondPalette;
+    notifyListeners();
+  }
+
+  /// Align session palette with unit progress (restore / review / resume).
+  void _ensureDailyPaletteForProgress() {
+    if (!_isDaily) return;
+    final challenge = DailyIrodoku.forDate();
+    final units = _successfullyCompletedUnits();
+    if (units.length >= DailyIrodoku.paletteSwitchUnitThreshold) {
+      _sessionPalette = challenge.secondPalette;
+    } else {
+      _sessionPalette ??= challenge.palette;
+    }
+  }
+
   /// Chromatic mode: after completing any unit, hop to a different menu palette.
+  ///
+  /// Hops use [_sessionPalette] only — the user's saved Config palette is left
+  /// unchanged. Wins still credit [activePalette] (the finish hop).
   void _maybeChromaticShift() {
     if (_isDaily) return;
     if (!_settings.chromatic) return;
+    final current = activePalette;
     final options = GamePalette.menuValues
-        .where((palette) => palette != _settings.palette)
+        .where((palette) => palette != current)
         .toList();
     if (options.isEmpty) return;
-    final next = options[Random().nextInt(options.length)];
-    unawaited(_settings.setPalette(next));
+    _sessionPalette = options[Random().nextInt(options.length)];
+    notifyListeners();
   }
 
   void _trackNewlyCompletedUnits(Set<String> newly) {
@@ -1302,6 +1558,8 @@ class GameProvider extends ChangeNotifier {
     if (_isDaily) {
       _heldDaily = null;
       unawaited(_prefs.clearParkedDailyGame());
+      final failed = _snapshotLiveGame();
+      unawaited(_recordDailyFailure(failedBoard: failed));
     }
   }
 
@@ -1344,6 +1602,8 @@ class GameProvider extends ChangeNotifier {
       );
       _settings.ensurePaletteUnlocked(_stats.stats);
       unawaited(_stats.persist());
+      // Expert wins may unlock Master — start warming a board immediately.
+      unawaited(prefetchMasterPuzzle());
       unawaited(
         _achievements.evaluateWin(
           difficulty: _gameDifficulty,
@@ -1356,15 +1616,23 @@ class GameProvider extends ChangeNotifier {
       if (_isDaily) {
         _heldDaily = null;
         unawaited(_prefs.clearParkedDailyGame());
-        unawaited(_recordDailyCompletion());
+        final completed = _snapshotLiveGame();
+        unawaited(_recordDailyCompletion(completedBoard: completed));
       }
     }
   }
 
-  Future<void> _recordDailyCompletion() async {
+  Future<void> _recordDailyCompletion({PausedGame? completedBoard}) async {
     final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
     final last = _prefs.getDailyLastCompletedDay();
-    if (last == dayKey) return;
+    if (last == dayKey) {
+      if (completedBoard != null) {
+        await _prefs.saveCompletedDailyGame(completedBoard);
+      }
+      await _prefs.clearFailedDailyGame();
+      await _prefs.clearDailyFailedDay();
+      return;
+    }
 
     final yesterday = DailyIrodoku.previousDayKey(dayKey);
     final streak = last == yesterday ? _prefs.getDailyStreak() + 1 : 1;
@@ -1372,17 +1640,78 @@ class GameProvider extends ChangeNotifier {
       lastCompletedDay: dayKey,
       streak: streak,
     );
+    if (completedBoard != null) {
+      await _prefs.saveCompletedDailyGame(completedBoard);
+    }
+    await _prefs.clearFailedDailyGame();
+    await _prefs.clearDailyFailedDay();
+    unawaited(_achievements.onDailyChallengeWon(streak: streak));
     notifyListeners();
+  }
+
+  Future<void> _recordDailyFailure({PausedGame? failedBoard}) async {
+    final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
+    await _prefs.setDailyFailedDay(dayKey);
+    if (failedBoard != null) {
+      await _prefs.saveFailedDailyGame(failedBoard);
+    }
+    // A loss for today supersedes any stray win snapshot.
+    await _prefs.clearCompletedDailyGame();
+    // Losing ends the Daily streak immediately (not deferred to the next day).
+    await _prefs.resetDailyStreak();
+    notifyListeners();
+  }
+
+  void _applyFinishedDailyReview(PausedGame finished, {required bool won}) {
+    final challenge = DailyIrodoku.forDate();
+    _applyPausedBoard(
+      finished,
+      sessionPalette: finished.sessionPalette ?? challenge.palette,
+    );
+    _timer?.cancel();
+    _isWon = won;
+    _isLost = !won;
+    _isPaused = false;
+    _hasActiveGame = false;
+    _winRecorded = won;
+    _lossRecorded = !won;
+    _dailyReviewMode = true;
+    _isDaily = true;
+    _dailyDayKey = finished.dailyDayKey ?? challenge.dayKey;
+    // Prefer stored end-state palette; infer from unit progress for older saves.
+    if (finished.sessionPalette != null) {
+      _sessionPalette = finished.sessionPalette;
+    } else {
+      _ensureDailyPaletteForProgress();
+    }
+    _pendingPaletteUnlocks = [];
   }
 
   Future<void> _hydrateParkedHoldsFromDisk() async {
     final today = DailyIrodoku.forDate().dayKey;
+
+    final completedDaily = _prefs.loadCompletedDailyGame();
+    if (completedDaily != null && completedDaily.dailyDayKey != today) {
+      await _prefs.clearCompletedDailyGame();
+    }
+
+    final failedDaily = _prefs.loadFailedDailyGame();
+    if (failedDaily != null && failedDaily.dailyDayKey != today) {
+      await _prefs.clearFailedDailyGame();
+    }
 
     final parkedRegular = _prefs.loadParkedRegularGame();
     if (parkedRegular != null && !parkedRegular.isDaily) {
       _heldRegular = _heldFromPaused(parkedRegular);
     } else if (parkedRegular != null) {
       await _prefs.clearParkedRegularGame();
+    }
+
+    final parkedChromatic = _prefs.loadParkedChromaticGame();
+    if (parkedChromatic != null && !parkedChromatic.isDaily) {
+      _heldChromatic = _heldFromPaused(parkedChromatic);
+    } else if (parkedChromatic != null) {
+      await _prefs.clearParkedChromaticGame();
     }
 
     final parkedDaily = _prefs.loadParkedDailyGame();
@@ -1395,10 +1724,18 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
+  /// Park the live non-daily board into Classic or Chromatic hold.
   Future<void> _parkRegularFromLive() async {
+    if (_isDaily) return;
     if (!_hasActiveGame && !isGameOver && _solution == null) return;
-    _heldRegular = _captureHeld();
-    await _persistParkedRegular();
+    final held = _captureHeld();
+    if (_settings.chromatic) {
+      _heldChromatic = held;
+      await _persistParkedChromatic();
+    } else {
+      _heldRegular = held;
+      await _persistParkedRegular();
+    }
   }
 
   Future<void> _persistParkedRegular() async {
@@ -1415,6 +1752,20 @@ class GameProvider extends ChangeNotifier {
     await _prefs.saveParkedRegularGame(paused);
   }
 
+  Future<void> _persistParkedChromatic() async {
+    final held = _heldChromatic;
+    if (held == null) {
+      await _prefs.clearParkedChromaticGame();
+      return;
+    }
+    final paused = _pausedFromHeld(held);
+    if (paused == null) {
+      await _prefs.clearParkedChromaticGame();
+      return;
+    }
+    await _prefs.saveParkedChromaticGame(paused);
+  }
+
   Future<void> _persistParkedDaily() async {
     final held = _heldDaily;
     if (held == null) {
@@ -1427,6 +1778,73 @@ class GameProvider extends ChangeNotifier {
       return;
     }
     await _prefs.saveParkedDailyGame(paused);
+  }
+
+  Future<void> _parkDailyIfLive() async {
+    if (!_isDaily) return;
+    _timer?.cancel();
+    if (!isGameOver && !_dailyReviewMode) {
+      _heldDaily = _captureHeld();
+      await _persistParkedDaily();
+    } else {
+      _heldDaily = null;
+      await _prefs.clearParkedDailyGame();
+    }
+    _dailyReviewMode = false;
+    _sessionPalette = null;
+  }
+
+  /// Switch to Classic mode for Main Menu → resume or start.
+  Future<void> openClassicGame() async {
+    if (_isGenerating) return;
+
+    if (_isDaily) {
+      await _parkDailyIfLive();
+    } else if (_settings.chromatic) {
+      await _parkRegularFromLive();
+    } else {
+      // Already on Classic — resume as-is.
+      notifyListeners();
+      return;
+    }
+
+    await _settings.setChromatic(false);
+    if (_heldRegular != null) {
+      _applyHeld(_heldRegular!);
+      _heldRegular = null;
+      await _prefs.clearParkedRegularGame();
+    } else {
+      await startNewGame(preserveHeldDaily: true);
+    }
+    notifyListeners();
+  }
+
+  /// Switch to Chromatic mode for Main Menu → resume or start.
+  /// Returns false if Chromatic is still locked.
+  Future<bool> openChromaticGame() async {
+    if (_isGenerating) return false;
+    if (!_stats.areAllMenuPalettesUnlocked) return false;
+
+    if (_isDaily) {
+      await _parkDailyIfLive();
+    } else if (!_settings.chromatic) {
+      await _parkRegularFromLive();
+    } else {
+      // Already on Chromatic — resume as-is.
+      notifyListeners();
+      return true;
+    }
+
+    await _settings.setChromatic(true);
+    if (_heldChromatic != null) {
+      _applyHeld(_heldChromatic!);
+      _heldChromatic = null;
+      await _prefs.clearParkedChromaticGame();
+    } else {
+      await startNewGame(preserveHeldDaily: true);
+    }
+    notifyListeners();
+    return true;
   }
 
   PausedGame? _pausedFromHeld(_HeldGameSession held) {
@@ -1444,6 +1862,7 @@ class GameProvider extends ChangeNotifier {
       cells: flatCells,
       isDaily: held.isDaily,
       dailyDayKey: held.dailyDayKey,
+      sessionPalette: held.sessionPalette,
     );
   }
 
@@ -1454,8 +1873,8 @@ class GameProvider extends ChangeNotifier {
       });
     });
     final sessionPalette = paused.isDaily
-        ? DailyIrodoku.forDate().palette
-        : null;
+        ? (paused.sessionPalette ?? DailyIrodoku.forDate().palette)
+        : paused.sessionPalette;
     return _HeldGameSession(
       cells: cells,
       solution: paused.solution,
@@ -1588,6 +2007,7 @@ class GameProvider extends ChangeNotifier {
   void _applyHeld(_HeldGameSession held) {
     _timer?.cancel();
     _generationToken++;
+    _dailyReviewMode = false;
     _cells = [
       for (final row in held.cells) [for (final cell in row) cell.copyWith()],
     ];

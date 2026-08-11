@@ -26,17 +26,21 @@ class SudokuSolver {
   }
 
   /// Counts solutions up to [limit] (typically 2 for uniqueness checks).
+  ///
+  /// Works on a copy so [board] is never mutated.
   int countSolutions(SudokuBoard board, {int limit = 2}) {
-    final working = board.copy();
-    return _countSolutions(working, limit);
+    return _countSolutions(board.copy(), limit);
   }
 
+  /// True when [board] has exactly one solution.
+  ///
+  /// Mutates [board] only transiently; cells are restored before return.
   bool hasUniqueSolution(SudokuBoard board) {
-    return countSolutions(board, limit: 2) == 1;
+    return _countSolutions(board, 2) == 1;
   }
 
   int _countSolutions(SudokuBoard board, int limit) {
-    final empty = _findEmpty(board);
+    final empty = _findEmptyMrv(board);
     if (empty == null) return 1;
 
     final (row, col) = empty;
@@ -59,5 +63,29 @@ class SudokuSolver {
       }
     }
     return null;
+  }
+
+  /// Most-constrained empty cell (fewest valid candidates). Speeds uniqueness.
+  (int, int)? _findEmptyMrv(SudokuBoard board) {
+    (int, int)? best;
+    var bestCount = 10;
+
+    for (var r = 0; r < SudokuBoard.size; r++) {
+      for (var c = 0; c < SudokuBoard.size; c++) {
+        if (board.get(r, c) != 0) continue;
+
+        var candidates = 0;
+        for (var value = 1; value <= 9; value++) {
+          if (board.isValidPlacement(r, c, value)) candidates++;
+        }
+        if (candidates == 0) return (r, c);
+        if (candidates < bestCount) {
+          bestCount = candidates;
+          best = (r, c);
+          if (bestCount == 1) return best;
+        }
+      }
+    }
+    return best;
   }
 }

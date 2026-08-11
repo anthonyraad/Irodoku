@@ -4,6 +4,9 @@ import 'game_palette.dart';
 class GameStats {
   static const int iroenUnlockWinsRequired = 100;
 
+  /// Medium wins required before Daily Challenge unlocks.
+  static const int dailyChallengeUnlockMediumWins = 1;
+
   final int currentStreak;
   final int bestStreak;
   final int gamesPlayed;
@@ -78,6 +81,9 @@ class GameStats {
   }
 
   bool get isIroenUnlocked => gamesWon >= iroenUnlockWinsRequired;
+
+  bool get isDailyChallengeUnlocked =>
+      winsFor(Difficulty.medium) >= dailyChallengeUnlockMediumWins;
 
   Difficulty get highestUnlocked {
     Difficulty best = Difficulty.easy;

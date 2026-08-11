@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/palette_swatch.dart';
 import '../providers/achievements_provider.dart';
+import '../widgets/circle_reveal_clipper.dart';
 import '../widgets/typing_title.dart';
 
 class AchievementsScreen extends StatefulWidget {
@@ -18,11 +20,19 @@ class AchievementsScreen extends StatefulWidget {
 }
 
 class _AchievementsScreenState extends State<AchievementsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _colorCycleDuration = Duration(milliseconds: 1050);
+  static const _revealDelay = Duration(milliseconds: 300);
+  static const _revealDuration = Duration(milliseconds: 520);
 
   late final AnimationController _colorCycleController;
+  late final AnimationController _revealController;
   int _colorCycleSteps = 4;
+
+  /// Unlocked since last Achievements visit; animate these on open.
+  Set<String> _revealIds = {};
+  bool _revealArmed = false;
+  bool _revealPlaying = false;
 
   @override
   void initState() {
@@ -35,11 +45,34 @@ class _AchievementsScreenState extends State<AchievementsScreen>
           _colorCycleController.value = 0;
         }
       });
+    _revealController = AnimationController(
+      vsync: this,
+      duration: _revealDuration,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final achievements = context.read<AchievementsProvider>();
+      final unseen = achievements.unseenUnlockedIds;
+      // Mark seen immediately so a later visit won't re-play these.
+      unawaited(achievements.markUnlockedAchievementsSeen());
+      if (unseen.isEmpty) return;
+      setState(() {
+        _revealIds = unseen;
+        _revealArmed = true;
+      });
+      Future<void>.delayed(_revealDelay, () {
+        if (!mounted) return;
+        setState(() => _revealPlaying = true);
+        _revealController.forward(from: 0);
+      });
+    });
   }
 
   @override
   void dispose() {
     _colorCycleController.dispose();
+    _revealController.dispose();
     super.dispose();
   }
 
@@ -69,7 +102,10 @@ class _AchievementsScreenState extends State<AchievementsScreen>
       body: Consumer<AchievementsProvider>(
         builder: (context, achievements, _) {
           return AnimatedBuilder(
-            animation: _colorCycleController,
+            animation: Listenable.merge([
+              _colorCycleController,
+              _revealController,
+            ]),
             builder: (context, _) {
               return LayoutBuilder(
                 builder: (context, constraints) {
@@ -93,6 +129,8 @@ class _AchievementsScreenState extends State<AchievementsScreen>
                           .clamp(0.0, double.infinity) *
                       0.65;
                   final lineColor = Theme.of(context).dividerColor;
+                  final revealT =
+                      Curves.easeOutCubic.transform(_revealController.value);
 
                   return Align(
                     alignment: Alignment.topCenter,
@@ -124,19 +162,36 @@ class _AchievementsScreenState extends State<AchievementsScreen>
                                         height: cellSize,
                                         color: lineColor,
                                       ),
-                                    _AchievementCell(
-                                      achievement:
-                                          Achievement.all[r * cols + c],
-                                      size: cellSize,
-                                      unlocked: achievements.isUnlocked(
-                                        Achievement.all[r * cols + c].id,
-                                      ),
-                                      toastLabel: achievements.toastLabel(
-                                        Achievement.all[r * cols + c],
-                                      ),
-                                      colorCyclePhase:
-                                          _cellColorCyclePhase(r, c),
-                                      colorCycleSteps: _colorCycleSteps,
+                                    Builder(
+                                      builder: (context) {
+                                        final achievement =
+                                            Achievement.all[r * cols + c];
+                                        final unlocked = achievements
+                                            .isUnlocked(achievement.id);
+                                        final isNewReveal = _revealArmed &&
+                                            _revealIds
+                                                .contains(achievement.id);
+                                        // Hold as locked until the delayed reveal runs.
+                                        final showUnlocked = unlocked &&
+                                            (!isNewReveal || _revealPlaying);
+                                        final fillReveal = isNewReveal
+                                            ? (_revealPlaying ? revealT : 0.0)
+                                            : (showUnlocked ? 1.0 : 0.0);
+
+                                        return _AchievementCell(
+                                          achievement: achievement,
+                                          size: cellSize,
+                                          unlocked: showUnlocked,
+                                          fillReveal: fillReveal,
+                                          toastLabel:
+                                              achievements.toastLabel(
+                                            achievement,
+                                          ),
+                                          colorCyclePhase:
+                                              _cellColorCyclePhase(r, c),
+                                          colorCycleSteps: _colorCycleSteps,
+                                        );
+                                      },
                                     ),
                                   ],
                                 ],
@@ -161,6 +216,7 @@ class _AchievementCell extends StatelessWidget {
   final Achievement achievement;
   final double size;
   final bool unlocked;
+  final double fillReveal;
   final String toastLabel;
   final double? colorCyclePhase;
   final int colorCycleSteps;
@@ -169,6 +225,7 @@ class _AchievementCell extends StatelessWidget {
     required this.achievement,
     required this.size,
     required this.unlocked,
+    required this.fillReveal,
     required this.toastLabel,
     this.colorCyclePhase,
     this.colorCycleSteps = 4,
@@ -191,16 +248,20 @@ class _AchievementCell extends StatelessWidget {
             );
     }
 
+    final reveal = fillReveal.clamp(0.0, 1.0);
+
     return SizedBox(
       width: size,
       height: size,
       child: Stack(
         fit: StackFit.expand,
         children: [
+          const ColoredBox(color: Colors.white),
           if (swatch != null)
-            DecoratedBox(decoration: swatch.boxDecoration())
-          else
-            const ColoredBox(color: Colors.white),
+            ClipPath(
+              clipper: CircleRevealClipper(fraction: reveal),
+              child: DecoratedBox(decoration: swatch.boxDecoration()),
+            ),
           Material(
             color: Colors.transparent,
             child: InkWell(onTap: () => _showTitle(context)),

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'app.dart';
 import 'core/organic_swatch_shader.dart';
 import 'services/preferences_service.dart';
+import 'sudoku/master_board_bank.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,11 @@ Future<void> main() async {
   ]);
 
   await OrganicSwatchShader.ensureLoaded();
+  try {
+    await MasterBoardBank.load();
+  } catch (e, st) {
+    debugPrint('Master board bank unavailable; using live generation. $e\n$st');
+  }
 
   final preferences = await PreferencesService.create();
   runApp(IrodokuApp(preferences: preferences));

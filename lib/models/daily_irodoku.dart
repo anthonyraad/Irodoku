@@ -1,8 +1,14 @@
 import 'difficulty.dart';
 import 'game_palette.dart';
 
-/// Deterministic daily challenge shared by all players on a local calendar day.
+/// Deterministic daily challenge shared by all players.
+///
+/// Resets at midnight **PST** (fixed UTC−8, no daylight-saving shift) so every
+/// device sees the same puzzle for the same `yyyy-MM-dd` day key.
 class DailyIrodoku {
+  /// Fixed Pacific Standard Time offset (UTC−8). Intentionally ignores PDT.
+  static const pstOffsetFromUtc = Duration(hours: -8);
+
   /// Difficulties used for the daily (equal long-run odds, non-sequential).
   static const scheduleDifficulties = <Difficulty>[
     Difficulty.easy,
@@ -22,41 +28,75 @@ class DailyIrodoku {
     GamePalette.sky,
   ];
 
+  /// Completed rows+cols+boxes required before the mid-game palette switch.
+  static const paletteSwitchUnitThreshold = 18; // ⅔ of 27 units
+
   final String dayKey;
   final int seed;
   final Difficulty difficulty;
+
+  /// Opening palette for the day (everyone shares this).
   final GamePalette palette;
+
+  /// Second palette after [paletteSwitchUnitThreshold] units (always ≠ [palette]).
+  final GamePalette secondPalette;
 
   const DailyIrodoku({
     required this.dayKey,
     required this.seed,
     required this.difficulty,
     required this.palette,
+    required this.secondPalette,
   });
 
-  /// Local-calendar challenge for [date] (defaults to now).
+  /// PST-calendar challenge for [date] (defaults to now).
   factory DailyIrodoku.forDate([DateTime? date]) {
-    final local = (date ?? DateTime.now()).toLocal();
-    final key = dayKeyFor(local);
+    final key = dayKeyFor(date ?? DateTime.now());
     final dayIndex = _utcDayIndex(key);
     // Stable across devices/isolates — do not use [Object.hash] / [hashCode].
     final seed = _stableHash('$key:seed');
     final difficultyIndex =
         _stableHash('$key:difficulty') % scheduleDifficulties.length;
+    final firstIndex = dayIndex.abs() % schedulePalettes.length;
+    // Offset 1..(n-1) so second is never the same as first.
+    final secondOffset =
+        1 + (_stableHash('$key:secondPalette') % (schedulePalettes.length - 1));
+    final secondIndex = (firstIndex + secondOffset) % schedulePalettes.length;
     return DailyIrodoku(
       dayKey: key,
       seed: seed == 0 ? 1 : seed,
       difficulty: scheduleDifficulties[difficultyIndex],
-      palette: schedulePalettes[dayIndex.abs() % schedulePalettes.length],
+      palette: schedulePalettes[firstIndex],
+      secondPalette: schedulePalettes[secondIndex],
     );
   }
 
+  /// `yyyy-MM-dd` of the PST calendar day containing [date].
   static String dayKeyFor(DateTime date) {
-    final local = date.toLocal();
-    final y = local.year.toString().padLeft(4, '0');
-    final m = local.month.toString().padLeft(2, '0');
-    final d = local.day.toString().padLeft(2, '0');
+    final pst = _pstWallClock(date);
+    final y = pst.year.toString().padLeft(4, '0');
+    final m = pst.month.toString().padLeft(2, '0');
+    final d = pst.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+
+  /// Instant of the next PST midnight after [now] (defaults to now).
+  static DateTime nextPstMidnight([DateTime? now]) {
+    final utcNow = (now ?? DateTime.now()).toUtc();
+    final pst = _pstWallClock(utcNow);
+    // Carrier date for the current PST Y-M-D, then step to next midnight PST.
+    final nextPstMidnightWall = DateTime.utc(pst.year, pst.month, pst.day)
+        .add(const Duration(days: 1));
+    // PST midnight wall clock → UTC (= wall + 8h).
+    return nextPstMidnightWall.subtract(pstOffsetFromUtc);
+  }
+
+  /// Delay until the Daily resets (PST midnight), for UI refresh timers.
+  static Duration timeUntilNextReset([DateTime? now]) {
+    final n = (now ?? DateTime.now()).toUtc();
+    final next = nextPstMidnight(n);
+    final delta = next.difference(n);
+    return delta.isNegative ? Duration.zero : delta;
   }
 
   /// Calendar day before [dayKey] (`yyyy-MM-dd`).
@@ -83,6 +123,11 @@ class DailyIrodoku {
     if (year == null || month == null || day == null) return dayKey;
     final yy = (year % 100).toString().padLeft(2, '0');
     return '$month.$day.$yy';
+  }
+
+  /// PST wall-clock components for [date] (DateTime is UTC-flagged; use Y/M/D/H only).
+  static DateTime _pstWallClock(DateTime date) {
+    return date.toUtc().add(pstOffsetFromUtc);
   }
 
   /// Days since 2024-01-01 UTC for a `yyyy-MM-dd` key (timezone-independent).

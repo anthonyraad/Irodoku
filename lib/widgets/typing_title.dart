@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 class TypingTitle extends StatefulWidget {
   final String text;
   final VoidCallback? onTap;
+  final VoidCallback? onTypingComplete;
   final int playToken;
   final TextStyle? style;
   final TextAlign? textAlign;
@@ -19,6 +20,7 @@ class TypingTitle extends StatefulWidget {
     super.key,
     required this.text,
     this.onTap,
+    this.onTypingComplete,
     this.playToken = 0,
     this.style,
     this.textAlign,
@@ -124,6 +126,10 @@ class _TypingTitleState extends State<TypingTitle> {
         return;
       }
       setState(() => _visibleChars++);
+      if (_visibleChars >= widget.text.length) {
+        timer.cancel();
+        widget.onTypingComplete?.call();
+      }
     });
   }
 

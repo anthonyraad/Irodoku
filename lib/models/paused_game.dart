@@ -1,5 +1,6 @@
 import 'cell.dart';
 import 'difficulty.dart';
+import 'game_palette.dart';
 import '../sudoku/sudoku_board.dart';
 
 class PausedGame {
@@ -11,6 +12,9 @@ class PausedGame {
   final bool isDaily;
   final String? dailyDayKey;
 
+  /// Live session palette (Chromatic hop / Daily), not the saved Config choice.
+  final GamePalette? sessionPalette;
+
   const PausedGame({
     required this.difficulty,
     required this.elapsed,
@@ -19,6 +23,7 @@ class PausedGame {
     required this.cells,
     this.isDaily = false,
     this.dailyDayKey,
+    this.sessionPalette,
   });
 
   Map<String, Object?> toJson() {
@@ -29,6 +34,7 @@ class PausedGame {
       'solution': solution,
       'isDaily': isDaily,
       'dailyDayKey': dailyDayKey,
+      'sessionPalette': sessionPalette?.storageKey,
       'cells': [
         for (final cell in cells)
           {
@@ -78,6 +84,7 @@ class PausedGame {
       }
     }
 
+    final sessionKey = json['sessionPalette'] as String?;
     return PausedGame(
       difficulty: Difficulty.fromStorageKey(json['difficulty'] as String?),
       elapsed: Duration(milliseconds: json['elapsedMs'] as int? ?? 0),
@@ -86,6 +93,8 @@ class PausedGame {
       cells: cells,
       isDaily: json['isDaily'] as bool? ?? false,
       dailyDayKey: json['dailyDayKey'] as String?,
+      sessionPalette:
+          sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),
     );
   }
 

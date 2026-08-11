@@ -19,11 +19,14 @@ class AchievementsProvider extends ChangeNotifier {
 
   final PreferencesService _prefs;
   AchievementsProgress _progress;
+  Set<String> _seenIds;
   SettingsProvider? _settings;
   SoundService? _sounds;
   int _unlockSoundEpoch = 0;
 
-  AchievementsProvider(this._prefs) : _progress = _prefs.loadAchievements() {
+  AchievementsProvider(this._prefs)
+      : _progress = _prefs.loadAchievements(),
+        _seenIds = _prefs.loadSeenAchievementIds() {
     // Unlock anything already implied by persisted stats/counters.
     unawaited(reconcileFromExistingStats());
   }
@@ -40,6 +43,21 @@ class AchievementsProvider extends ChangeNotifier {
   AchievementsProgress get progress => _progress;
 
   bool isUnlocked(String id) => _progress.isUnlocked(id);
+
+  /// Unlocked achievements not yet shown on the Achievements screen.
+  Set<String> get unseenUnlockedIds =>
+      _progress.unlockedIds.difference(_seenIds);
+
+  /// Marks every currently unlocked achievement as seen on the Achievements page.
+  Future<void> markUnlockedAchievementsSeen() async {
+    final next = {..._seenIds, ..._progress.unlockedIds};
+    if (next.length == _seenIds.length &&
+        next.containsAll(_seenIds)) {
+      return;
+    }
+    _seenIds = next;
+    await _prefs.saveSeenAchievementIds(_seenIds);
+  }
 
   Future<void> persist() => _prefs.saveAchievements(_progress);
 
@@ -80,9 +98,16 @@ class AchievementsProvider extends ChangeNotifier {
       'r2c8' => (_calendarStreak(p.winDayKeys), 3),
       'r2c9' => (p.consecutiveHardNoMistake, 3),
       'r3c7' => (p.undoCount, 100),
-      'r5c4' => (_calendarStreak(p.hardWinDayKeys), 5),
+      'r5c4' => (
+          math.min(_prefs.getDailyBestStreak(), 5),
+          5,
+        ),
       'r5c7' => (p.notesTaken, 1000),
       'r7c5' => (p.consecutiveExpertNoMistake, 3),
+      'r8c7' => (
+          math.min(_prefs.getDailyBestStreak(), 30),
+          30,
+        ),
       'r8c8' => (p.chromaticGamesWon, 30),
       'r8c9' => (p.masterNoMistakeWins, 30),
       _ => null,
@@ -169,7 +194,9 @@ class AchievementsProvider extends ChangeNotifier {
   void _addStreakAchievements(Set<String> ids) {
     // Any historical calendar run counts, not only a streak ending today.
     if (_maxCalendarStreak(_progress.winDayKeys) >= 3) ids.add('r2c8');
-    if (_maxCalendarStreak(_progress.hardWinDayKeys) >= 5) ids.add('r5c4');
+    final dailyBest = _prefs.getDailyBestStreak();
+    if (dailyBest >= 5) ids.add('r5c4');
+    if (dailyBest >= 30) ids.add('r8c7');
   }
 
   void _addBestTimeAchievements(Set<String> ids, GameStats stats) {
@@ -191,8 +218,14 @@ class AchievementsProvider extends ChangeNotifier {
     }
 
     // Exact timer achievements — only if a stored best time is exactly that.
-    final mediumBest = stats.bestTimeFor(Difficulty.medium);
-    if (mediumBest?.inSeconds == 11 * 60 + 11) ids.add('r3c9');
+    const exact454 = 4 * 60 + 54;
+    for (final difficulty in Difficulty.values) {
+      if (stats.bestTimeFor(difficulty)?.inSeconds == exact454 ||
+          stats.chromaticBestTimeFor(difficulty)?.inSeconds == exact454) {
+        ids.add('r3c9');
+        break;
+      }
+    }
     final expertBest = stats.bestTimeFor(Difficulty.expert);
     final masterBest = stats.bestTimeFor(Difficulty.master);
     if (expertBest?.inSeconds == 44 * 60 + 44 ||
@@ -295,6 +328,24 @@ class AchievementsProvider extends ChangeNotifier {
     if (filledNineDistinctColorsConsecutively) ids.add('r7c9');
     if (ids.isEmpty) return;
     if (!_unlockMany(ids)) return;
+    notifyListeners();
+    await persist();
+  }
+
+  /// Call after a Daily Challenge win updates the persisted streak.
+  Future<void> onDailyChallengeWon({required int streak}) async {
+    final best = math.max(streak, _prefs.getDailyBestStreak());
+    final ids = <String>{
+      if (best >= 5) 'r5c4',
+      if (best >= 30) 'r8c7',
+    };
+    if (ids.isEmpty) {
+      notifyListeners();
+      return;
+    }
+    if (!_unlockMany(ids, announceDelay: _winAchievementSoundDelay)) {
+      return;
+    }
     notifyListeners();
     await persist();
   }
@@ -416,8 +467,7 @@ class AchievementsProvider extends ChangeNotifier {
     }
     if (_progress.undoCount >= 100) ids.add('r3c7');
     if (difficulty == Difficulty.expert && !ctx.paused) ids.add('r3c8');
-    if (difficulty == Difficulty.medium &&
-        elapsed.inSeconds == 11 * 60 + 11) {
+    if (elapsed.inSeconds == 4 * 60 + 54) {
       ids.add('r3c9');
     }
 
@@ -446,8 +496,7 @@ class AchievementsProvider extends ChangeNotifier {
       ids.add('r4c9');
     }
 
-    // Kanto row
-    if (_calendarStreak(hardDays) >= 5) ids.add('r5c4');
+    // Kanto row (r5c4 Daily streak is checked in [onDailyChallengeWon])
     if (difficulty == Difficulty.master && palette == GamePalette.pkmn) {
       ids.add('r5c6');
     }
@@ -487,19 +536,16 @@ class AchievementsProvider extends ChangeNotifier {
     if (ctx.completedNineUnitsInNineSeconds) ids.add('r7c8');
     if (ctx.filledNineDistinctColorsConsecutively) ids.add('r7c9');
 
-    // Sky row
+    // Sky row (r8c7 Daily streak is checked in [onDailyChallengeWon])
     if (difficulty == Difficulty.master &&
         palette == GamePalette.sky &&
         ctx.lastFillColor == 3) {
       ids.add('r8c4');
     }
-    if (unlockGlassSkyMaster) ids.add('r8c5');
-    if (difficulty == Difficulty.master && palette == GamePalette.sky) {
-      ids.add('r8c6');
-    }
     if (ctx.chromatic && !ctx.usedNotes && mistakes == 0) {
-      ids.add('r8c7');
+      ids.add('r8c5');
     }
+    if (unlockGlassSkyMaster) ids.add('r8c6');
     if (chromaticGamesWon >= 30) ids.add('r8c8');
     if (masterNoMistakeWins >= 30) ids.add('r8c9');
 

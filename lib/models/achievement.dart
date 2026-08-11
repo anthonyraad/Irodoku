@@ -69,7 +69,7 @@ class Achievement {
     Achievement(
       row: 2,
       col: 8,
-      title: 'Finish a Medium game in exactly 11:11',
+      title: 'Finish a game in exactly 4:54',
     ),
     // Row 4 — Neon
     Achievement(row: 3, col: 0, title: 'Win 3 games with Neon palette'),
@@ -85,7 +85,11 @@ class Achievement {
     Achievement(row: 4, col: 0, title: 'Win 3 games with Kanto palette'),
     Achievement(row: 4, col: 1, title: 'Win 7 games with Kanto palette'),
     Achievement(row: 4, col: 2, title: 'Win 10 games with Kanto palette'),
-    Achievement(row: 4, col: 3, title: 'Win a Hard game 5 days in a row'),
+    Achievement(
+      row: 4,
+      col: 3,
+      title: 'Win the Daily Challenge 5 days in a row',
+    ),
     Achievement(
       row: 4,
       col: 4,
@@ -163,13 +167,17 @@ class Achievement {
     Achievement(
       row: 7,
       col: 4,
+      title: 'Win a Chromatic game without taking notes and with no mistakes',
+    ),
+    Achievement(
+      row: 7,
+      col: 5,
       title: 'Win back-to-back Master games with Glass and Sky',
     ),
-    Achievement(row: 7, col: 5, title: 'Win a Master game with Sky palette'),
     Achievement(
       row: 7,
       col: 6,
-      title: 'Win a Chromatic game without taking notes and with no mistakes',
+      title: 'Win the Daily Challenge 30 days in a row',
     ),
     Achievement(row: 7, col: 7, title: 'Win 30 Chromatic games'),
     Achievement(row: 7, col: 8, title: 'Win 30 Master games with no mistakes'),

@@ -27,6 +27,9 @@ class StatsProvider extends ChangeNotifier {
 
   bool get isIroenUnlocked => devMode || _stats.isIroenUnlocked;
 
+  bool get isDailyChallengeUnlocked =>
+      devMode || _stats.isDailyChallengeUnlocked;
+
   void notifyDevModeChanged() => notifyListeners();
 
   Future<void> recordGameStarted() async {

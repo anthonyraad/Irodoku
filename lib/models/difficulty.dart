@@ -5,7 +5,7 @@ enum Difficulty {
   expert,
   master;
 
-  static const int unlockWinsRequired = 5;
+  static const int unlockWinsRequired = 3;
 
   String get label => switch (this) {
         Difficulty.easy => 'Easy',
@@ -20,8 +20,8 @@ enum Difficulty {
         Difficulty.easy => (36, 40),
         Difficulty.medium => (32, 35),
         Difficulty.hard => (28, 31),
-        Difficulty.expert => (22, 27),
-        Difficulty.master => (17, 17),
+        Difficulty.expert => (23, 27),
+        Difficulty.master => (17, 22),
       };
 
   /// Difficulty whose wins gate this level. Null means always unlocked.

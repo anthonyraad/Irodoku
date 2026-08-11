@@ -25,14 +25,20 @@ class PreferencesService {
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
   static const _keyParkedRegularGame = 'parked_regular_game';
+  static const _keyParkedChromaticGame = 'parked_chromatic_game';
   static const _keyParkedDailyGame = 'parked_daily_game';
+  static const _keyCompletedDailyGame = 'completed_daily_game';
+  static const _keyFailedDailyGame = 'failed_daily_game';
   static const _keyIroenState = 'iroen_state';
   static const _keyIroenGallery = 'iroen_gallery';
   static const _keyIroenActiveMosaicId = 'iroen_active_mosaic_id';
   static const _keyDevMode = 'dev_mode';
   static const _keyAchievements = 'achievements_progress';
+  static const _keyAchievementsSeen = 'achievements_seen_ids';
   static const _keyDailyLastCompleted = 'daily_last_completed_day';
+  static const _keyDailyLastFailed = 'daily_last_failed_day';
   static const _keyDailyStreak = 'daily_streak';
+  static const _keyDailyBestStreak = 'daily_best_streak';
   static const _keyPaletteBeforeDaily = 'palette_before_daily';
 
   final SharedPreferences _prefs;
@@ -94,7 +100,18 @@ class PreferencesService {
   String? getDailyLastCompletedDay() =>
       _prefs.getString(_keyDailyLastCompleted);
 
+  /// `yyyy-MM-dd` of the last failed Daily Irodoku, or null.
+  String? getDailyLastFailedDay() => _prefs.getString(_keyDailyLastFailed);
+
   int getDailyStreak() => _prefs.getInt(_keyDailyStreak) ?? 0;
+
+  /// Highest Daily Iro win streak ever achieved.
+  int getDailyBestStreak() {
+    final best = _prefs.getInt(_keyDailyBestStreak) ?? 0;
+    final current = getDailyStreak();
+    // Migrate: older installs only tracked the live streak.
+    return best > current ? best : current;
+  }
 
   Future<void> setDailyProgress({
     required String lastCompletedDay,
@@ -102,6 +119,22 @@ class PreferencesService {
   }) async {
     await _prefs.setString(_keyDailyLastCompleted, lastCompletedDay);
     await _prefs.setInt(_keyDailyStreak, streak);
+    final best = _prefs.getInt(_keyDailyBestStreak) ?? 0;
+    if (streak > best) {
+      await _prefs.setInt(_keyDailyBestStreak, streak);
+    }
+  }
+
+  Future<void> resetDailyStreak() async {
+    await _prefs.setInt(_keyDailyStreak, 0);
+  }
+
+  Future<void> setDailyFailedDay(String dayKey) async {
+    await _prefs.setString(_keyDailyLastFailed, dayKey);
+  }
+
+  Future<void> clearDailyFailedDay() async {
+    await _prefs.remove(_keyDailyLastFailed);
   }
 
   /// Palette to restore after leaving a Daily Irodoku session.
@@ -281,6 +314,17 @@ class PreferencesService {
     await _prefs.remove(_keyParkedRegularGame);
   }
 
+  PausedGame? loadParkedChromaticGame() =>
+      _loadPaused(_keyParkedChromaticGame);
+
+  Future<void> saveParkedChromaticGame(PausedGame game) async {
+    await _prefs.setString(_keyParkedChromaticGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearParkedChromaticGame() async {
+    await _prefs.remove(_keyParkedChromaticGame);
+  }
+
   PausedGame? loadParkedDailyGame() => _loadPaused(_keyParkedDailyGame);
 
   Future<void> saveParkedDailyGame(PausedGame game) async {
@@ -289,6 +333,26 @@ class PreferencesService {
 
   Future<void> clearParkedDailyGame() async {
     await _prefs.remove(_keyParkedDailyGame);
+  }
+
+  PausedGame? loadCompletedDailyGame() => _loadPaused(_keyCompletedDailyGame);
+
+  Future<void> saveCompletedDailyGame(PausedGame game) async {
+    await _prefs.setString(_keyCompletedDailyGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearCompletedDailyGame() async {
+    await _prefs.remove(_keyCompletedDailyGame);
+  }
+
+  PausedGame? loadFailedDailyGame() => _loadPaused(_keyFailedDailyGame);
+
+  Future<void> saveFailedDailyGame(PausedGame game) async {
+    await _prefs.setString(_keyFailedDailyGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearFailedDailyGame() async {
+    await _prefs.remove(_keyFailedDailyGame);
   }
 
   PausedGame? _loadPaused(String key) {
@@ -366,5 +430,16 @@ class PreferencesService {
 
   Future<void> saveAchievements(AchievementsProgress progress) async {
     await _prefs.setString(_keyAchievements, jsonEncode(progress.toJson()));
+  }
+
+  /// Achievement IDs the player has already seen on the Achievements screen.
+  Set<String> loadSeenAchievementIds() {
+    final raw = _prefs.getStringList(_keyAchievementsSeen);
+    if (raw == null) return {};
+    return raw.toSet();
+  }
+
+  Future<void> saveSeenAchievementIds(Set<String> ids) async {
+    await _prefs.setStringList(_keyAchievementsSeen, ids.toList()..sort());
   }
 }
