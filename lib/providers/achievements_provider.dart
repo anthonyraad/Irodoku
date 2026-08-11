@@ -15,7 +15,7 @@ import 'settings_provider.dart';
 class AchievementsProvider extends ChangeNotifier {
   /// Pause before the achievement sting after a game-win SFX so the file's
   /// leading silence isn't covered by the win sound.
-  static const _winAchievementSoundDelay = Duration(milliseconds: 1200);
+  static const _winAchievementSoundDelay = Duration(milliseconds: 800);
 
   final PreferencesService _prefs;
   AchievementsProgress _progress;
