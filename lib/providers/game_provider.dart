@@ -1020,7 +1020,9 @@ class GameProvider extends ChangeNotifier {
         _playSound(_sounds.playGameWin);
       } else {
         _playSound(
-          unitCompleted ? _sounds.playComplete : _placementConfirmSound(),
+          unitCompleted
+              ? _sounds.playComplete
+              : _placementConfirmSound(value),
         );
       }
     }
@@ -1028,7 +1030,7 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> Function() _placementConfirmSound() {
+  Future<void> Function() _placementConfirmSound(int value) {
     final palette = activePalette;
     if (palette == GamePalette.world11) return _sounds.playCoin;
     if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
@@ -1036,8 +1038,9 @@ class GameProvider extends ChangeNotifier {
     }
     if (palette == GamePalette.neon) return _sounds.playSlide;
     if (palette == GamePalette.rainbow) return _sounds.playRainbowConfirm;
-    if (palette == GamePalette.glass) return _sounds.playGlassConfirm;
-    if (palette == GamePalette.sky) return _sounds.playSkyConfirm;
+    if (palette == GamePalette.glass || palette == GamePalette.sky) {
+      return () => _sounds.playNoteConfirm(value);
+    }
     return _sounds.playConfirm;
   }
 

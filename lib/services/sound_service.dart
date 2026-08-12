@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
@@ -12,6 +10,9 @@ class SoundService {
     _ready = _init();
   }
 
+  /// Concurrent voices per note so same-color fills can overlap.
+  static const _noteOverlapSlots = 3;
+
   static const _note = 'sounds/note.mp3';
   static const _deselect = 'sounds/deselect.mp3';
   static const _confirm = 'sounds/confirm.mp3';
@@ -19,34 +20,35 @@ class SoundService {
   static const _plink = 'sounds/plink.mp3';
   static const _slide = 'sounds/slide.mp3';
   static const _rainbowConfirm = 'sounds/rainbowconfirm.mp3';
-  static const _gsConfirm = 'sounds/gsconfirm.mp3';
-  static const _gsConfirm2 = 'sounds/gsconfirm2.mp3';
-  static const _gsConfirm3 = 'sounds/gsconfirm3.mp3';
-  static const _gsConfirm4 = 'sounds/gsconfirm4.mp3';
-  static const _gsConfirm5 = 'sounds/gsconfirm5.mp3';
-  static const _gsConfirm6 = 'sounds/gsconfirm6.mp3';
+  static const _noteG2 = 'sounds/sky_g2.mp3';
+  static const _noteA2 = 'sounds/sky_a2.mp3';
+  static const _noteC3 = 'sounds/sky_c3.mp3';
+  static const _noteD3 = 'sounds/sky_d3.mp3';
+  static const _noteF3 = 'sounds/sky_f3.mp3';
+  static const _noteG3 = 'sounds/sky_g3.mp3';
+  static const _noteA3 = 'sounds/sky_a3.mp3';
+  static const _noteC4 = 'sounds/sky_c4.mp3';
+  static const _noteD4 = 'sounds/sky_d4.mp3';
   static const _mistake = 'sounds/mistake.mp3';
   static const _gameLoss = 'sounds/gameloss.mp3';
   static const _complete = 'sounds/complete.mp3';
   static const _gameWin = 'sounds/gamewin.mp3';
   static const _achievement = 'sounds/achievement.mp3';
 
-  /// Glass palette: three shared organic confirms.
-  static const _glassConfirms = <String>[
-    _gsConfirm,
-    _gsConfirm2,
-    _gsConfirm3,
+  /// Glass / Sky: one pitch per color value 1–9.
+  static const _noteConfirmsByValue = <String>[
+    _noteG2, // 1
+    _noteA2, // 2
+    _noteC3, // 3
+    _noteD3, // 4
+    _noteF3, // 5
+    _noteG3, // 6
+    _noteA3, // 7
+    _noteC4, // 8
+    _noteD4, // 9
   ];
 
-  /// Sky palette: shared confirms plus three Sky-only variants.
-  static const _skyConfirms = <String>[
-    _gsConfirm,
-    _gsConfirm2,
-    _gsConfirm3,
-    _gsConfirm4,
-    _gsConfirm5,
-    _gsConfirm6,
-  ];
+  static const _noteConfirmAssetSet = {..._noteConfirmsByValue};
 
   static const _assets = <String>[
     _note,
@@ -56,12 +58,7 @@ class SoundService {
     _plink,
     _slide,
     _rainbowConfirm,
-    _gsConfirm,
-    _gsConfirm2,
-    _gsConfirm3,
-    _gsConfirm4,
-    _gsConfirm5,
-    _gsConfirm6,
+    ..._noteConfirmsByValue,
     _mistake,
     _gameLoss,
     _complete,
@@ -79,13 +76,16 @@ class SoundService {
     _deselect: 0.95,
     // Hotter source assets — attenuated to sit with confirm/note.
     _rainbowConfirm: 0.70, // ~3 dB hotter mean than confirm.mp3
-    // Glass/Sky confirms are hotter in mean than confirm.mp3.
-    _gsConfirm: 0.55,
-    _gsConfirm2: 0.55,
-    _gsConfirm3: 0.55,
-    _gsConfirm4: 0.55,
-    _gsConfirm5: 0.55,
-    _gsConfirm6: 0.55,
+    // Glass/Sky note stings.
+    _noteG2: 0.52,
+    _noteA2: 0.52,
+    _noteC3: 0.52,
+    _noteD3: 0.52,
+    _noteF3: 0.52,
+    _noteG3: 0.52,
+    _noteA3: 0.52,
+    _noteC4: 0.52,
+    _noteD4: 0.52,
     _coin: 0.50,
     _slide: 0.62,
     _complete: 0.57,
@@ -102,13 +102,11 @@ class SoundService {
 
   late final Future<void> _ready;
   final Map<String, AudioPlayer> _players = {};
+  /// Round-robin voices so the same note can layer.
+  final Map<String, List<AudioPlayer>> _notePlayerPools = {};
+  final Map<String, int> _notePoolCursor = {};
   AudioPlayer? _fallbackPlayer;
   bool _disposed = false;
-  final Random _rng = Random();
-  final List<String> _glassConfirmQueue = [];
-  final List<String> _skyConfirmQueue = [];
-  String? _lastGlassConfirm;
-  String? _lastSkyConfirm;
 
   Future<void> _init() async {
     try {
@@ -121,23 +119,37 @@ class SoundService {
 
       for (final asset in _assets) {
         if (_disposed) return;
-        final player = AudioPlayer();
-        await player.setAudioContext(_mixContext);
-        // Achievement is a longer overlay sting; mediaPlayer mixes more
-        // reliably with concurrent SFX than SoundPool/lowLatency.
-        await player.setPlayerMode(
-          asset == _achievement
-              ? PlayerMode.mediaPlayer
-              : PlayerMode.lowLatency,
-        );
-        await player.setReleaseMode(ReleaseMode.stop);
-        await player.setSource(AssetSource(asset));
-        await player.setVolume(_volumeFor(asset));
-        _players[asset] = player;
+        if (_noteConfirmAssetSet.contains(asset)) {
+          final pool = <AudioPlayer>[];
+          for (var i = 0; i < _noteOverlapSlots; i++) {
+            if (_disposed) return;
+            pool.add(await _createPlayer(asset));
+          }
+          _notePlayerPools[asset] = pool;
+          _notePoolCursor[asset] = 0;
+        } else {
+          _players[asset] = await _createPlayer(asset);
+        }
       }
     } catch (e, st) {
       debugPrint('SoundService preload failed: $e\n$st');
     }
+  }
+
+  Future<AudioPlayer> _createPlayer(String asset) async {
+    final player = AudioPlayer();
+    await player.setAudioContext(_mixContext);
+    // Achievement is a longer overlay sting; mediaPlayer mixes more
+    // reliably with concurrent SFX than SoundPool/lowLatency.
+    await player.setPlayerMode(
+      asset == _achievement
+          ? PlayerMode.mediaPlayer
+          : PlayerMode.lowLatency,
+    );
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setSource(AssetSource(asset));
+    await player.setVolume(_volumeFor(asset));
+    return player;
   }
 
   Future<void> playNote() => _play(_note);
@@ -151,25 +163,12 @@ class SoundService {
   Future<void> playSlide() => _play(_slide);
   /// Rainbow palette placement sting (replaces [playConfirm]).
   Future<void> playRainbowConfirm() => _play(_rainbowConfirm);
-  /// Glass placement sting — shuffled round-robin of three variants.
-  Future<void> playGlassConfirm() => _play(
-        _nextShuffledConfirm(
-          pool: _glassConfirms,
-          queue: _glassConfirmQueue,
-          last: _lastGlassConfirm,
-          setLast: (v) => _lastGlassConfirm = v,
-        ),
-      );
 
-  /// Sky placement sting — shuffled round-robin of six variants.
-  Future<void> playSkyConfirm() => _play(
-        _nextShuffledConfirm(
-          pool: _skyConfirms,
-          queue: _skyConfirmQueue,
-          last: _lastSkyConfirm,
-          setLast: (v) => _lastSkyConfirm = v,
-        ),
-      );
+  /// Glass / Sky placement sting — pitch mapped to the filled color (1–9).
+  Future<void> playNoteConfirm(int colorValue) {
+    final index = (colorValue - 1).clamp(0, _noteConfirmsByValue.length - 1);
+    return _playPooledNote(_noteConfirmsByValue[index]);
+  }
 
   Future<void> playMistake() => _play(_mistake);
   Future<void> playGameLoss() => _play(_gameLoss);
@@ -177,24 +176,27 @@ class SoundService {
   Future<void> playGameWin() => _play(_gameWin);
   Future<void> playAchievement() => _play(_achievement);
 
-  String _nextShuffledConfirm({
-    required List<String> pool,
-    required List<String> queue,
-    required String? last,
-    required void Function(String) setLast,
-  }) {
-    if (queue.isEmpty) {
-      queue
-        ..addAll(pool)
-        ..shuffle(_rng);
-      // Avoid repeating the last clip across reshuffles when possible.
-      if (queue.length > 1 && queue.first == last) {
-        queue.add(queue.removeAt(0));
+  Future<void> _playPooledNote(String assetPath) async {
+    if (_disposed) return;
+    try {
+      await _ready;
+      if (_disposed) return;
+
+      final pool = _notePlayerPools[assetPath];
+      if (pool == null || pool.isEmpty) {
+        await _play(assetPath);
+        return;
       }
+
+      final cursor = _notePoolCursor[assetPath] ?? 0;
+      final player = pool[cursor % pool.length];
+      _notePoolCursor[assetPath] = cursor + 1;
+      // Don't stop other voices in the pool — only restart this slot.
+      await player.stop();
+      await player.resume();
+    } catch (e, st) {
+      debugPrint('SoundService failed to play $assetPath: $e\n$st');
     }
-    final next = queue.removeAt(0);
-    setLast(next);
-    return next;
   }
 
   Future<void> _play(String assetPath) async {
@@ -238,9 +240,12 @@ class SoundService {
     }
     final players = <AudioPlayer>[
       ..._players.values,
+      for (final pool in _notePlayerPools.values) ...pool,
       if (_fallbackPlayer != null) _fallbackPlayer!,
     ];
     _players.clear();
+    _notePlayerPools.clear();
+    _notePoolCursor.clear();
     _fallbackPlayer = null;
     await Future.wait(players.map((player) => player.dispose()));
   }
