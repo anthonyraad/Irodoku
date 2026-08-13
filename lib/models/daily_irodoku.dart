@@ -29,7 +29,7 @@ class DailyIrodoku {
   ];
 
   /// Completed rows+cols+boxes required before the mid-game palette switch.
-  static const paletteSwitchUnitThreshold = 18; // ⅔ of 27 units
+  static const paletteSwitchUnitThreshold = 14; // ~½ of 27 units
 
   final String dayKey;
   final int seed;

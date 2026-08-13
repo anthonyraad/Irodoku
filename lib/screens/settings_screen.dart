@@ -15,6 +15,7 @@ import '../widgets/menu_action_button.dart';
 import 'achievements_screen.dart';
 import 'app_settings_screen.dart';
 import 'game_screen.dart';
+import 'graffiti_screen.dart';
 import 'iroen_screen.dart';
 import 'stats_screen.dart';
 
@@ -153,6 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     unlocked: dailyUnlocked,
                     stats: stats,
                   ),
+                  onGraffiti: () => _onGraffitiPressed(context),
                   onChromatic: () => _onChromaticPressed(
                     context,
                     game,
@@ -300,6 +302,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _onGraffitiPressed(BuildContext context) async {
+    _hideTitleIcons();
+    await Navigator.of(context).push(
+      IrodokuPageRoute(builder: (_) => const GraffitiScreen()),
+    );
+    if (!mounted) return;
+    _scheduleTitleIcons();
+  }
+
   void _showDailyLockedSnackBar(BuildContext context, GameStats stats) {
     const need = GameStats.dailyChallengeUnlockMediumWins;
     final have = stats.winsFor(Difficulty.medium);
@@ -433,6 +444,7 @@ class _PlayModeGrid extends StatelessWidget {
   final bool iroenUnlocked;
   final VoidCallback onClassic;
   final VoidCallback onDaily;
+  final VoidCallback onGraffiti;
   final VoidCallback onChromatic;
   final VoidCallback onIroen;
 
@@ -445,6 +457,7 @@ class _PlayModeGrid extends StatelessWidget {
     required this.iroenUnlocked,
     required this.onClassic,
     required this.onDaily,
+    required this.onGraffiti,
     required this.onChromatic,
     required this.onIroen,
   });
@@ -459,13 +472,28 @@ class _PlayModeGrid extends StatelessWidget {
           onPressed: onClassic,
         ),
         const SizedBox(height: 12),
-        MenuActionButton(
-          label: 'Daily Challenge',
-          trailing: dailyUnlocked && dailyStreak > 0 ? 'x$dailyStreak' : null,
-          enabled: !busy,
-          muted: dailyUnlocked && dailyFinished,
-          locked: !dailyUnlocked,
-          onPressed: onDaily,
+        Row(
+          children: [
+            Expanded(
+              child: MenuActionButton(
+                label: 'Daily Challenge',
+                trailing:
+                    dailyUnlocked && dailyStreak > 0 ? 'x$dailyStreak' : null,
+                enabled: !busy,
+                muted: dailyUnlocked && dailyFinished,
+                locked: !dailyUnlocked,
+                onPressed: onDaily,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: MenuActionButton(
+                label: 'Graffiti',
+                enabled: !busy,
+                onPressed: onGraffiti,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(

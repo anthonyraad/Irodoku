@@ -1323,7 +1323,7 @@ class GameProvider extends ChangeNotifier {
     return newlyCompleted;
   }
 
-  /// Daily: after ⅔ of units (18/27), switch to the day's second palette.
+  /// Daily: after ~½ of units (14/27), switch to the day's second palette.
   void _maybeDailyPaletteShift(Set<String> completedUnits) {
     if (!_isDaily) return;
     if (completedUnits.length < DailyIrodoku.paletteSwitchUnitThreshold) {

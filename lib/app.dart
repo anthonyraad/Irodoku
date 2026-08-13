@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'core/web_layout.dart';
 import 'providers/achievements_provider.dart';
 import 'providers/game_provider.dart';
+import 'providers/graffiti_provider.dart';
 import 'providers/iroen_provider.dart';
 import 'providers/settings_provider.dart';
 import 'providers/stats_provider.dart';
@@ -43,6 +44,9 @@ class IrodokuApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => IroenProvider(preferences: preferences),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => GraffitiProvider(),
         ),
       ],
       child: Consumer<SettingsProvider>(

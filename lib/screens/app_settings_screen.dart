@@ -621,11 +621,74 @@ class _CompactSwitchRow extends StatelessWidget {
     // Match Difficulty / Palette ListTile height (no dense/compact).
     return ListTile(
       title: Text(label),
-      trailing: Switch(
+      trailing: _BlockySwitch(
         value: value,
         onChanged: onChanged,
       ),
       onTap: () => onChanged(!value),
+    );
+  }
+}
+
+/// Square, thick-bordered toggle matching Main Menu button chrome.
+class _BlockySwitch extends StatelessWidget {
+  static const _width = 52.0;
+  static const _height = 28.0;
+  static const _thumb = 18.0;
+  static const _pad = 2.5;
+  static const _borderWidth = 2.5;
+  static const _radius = BorderRadius.all(Radius.circular(2));
+  static const _anim = Duration(milliseconds: 140);
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _BlockySwitch({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ink = scheme.onSurface;
+    final trackFill = value ? ink : scheme.surface;
+    final thumbFill = value ? scheme.surface : ink;
+
+    return Semantics(
+      toggled: value,
+      child: GestureDetector(
+        onTap: () => onChanged(!value),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: _anim,
+          curve: Curves.easeOut,
+          width: _width,
+          height: _height,
+          padding: const EdgeInsets.all(_pad),
+          decoration: BoxDecoration(
+            color: trackFill,
+            borderRadius: _radius,
+            border: Border.all(color: ink, width: _borderWidth),
+          ),
+          child: AnimatedAlign(
+            duration: _anim,
+            curve: Curves.easeOut,
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            child: Container(
+              width: _thumb,
+              height: _thumb,
+              decoration: BoxDecoration(
+                color: thumbFill,
+                borderRadius: const BorderRadius.all(Radius.circular(1)),
+                border: value
+                    ? null
+                    : Border.all(color: ink, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
