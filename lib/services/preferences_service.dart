@@ -22,6 +22,9 @@ class PreferencesService {
   static const _keyGamesPlayed = 'stats_games_played';
   static const _keyGamesWon = 'stats_games_won';
   static const _keyChromaticGamesWon = 'stats_chromatic_games_won';
+  static const _keyGraffitiWins = 'stats_graffiti_wins';
+  static const _keyGraffitiLosses = 'stats_graffiti_losses';
+  static const _keyGraffitiDraws = 'stats_graffiti_draws';
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
   static const _keyParkedRegularGame = 'parked_regular_game';
@@ -196,6 +199,9 @@ class PreferencesService {
       unlockedPalettes: _loadUnlockedPalettes(),
       bestStreakByPalette: bestStreakByPalette,
       currentStreakByPalette: currentStreakByPalette,
+      graffitiWins: _prefs.getInt(_keyGraffitiWins) ?? 0,
+      graffitiLosses: _prefs.getInt(_keyGraffitiLosses) ?? 0,
+      graffitiDraws: _prefs.getInt(_keyGraffitiDraws) ?? 0,
     );
   }
 
@@ -205,6 +211,9 @@ class PreferencesService {
     await _prefs.setInt(_keyGamesPlayed, stats.gamesPlayed);
     await _prefs.setInt(_keyGamesWon, stats.gamesWon);
     await _prefs.setInt(_keyChromaticGamesWon, stats.chromaticGamesWon);
+    await _prefs.setInt(_keyGraffitiWins, stats.graffitiWins);
+    await _prefs.setInt(_keyGraffitiLosses, stats.graffitiLosses);
+    await _prefs.setInt(_keyGraffitiDraws, stats.graffitiDraws);
     for (final d in Difficulty.values) {
       final time = stats.bestTimes[d];
       if (time == null) {

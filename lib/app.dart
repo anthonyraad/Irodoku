@@ -46,7 +46,10 @@ class IrodokuApp extends StatelessWidget {
           create: (_) => IroenProvider(preferences: preferences),
         ),
         ChangeNotifierProvider(
-          create: (_) => GraffitiProvider(),
+          create: (context) => GraffitiProvider(
+            settings: context.read<SettingsProvider>(),
+            stats: context.read<StatsProvider>(),
+          ),
         ),
       ],
       child: Consumer<SettingsProvider>(

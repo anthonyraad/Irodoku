@@ -144,6 +144,10 @@ class _StatsScreenState extends State<StatsScreen> {
                           value: '${game.dailyBestStreak}',
                           indent: true,
                         ),
+                        _StatRow(
+                          label: 'Graffiti record',
+                          value: stats.graffitiRecordLabel,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),

@@ -76,6 +76,20 @@ class StatsProvider extends ChangeNotifier {
 
   Future<void> persist() => _prefs.saveStats(_stats);
 
+  /// Persists a finished Graffiti match. Mutual defeat counts as a loss.
+  Future<void> recordGraffitiResult(GraffitiMatchResult result) async {
+    _stats = switch (result) {
+      GraffitiMatchResult.win =>
+        _stats.copyWith(graffitiWins: _stats.graffitiWins + 1),
+      GraffitiMatchResult.loss =>
+        _stats.copyWith(graffitiLosses: _stats.graffitiLosses + 1),
+      GraffitiMatchResult.draw =>
+        _stats.copyWith(graffitiDraws: _stats.graffitiDraws + 1),
+    };
+    notifyListeners();
+    await _prefs.saveStats(_stats);
+  }
+
   List<GamePalette> _applyWin({
     required Difficulty difficulty,
     required Duration elapsed,
@@ -199,3 +213,5 @@ class StatsProvider extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+enum GraffitiMatchResult { win, loss, draw }

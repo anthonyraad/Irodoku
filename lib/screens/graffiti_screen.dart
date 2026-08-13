@@ -12,6 +12,7 @@ import '../widgets/game_toolbar.dart';
 import '../widgets/graffiti_grid.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/mistake_display.dart';
+import '../widgets/timer_display.dart';
 
 class GraffitiScreen extends StatefulWidget {
   const GraffitiScreen({super.key});
@@ -146,8 +147,7 @@ class _LobbyBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         Text(
-          'Paint the same board together. Shared fills, private notes. '
-          'Most correct cells wins — fewer mistakes break ties.',
+          'Irodoku VS; color in more cells than your opponent to win',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context)
                     .colorScheme
@@ -174,15 +174,14 @@ class _LobbyBody extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Center(
-              child: TextButton.icon(
+              child: TextButton(
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: game.roomCode!));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Code copied')),
                   );
                 },
-                icon: const Icon(Icons.copy, size: 18),
-                label: const Text('Copy code'),
+                child: const Text('[copy]'),
               ),
             ),
           ],
@@ -264,25 +263,21 @@ class _GameBody extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: _ScoreChip(
-                  label: 'You',
-                  correct: game.myCorrect,
-                  mistakes: game.myMistakes,
-                  highlight: true,
-                ),
-              ),
+              TimerDisplay(time: game.formatElapsed()),
+              const Spacer(),
               MistakeDisplay(
                 mistakes: game.myMistakes,
                 maxMistakes: GraffitiFirebaseService.maxMistakes,
               ),
-              Expanded(
-                child: _ScoreChip(
-                  label: game.solo ? 'Solo' : 'Opp',
-                  correct: game.oppCorrect,
-                  mistakes: game.oppMistakes,
-                  alignEnd: true,
-                ),
+              const Spacer(),
+              Text(
+                '${game.myCorrect} - ${game.oppCorrect}',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.55),
+                    ),
               ),
             ],
           ),
@@ -335,7 +330,7 @@ class _GameBody extends StatelessWidget {
                           height: boardSize,
                           child: GraffitiGrid(
                             game: game,
-                            palette: settings.palette,
+                            palette: game.activePalette,
                           ),
                         ),
                         const SizedBox(height: toolbarGap),
@@ -358,7 +353,7 @@ class _GameBody extends StatelessWidget {
                             swatchSize: swatchSize,
                             visible: true,
                             xlMode: xlPicker,
-                            palette: settings.palette,
+                            palette: game.activePalette,
                             onColorSelected: game.inputColor,
                             onNoteAdded: game.addNote,
                             onNoteRemoved: game.removeNote,
@@ -380,42 +375,6 @@ class _GameBody extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-class _ScoreChip extends StatelessWidget {
-  final String label;
-  final int correct;
-  final int mistakes;
-  final bool highlight;
-  final bool alignEnd;
-
-  const _ScoreChip({
-    required this.label,
-    required this.correct,
-    required this.mistakes,
-    this.highlight = false,
-    this.alignEnd = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurface.withValues(
-                alpha: highlight ? 0.85 : 0.55,
-              ),
-        );
-    return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-      children: [
-        Text(label, style: style),
-        Text(
-          '$correct filled · $mistakes×',
-          style: style?.copyWith(fontSize: 12),
-        ),
-      ],
     );
   }
 }

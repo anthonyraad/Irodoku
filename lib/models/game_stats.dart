@@ -19,6 +19,9 @@ class GameStats {
   final Set<GamePalette> unlockedPalettes;
   final Map<GamePalette, int> bestStreakByPalette;
   final Map<GamePalette, int> currentStreakByPalette;
+  final int graffitiWins;
+  final int graffitiLosses;
+  final int graffitiDraws;
 
   const GameStats({
     this.currentStreak = 0,
@@ -33,6 +36,9 @@ class GameStats {
     this.unlockedPalettes = const {},
     this.bestStreakByPalette = const {},
     this.currentStreakByPalette = const {},
+    this.graffitiWins = 0,
+    this.graffitiLosses = 0,
+    this.graffitiDraws = 0,
   });
 
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
@@ -44,6 +50,10 @@ class GameStats {
 
   int chromaticWinsFor(Difficulty difficulty) =>
       chromaticWinsByDifficulty[difficulty] ?? 0;
+
+  /// Display form e.g. `15-17 (2)`.
+  String get graffitiRecordLabel =>
+      '$graffitiWins-$graffitiLosses ($graffitiDraws)';
 
   int bestStreakForPalette(GamePalette palette) =>
       bestStreakByPalette[palette] ?? 0;
@@ -106,6 +116,9 @@ class GameStats {
     Set<GamePalette>? unlockedPalettes,
     Map<GamePalette, int>? bestStreakByPalette,
     Map<GamePalette, int>? currentStreakByPalette,
+    int? graffitiWins,
+    int? graffitiLosses,
+    int? graffitiDraws,
   }) {
     return GameStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -122,6 +135,9 @@ class GameStats {
       bestStreakByPalette: bestStreakByPalette ?? this.bestStreakByPalette,
       currentStreakByPalette:
           currentStreakByPalette ?? this.currentStreakByPalette,
+      graffitiWins: graffitiWins ?? this.graffitiWins,
+      graffitiLosses: graffitiLosses ?? this.graffitiLosses,
+      graffitiDraws: graffitiDraws ?? this.graffitiDraws,
     );
   }
 }

@@ -3,7 +3,8 @@ import 'dart:math';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
 
 import '../firebase_options.dart';
 
@@ -15,7 +16,7 @@ class GraffitiFirebaseService {
   static const roomsPath = 'rooms';
   static const appTag = 'irodoku_graffiti';
   static const maxMistakes = 3;
-  static const maxQuickMatchScan = 80;
+  static const maxQuickMatchScan = 120;
 
   static bool _initialized = false;
   static bool get isReady => _initialized;
@@ -101,35 +102,88 @@ class GraffitiFirebaseService {
       'winner': null,
       'solo': false,
     });
+    // Host disconnect while still alone deletes the lobby room.
+    // Cancelled in [cancelHostDisconnect] once a second player seats.
     await ref.onDisconnect().remove();
   }
 
-  static Future<TransactionResult> joinRoomTransaction({
+  /// Host-only: stop wiping the room if this client disconnects mid-match.
+  static Future<void> cancelHostDisconnect(String roomCode) async {
+    try {
+      await roomRef(roomCode).onDisconnect().cancel();
+    } catch (_) {}
+  }
+
+  /// Seats [playerId] in an open waiting room. Returns false if the seat
+  /// could not be taken (full, missing, wrong app, or race).
+  ///
+  /// Uses a direct write to `players/$id` plus a verify read instead of a
+  /// whole-room transaction — FlutterFire/web often aborts those with
+  /// `committed: false` even when the room is joinable.
+  static Future<bool> joinRoomAsPlayer({
     required String roomCode,
     required String playerId,
   }) async {
     final ref = roomRef(roomCode);
-    TransactionResult? result;
-    const backoffMs = [0, 300, 600];
-    for (var attempt = 0; attempt < backoffMs.length; attempt++) {
-      if (attempt > 0) {
-        await Future.delayed(Duration(milliseconds: backoffMs[attempt]));
-      }
-      result = await ref.runTransaction((Object? data) {
-        if (data == null) return Transaction.abort();
-        final room = Map<dynamic, dynamic>.from(data as Map);
-        final players =
-            Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
-        if (players.length >= 2 || room['gameState'] != 'waiting') {
-          return Transaction.abort();
-        }
-        players[playerId] = true;
-        room['players'] = players;
-        return Transaction.success(room);
-      });
-      if (result.committed) break;
+
+    final before = await ref.get();
+    if (!before.exists || before.value is! Map) {
+      debugPrint('Graffiti join: room $roomCode missing');
+      return false;
     }
-    return result!;
+    final room = Map<dynamic, dynamic>.from(before.value as Map);
+    if (room['app']?.toString() != appTag) {
+      debugPrint('Graffiti join: $roomCode wrong app (${room['app']})');
+      return false;
+    }
+    if (room['gameState']?.toString() != 'waiting') {
+      debugPrint('Graffiti join: $roomCode not waiting (${room['gameState']})');
+      return false;
+    }
+
+    final playersRef = ref.child('players');
+    final existing = Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
+    if (existing.containsKey(playerId)) {
+      return true; // already seated
+    }
+    if (existing.length >= 2) {
+      debugPrint('Graffiti join: $roomCode already full');
+      return false;
+    }
+
+    try {
+      await playersRef.child(playerId).set(true);
+    } catch (e) {
+      debugPrint('Graffiti join write failed for $roomCode: $e');
+      return false;
+    }
+
+    final afterSnap = await playersRef.get();
+    if (!afterSnap.exists || afterSnap.value is! Map) {
+      debugPrint('Graffiti join: players missing after write ($roomCode)');
+      return false;
+    }
+    final seated = Map<dynamic, dynamic>.from(afterSnap.value as Map);
+    if (!seated.containsKey(playerId)) {
+      debugPrint('Graffiti join: seat missing after write ($roomCode)');
+      return false;
+    }
+    if (seated.length > 2) {
+      // Lost a rare 3-way race — give up the seat.
+      try {
+        await playersRef.child(playerId).remove();
+      } catch (_) {}
+      debugPrint('Graffiti join: overfilled $roomCode, retracted seat');
+      return false;
+    }
+
+    final stateSnap = await ref.child('gameState').get();
+    if (stateSnap.value?.toString() != 'waiting') {
+      // Host may have already flipped to playing after seeing 2 players.
+      // Still a successful seat.
+      debugPrint('Graffiti join: $roomCode state now ${stateSnap.value}');
+    }
+    return true;
   }
 
   /// Host writes puzzle + empty board and starts play when 2 players are present.
@@ -139,6 +193,7 @@ class GraffitiFirebaseService {
     required String opponentId,
     required List<int> puzzle,
     required List<int> solution,
+    required String palette,
   }) async {
     final board = <String, Map<String, dynamic>>{};
     for (var i = 0; i < 81; i++) {
@@ -159,6 +214,7 @@ class GraffitiFirebaseService {
       'puzzle': puzzle,
       'solution': solution,
       'board': board,
+      'palette': palette,
       'stats': {
         hostId: {'correct': 0, 'mistakes': 0},
         opponentId: {'correct': 0, 'mistakes': 0},
@@ -223,14 +279,16 @@ class GraffitiFirebaseService {
     });
   }
 
-  /// Clears an unlocked cell the player previously filled (undo mistake / overwrite).
+  /// Clears an unlocked cell the player previously filled (undo / erase).
+  ///
+  /// Mistake counts are permanent — clearing a wrong fill does not reduce
+  /// [stats.mistakes].
   static Future<TransactionResult> clearOwnFillTransaction({
     required String roomCode,
     required String playerId,
     required int row,
     required int col,
     required int expectedValue,
-    required bool wasMistake,
   }) async {
     final key = '${row}_$col';
     return roomRef(roomCode).runTransaction((Object? raw) {
@@ -250,17 +308,6 @@ class GraffitiFirebaseService {
 
       board.remove(key);
       data['board'] = board;
-
-      if (wasMistake) {
-        final stats = Map<dynamic, dynamic>.from(data['stats'] as Map? ?? {});
-        final myStats =
-            Map<dynamic, dynamic>.from(stats[playerId] as Map? ?? {});
-        final m = (myStats['mistakes'] as num?)?.toInt() ?? 0;
-        myStats['mistakes'] = m > 0 ? m - 1 : 0;
-        stats[playerId] = myStats;
-        data['stats'] = stats;
-      }
-
       return Transaction.success(data);
     });
   }
@@ -319,8 +366,8 @@ class GraffitiFirebaseService {
   }
 
   static Future<String?> findOpenQuickMatchRoom(String excludePlayerId) async {
-    // Prefer indexed query; fall back to a shallow scan if the index is missing.
-    DataSnapshot snap;
+    // Scan /rooms only (RTDB rules allow this path; no separate lobby index).
+    DataSnapshot? snap;
     try {
       snap = await database
           .ref(roomsPath)
@@ -328,10 +375,18 @@ class GraffitiFirebaseService {
           .equalTo(appTag)
           .limitToLast(maxQuickMatchScan)
           .get();
-    } catch (_) {
-      snap = await database.ref(roomsPath).limitToLast(maxQuickMatchScan).get();
+    } catch (e) {
+      debugPrint('Graffiti app-index scan failed, using shallow scan: $e');
+      try {
+        snap =
+            await database.ref(roomsPath).limitToLast(maxQuickMatchScan).get();
+      } catch (e2) {
+        debugPrint('Graffiti rooms scan failed: $e2');
+        return null;
+      }
     }
     if (!snap.exists || snap.value is! Map) return null;
+
     final rooms = Map<dynamic, dynamic>.from(snap.value as Map);
     final entries = rooms.entries.toList()
       ..sort((a, b) {
@@ -343,18 +398,29 @@ class GraffitiFirebaseService {
       });
 
     for (final e in entries) {
-      if (e.value is! Map) continue;
-      final room = Map<dynamic, dynamic>.from(e.value as Map);
-      if (room['app'] != appTag) continue;
-      if (room['gameState'] != 'waiting') continue;
-      if (room['isQuickMatch'] != true) continue;
-      final players =
-          Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
-      if (players.length != 1) continue;
-      if (players.containsKey(excludePlayerId)) continue;
-      return e.key.toString();
+      final code = e.key.toString();
+      // Always re-read the room so we don't join a stale list snapshot.
+      if (await _isJoinableQuickRoom(code, excludePlayerId)) {
+        return code;
+      }
     }
     return null;
+  }
+
+  static Future<bool> _isJoinableQuickRoom(
+    String code,
+    String excludePlayerId,
+  ) async {
+    final snap = await roomRef(code).get();
+    if (!snap.exists || snap.value is! Map) return false;
+    final room = Map<dynamic, dynamic>.from(snap.value as Map);
+    if (room['app'] != appTag) return false;
+    if (room['gameState']?.toString() != 'waiting') return false;
+    if (room['isQuickMatch'] != true) return false;
+    final players = Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
+    if (players.length != 1) return false;
+    if (players.containsKey(excludePlayerId)) return false;
+    return true;
   }
 
   static Future<void> leaveRoom({

@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
 import '../models/difficulty.dart';
+import '../models/game_palette.dart';
 import '../services/graffiti_firebase_service.dart';
+import '../services/sound_service.dart';
 import '../sudoku/sudoku_generator.dart';
+import 'settings_provider.dart';
+import 'stats_provider.dart';
 
 enum GraffitiPhase {
   idle,
@@ -51,6 +56,18 @@ class _FillUndo extends _GraffitiUndo {
 
 /// Multiplayer Graffiti session (Firebase RTDB). Separate from [GameProvider].
 class GraffitiProvider extends ChangeNotifier {
+  GraffitiProvider({
+    required SettingsProvider settings,
+    required StatsProvider stats,
+    SoundService? sounds,
+  })  : _settings = settings,
+        _stats = stats,
+        _sounds = sounds ?? SoundService();
+
+  final SettingsProvider _settings;
+  final StatsProvider _stats;
+  final SoundService _sounds;
+
   GraffitiPhase _phase = GraffitiPhase.idle;
   String? _roomCode;
   String? _playerId;
@@ -60,6 +77,10 @@ class GraffitiProvider extends ChangeNotifier {
   String? _statusMessage;
   String? _toast;
   GraffitiOutcome _outcome = GraffitiOutcome.none;
+  bool _playedEndSound = false;
+  bool _recordedMatchResult = false;
+  /// Match palette shared via RTDB — never written to [SettingsProvider].
+  GamePalette? _sessionPalette;
 
   List<List<Cell>> _cells = List.generate(
     9,
@@ -80,6 +101,9 @@ class GraffitiProvider extends ChangeNotifier {
   StreamSubscription<DatabaseEvent>? _roomSub;
   bool _startingGame = false;
   bool _busy = false;
+  Duration _elapsed = Duration.zero;
+  Timer? _timer;
+  bool _timerStarted = false;
 
   GraffitiPhase get phase => _phase;
   String? get roomCode => _roomCode;
@@ -91,6 +115,8 @@ class GraffitiProvider extends ChangeNotifier {
   String? get toast => _toast;
   GraffitiOutcome get outcome => _outcome;
   bool get busy => _busy;
+  /// Palette for this match (room-shared). Falls back to Config only before play.
+  GamePalette get activePalette => _sessionPalette ?? _settings.palette;
 
   List<List<Cell>> get cells => _cells;
   int? get selectedRow => _selectedRow;
@@ -159,11 +185,19 @@ class GraffitiProvider extends ChangeNotifier {
       _statusMessage = 'Searching for opponent…';
       notifyListeners();
 
-      final open =
-          await GraffitiFirebaseService.findOpenQuickMatchRoom(pid);
-      if (open != null) {
-        await _joinRoom(open, asQuickMatch: true);
-        return;
+      // Join an open seat when possible; retry if another client claimed it.
+      for (var attempt = 0; attempt < 6; attempt++) {
+        final open =
+            await GraffitiFirebaseService.findOpenQuickMatchRoom(pid);
+        if (open == null) break;
+
+        final joined = await _tryJoinQuickMatch(open);
+        if (joined) return;
+
+        _phase = GraffitiPhase.searching;
+        _statusMessage = 'Searching for opponent…';
+        notifyListeners();
+        await Future.delayed(Duration(milliseconds: 120 + attempt * 80));
       }
 
       final code = await GraffitiFirebaseService.uniqueRoomCode();
@@ -185,6 +219,36 @@ class GraffitiProvider extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  /// Returns true when seated in [code] as guest.
+  Future<bool> _tryJoinQuickMatch(String code) async {
+    final pid = _playerId;
+    if (pid == null) return false;
+    final ref = GraffitiFirebaseService.roomRef(code);
+    final exists = await ref.get();
+    if (!exists.exists || exists.value is! Map) return false;
+    final data = Map<dynamic, dynamic>.from(exists.value as Map);
+    if (data['app'] != GraffitiFirebaseService.appTag) return false;
+    if (data['gameState']?.toString() != 'waiting') return false;
+    final players = Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
+    if (players.length >= 2) return false;
+
+    final joined = await GraffitiFirebaseService.joinRoomAsPlayer(
+      roomCode: code,
+      playerId: pid,
+    );
+    if (!joined) return false;
+
+    _roomCode = code;
+    _isHost = false;
+    final hostId = data['host']?.toString();
+    if (hostId != null && hostId != pid) _opponentId = hostId;
+    _phase = GraffitiPhase.waiting;
+    _statusMessage = 'Joined $code — waiting to start…';
+    _listenToRoom();
+    notifyListeners();
+    return true;
   }
 
   Future<void> createRoom() async {
@@ -244,11 +308,11 @@ class GraffitiProvider extends ChangeNotifier {
       _failToIdle('Room is full.');
       return;
     }
-    final result = await GraffitiFirebaseService.joinRoomTransaction(
+    final joined = await GraffitiFirebaseService.joinRoomAsPlayer(
       roomCode: code,
       playerId: pid,
     );
-    if (!result.committed) {
+    if (!joined) {
       _failToIdle(asQuickMatch ? 'Match taken — try again.' : 'Could not join.');
       return;
     }
@@ -322,8 +386,12 @@ class GraffitiProvider extends ChangeNotifier {
         gameState == 'waiting' &&
         !_startingGame) {
       _startingGame = true;
+      final code = _roomCode;
       Future.microtask(() async {
         try {
+          if (code != null) {
+            await GraffitiFirebaseService.cancelHostDisconnect(code);
+          }
           await _hostStartGame();
         } finally {
           _startingGame = false;
@@ -332,18 +400,58 @@ class GraffitiProvider extends ChangeNotifier {
     }
 
     if (gameState == 'playing' || gameState == 'finished') {
+      _hydratePalette(data);
       _hydrateBoard(data);
       _hydrateStats(data);
       if (gameState == 'playing') {
         _phase = GraffitiPhase.playing;
         _statusMessage = _solo ? 'Playing solo' : 'Graffiti';
+        _ensureTimerRunning();
       } else {
+        _timer?.cancel();
         _phase = GraffitiPhase.finished;
         _resolveOutcome(data['winner']?.toString());
+        _playEndSoundOnce();
+        _recordMatchResultOnce();
       }
     }
 
     notifyListeners();
+  }
+
+  void _hydratePalette(Map<dynamic, dynamic> data) {
+    final key = data['palette']?.toString();
+    if (key == null || key.isEmpty) return;
+    _sessionPalette = GamePalette.fromStorageKey(key);
+  }
+
+  void _playEndSoundOnce() {
+    if (_playedEndSound) return;
+    _playedEndSound = true;
+    switch (_outcome) {
+      case GraffitiOutcome.win:
+        _playSound(_sounds.playGameWin);
+      case GraffitiOutcome.lose:
+      case GraffitiOutcome.defeat:
+        _playSound(_sounds.playGameLoss);
+      case GraffitiOutcome.draw:
+        _playSound(_sounds.playComplete);
+      case GraffitiOutcome.none:
+        break;
+    }
+  }
+
+  void _recordMatchResultOnce() {
+    if (_recordedMatchResult) return;
+    final result = switch (_outcome) {
+      GraffitiOutcome.win => GraffitiMatchResult.win,
+      GraffitiOutcome.draw => GraffitiMatchResult.draw,
+      GraffitiOutcome.lose || GraffitiOutcome.defeat => GraffitiMatchResult.loss,
+      GraffitiOutcome.none => null,
+    };
+    if (result == null) return;
+    _recordedMatchResult = true;
+    unawaited(_stats.recordGraffitiResult(result));
   }
 
   Future<void> _hostStartGame() async {
@@ -351,13 +459,18 @@ class GraffitiProvider extends ChangeNotifier {
     final host = _playerId;
     final opp = _opponentId;
     if (code == null || host == null || opp == null) return;
-    final generated = SudokuGenerator().generate(Difficulty.medium);
+    final difficulty =
+        Random().nextBool() ? Difficulty.easy : Difficulty.medium;
+    final generated = SudokuGenerator().generate(difficulty);
+    final menu = GamePalette.menuValues;
+    final palette = menu[Random().nextInt(menu.length)];
     await GraffitiFirebaseService.hostStartGame(
       roomCode: code,
       hostId: host,
       opponentId: opp,
       puzzle: generated.puzzle.toFlat(),
       solution: generated.solution.toFlat(),
+      palette: palette.storageKey,
     );
   }
 
@@ -489,17 +602,19 @@ class GraffitiProvider extends ChangeNotifier {
     if (!result.committed) return;
 
     final correct = _solution[r * 9 + c] == value;
-    // Snapshot listener applies board; optimistic local for snappy feel.
+    // Snapshot listener applies board + stats; optimistic cells for snappy feel.
+    // Do not bump _myMistakes here — hydrate from RTDB is the source of truth
+    // (optimistic + snapshot was double-counting).
     if (correct) {
       _cells[r][c] = Cell(value: value, isLocked: true);
       // Correct fills are shared/locked — not undoable.
+      _playSound(_placementConfirmSound(value));
     } else {
       _undoStack.add(
         _FillUndo(row: r, col: c, value: value, wasMistake: true),
       );
       _cells[r][c] = Cell(value: value, hasConflict: true);
-      _myMistakes =
-          (_myMistakes + 1).clamp(0, GraffitiFirebaseService.maxMistakes);
+      _playSound(_sounds.playMistake);
     }
     notifyListeners();
   }
@@ -535,6 +650,7 @@ class GraffitiProvider extends ChangeNotifier {
     final added = forceAdd || (!forceRemove && !has);
     _cells[r][c] = added ? cell.withNoteAdded(value) : cell.withNoteRemoved(value);
     _undoStack.add(_NoteUndo(row: r, col: c, value: value, added: added));
+    _playSound(added ? _sounds.playNote : _sounds.playNoteDeselect);
     notifyListeners();
   }
 
@@ -556,7 +672,7 @@ class GraffitiProvider extends ChangeNotifier {
     }
 
     if (cell.value != 0 && cell.hasConflict) {
-      // Erase counts as undoing own mistake fill remotely.
+      // Erase clears the wrong fill; mistake count stays.
       await _undoFill(r, c, cell.value, wasMistake: true, pushUndo: false);
     }
   }
@@ -570,6 +686,7 @@ class GraffitiProvider extends ChangeNotifier {
         if (!cell.isEditable) break;
         _cells[row][col] =
             added ? cell.withNoteRemoved(value) : cell.withNoteAdded(value);
+        _playSound(added ? _sounds.playNoteDeselect : _sounds.playNote);
         notifyListeners();
       case _FillUndo(
           :final row,
@@ -577,6 +694,7 @@ class GraffitiProvider extends ChangeNotifier {
           :final value,
           :final wasMistake,
         ):
+        // Clears the fill only — mistake Xs are permanent.
         await _undoFill(row, col, value, wasMistake: wasMistake, pushUndo: false);
     }
   }
@@ -602,18 +720,36 @@ class GraffitiProvider extends ChangeNotifier {
       row: row,
       col: col,
       expectedValue: value,
-      wasMistake: wasMistake,
     );
     if (!result.committed) return;
 
     _cells[row][col] = const Cell();
-    if (wasMistake && _myMistakes > 0) _myMistakes--;
+    // Mistakes are permanent — do not decrement _myMistakes on undo/erase.
     if (pushUndo) {
       _undoStack.add(
         _FillUndo(row: row, col: col, value: value, wasMistake: wasMistake),
       );
     }
     notifyListeners();
+  }
+
+  void _playSound(Future<void> Function() play) {
+    if (!_settings.soundEnabled) return;
+    unawaited(play());
+  }
+
+  Future<void> Function() _placementConfirmSound(int value) {
+    final palette = activePalette;
+    if (palette == GamePalette.world11) return _sounds.playCoin;
+    if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
+      return _sounds.playPlink;
+    }
+    if (palette == GamePalette.neon) return _sounds.playSlide;
+    if (palette == GamePalette.rainbow) return _sounds.playRainbowConfirm;
+    if (palette == GamePalette.glass || palette == GamePalette.sky) {
+      return () => _sounds.playNoteConfirm(value);
+    }
+    return _sounds.playConfirm;
   }
 
   Future<void> leave() async {
@@ -634,6 +770,10 @@ class GraffitiProvider extends ChangeNotifier {
   void _resetSession({String? message}) {
     _roomSub?.cancel();
     _roomSub = null;
+    _timer?.cancel();
+    _timer = null;
+    _timerStarted = false;
+    _elapsed = Duration.zero;
     _phase = GraffitiPhase.idle;
     _roomCode = null;
     _opponentId = null;
@@ -641,6 +781,9 @@ class GraffitiProvider extends ChangeNotifier {
     _solo = false;
     _statusMessage = message;
     _outcome = GraffitiOutcome.none;
+    _playedEndSound = false;
+    _recordedMatchResult = false;
+    _sessionPalette = null;
     _cells = List.generate(9, (_) => List.generate(9, (_) => const Cell()));
     _solution = List.filled(81, 0);
     _selectedRow = null;
@@ -653,6 +796,25 @@ class GraffitiProvider extends ChangeNotifier {
     _oppMistakes = 0;
     _startingGame = false;
     notifyListeners();
+  }
+
+  void _ensureTimerRunning() {
+    if (_timerStarted) return;
+    _timerStarted = true;
+    _elapsed = Duration.zero;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_phase != GraffitiPhase.playing) return;
+      _elapsed += const Duration(seconds: 1);
+      notifyListeners();
+    });
+  }
+
+  String formatElapsed() {
+    final totalSeconds = _elapsed.inSeconds;
+    final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   bool isRelated(int row, int col) {
@@ -675,7 +837,9 @@ class GraffitiProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _timer?.cancel();
     _roomSub?.cancel();
+    unawaited(_sounds.dispose());
     super.dispose();
   }
 }
