@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/theme.dart';
 import '../providers/graffiti_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/graffiti_firebase_service.dart';
@@ -13,6 +14,7 @@ import '../widgets/graffiti_grid.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/mistake_display.dart';
 import '../widgets/timer_display.dart';
+import '../widgets/typing_title.dart';
 
 class GraffitiScreen extends StatefulWidget {
   const GraffitiScreen({super.key});
@@ -55,7 +57,7 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
     super.dispose();
   }
 
-  Future<void> _confirmLeave(GraffitiProvider game) async {
+  Future<void> _confirmLeave(BuildContext context, GraffitiProvider game) async {
     if (game.phase == GraffitiPhase.idle) {
       Navigator.of(context).pop();
       return;
@@ -85,16 +87,18 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<GraffitiProvider, SettingsProvider>(
+    return Theme(
+      data: IrodokuTheme.settingsTheme(Theme.of(context)),
+      child: Consumer2<GraffitiProvider, SettingsProvider>(
       builder: (context, game, settings, _) {
         final playing = game.phase == GraffitiPhase.playing ||
             game.phase == GraffitiPhase.finished;
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Graffiti'),
+            title: const TypingTitle(text: 'Graffiti'),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => _confirmLeave(game),
+              onPressed: () => _confirmLeave(context, game),
             ),
             actions: [
               if (game.roomCode != null)
@@ -123,6 +127,7 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
           ),
         );
       },
+    ),
     );
   }
 }
@@ -217,13 +222,21 @@ class _LobbyBody extends StatelessWidget {
                   maxLength: 5,
                   decoration: const InputDecoration(
                     counterText: '',
-                    hintText: 'ABC12',
                     border: OutlineInputBorder(),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               FilledButton(
+                style: FilledButton.styleFrom(
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
+                ),
                 onPressed: game.busy
                     ? null
                     : () => game.joinRoom(joinController.text),
@@ -236,7 +249,10 @@ class _LobbyBody extends StatelessWidget {
             Text(
               message,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.55),
                   ),
             ),
           ],
@@ -257,9 +273,12 @@ class _GameBody extends StatelessWidget {
     final controlsEnabled = game.controlsEnabled;
     final outcome = game.outcome;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      child: Column(
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: game.hasCellSelection ? game.clearSelection : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
         children: [
           Row(
             children: [
@@ -270,33 +289,12 @@ class _GameBody extends StatelessWidget {
                 maxMistakes: GraffitiFirebaseService.maxMistakes,
               ),
               const Spacer(),
-              Text(
-                '${game.myCorrect} - ${game.oppCorrect}',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.55),
-                    ),
+              _GraffitiScore(
+                you: game.myCorrect,
+                opponent: game.oppCorrect,
               ),
             ],
           ),
-          if (game.eliminated && outcome == GraffitiOutcome.none) ...[
-            const SizedBox(height: 6),
-            Text(
-              'Spectating — 3 mistakes',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-            ),
-          ],
-          if (outcome != GraffitiOutcome.none) ...[
-            const SizedBox(height: 6),
-            Text(
-              game.statusMessage ?? '',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-          ],
           const SizedBox(height: 12),
           Expanded(
             child: LayoutBuilder(
@@ -318,6 +316,14 @@ class _GameBody extends StatelessWidget {
                 final boardSize = cellSize * 9 + boardBorder * 2;
                 final swatchSize =
                     xlPicker ? cellSize * xlSwatchCells : cellSize;
+                final pickerHeight = swatchSize * (xlPicker ? 3.0 : 1.0);
+                final overlayLabel = switch (outcome) {
+                  GraffitiOutcome.win => '[VICTORY]',
+                  GraffitiOutcome.lose || GraffitiOutcome.defeat => '[DEFEAT]',
+                  GraffitiOutcome.draw => '[DRAW]',
+                  GraffitiOutcome.none when game.eliminated => '[spectating]',
+                  GraffitiOutcome.none => null,
+                };
 
                 return Align(
                   alignment: Alignment.topCenter,
@@ -336,29 +342,55 @@ class _GameBody extends StatelessWidget {
                         const SizedBox(height: toolbarGap),
                         IgnorePointer(
                           ignoring: !controlsEnabled,
-                          child: GameToolbar(
-                            canUndo: controlsEnabled && game.canUndo,
-                            noteMode: game.noteMode,
-                            bulkNoteSelect: false,
-                            canErase: controlsEnabled && game.canEraseSelected,
-                            onUndo: game.undo,
-                            onErase: game.clearSelectedCell,
-                            onToggleNote: game.toggleNoteMode,
+                          child: GestureDetector(
+                            onTap: () {},
+                            behavior: HitTestBehavior.opaque,
+                            child: GameToolbar(
+                              canUndo: controlsEnabled && game.canUndo,
+                              noteMode: game.noteMode,
+                              bulkNoteSelect: game.bulkNoteSelect,
+                              canErase: controlsEnabled && game.canEraseSelected,
+                              onUndo: game.undo,
+                              onErase: game.clearSelectedCell,
+                              onToggleNote: game.toggleNoteMode,
+                              onNoteLongPress:
+                                  game.canEnterBulkNoteSelectFromToolbar
+                                      ? game.enterBulkNoteSelectFromToolbar
+                                      : null,
+                            ),
                           ),
                         ),
                         const SizedBox(height: pickerGap),
-                        IgnorePointer(
-                          ignoring: !controlsEnabled,
-                          child: ColorPicker(
-                            swatchSize: swatchSize,
-                            visible: true,
-                            xlMode: xlPicker,
-                            palette: game.activePalette,
-                            onColorSelected: game.inputColor,
-                            onNoteAdded: game.addNote,
-                            onNoteRemoved: game.removeNote,
+                        if (overlayLabel != null)
+                          SizedBox(
+                            height: pickerHeight,
+                            child: Center(
+                              child: Text(
+                                overlayLabel,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                    ),
+                              ),
+                            ),
+                          )
+                        else
+                          IgnorePointer(
+                            ignoring: !controlsEnabled,
+                            child: ColorPicker(
+                              swatchSize: swatchSize,
+                              visible: true,
+                              xlMode: xlPicker,
+                              palette: game.activePalette,
+                              onColorSelected: game.inputColor,
+                              onNoteAdded: game.addNote,
+                              onNoteRemoved: game.removeNote,
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ),
@@ -366,15 +398,109 @@ class _GameBody extends StatelessWidget {
               },
             ),
           ),
-          if (outcome != GraffitiOutcome.none) ...[
-            const SizedBox(height: 8),
-            MenuActionButton(
-              label: 'Back to lobby',
-              onPressed: () => game.leave(),
-            ),
-          ],
         ],
       ),
+    ),
+    );
+  }
+}
+
+class _GraffitiScore extends StatefulWidget {
+  final int you;
+  final int opponent;
+
+  const _GraffitiScore({
+    required this.you,
+    required this.opponent,
+  });
+
+  @override
+  State<_GraffitiScore> createState() => _GraffitiScoreState();
+}
+
+class _GraffitiScoreState extends State<_GraffitiScore>
+    with TickerProviderStateMixin {
+  static const _peak = 1.22;
+  static const _duration = Duration(milliseconds: 320);
+
+  late final AnimationController _youController;
+  late final AnimationController _oppController;
+  late final Animation<double> _youScale;
+  late final Animation<double> _oppScale;
+  late int _prevYou;
+  late int _prevOpp;
+
+  @override
+  void initState() {
+    super.initState();
+    _prevYou = widget.you;
+    _prevOpp = widget.opponent;
+    _youController = AnimationController(vsync: this, duration: _duration);
+    _oppController = AnimationController(vsync: this, duration: _duration);
+    _youScale = _bounce(_youController);
+    _oppScale = _bounce(_oppController);
+  }
+
+  Animation<double> _bounce(AnimationController controller) {
+    return TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 1.0, end: _peak).chain(
+          CurveTween(curve: Curves.easeOutCubic),
+        ),
+        weight: 1,
+      ),
+      TweenSequenceItem(
+        tween: Tween(begin: _peak, end: 1.0).chain(
+          CurveTween(curve: Curves.easeInCubic),
+        ),
+        weight: 1.15,
+      ),
+    ]).animate(controller);
+  }
+
+  @override
+  void didUpdateWidget(covariant _GraffitiScore oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.you > _prevYou) {
+      _youController.forward(from: 0);
+    }
+    if (widget.opponent > _prevOpp) {
+      _oppController.forward(from: 0);
+    }
+    _prevYou = widget.you;
+    _prevOpp = widget.opponent;
+  }
+
+  @override
+  void dispose() {
+    _youController.dispose();
+    _oppController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+        );
+    return AnimatedBuilder(
+      animation: Listenable.merge([_youScale, _oppScale]),
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Transform.scale(
+              scale: _youScale.value,
+              child: Text('${widget.you}', style: style),
+            ),
+            Text(' - ', style: style),
+            Transform.scale(
+              scale: _oppScale.value,
+              child: Text('${widget.opponent}', style: style),
+            ),
+          ],
+        );
+      },
     );
   }
 }

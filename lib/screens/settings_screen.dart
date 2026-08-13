@@ -476,6 +476,14 @@ class _PlayModeGrid extends StatelessWidget {
           children: [
             Expanded(
               child: MenuActionButton(
+                label: 'Graffiti',
+                enabled: !busy,
+                onPressed: onGraffiti,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: MenuActionButton(
                 label: 'Daily Challenge',
                 trailing:
                     dailyUnlocked && dailyStreak > 0 ? 'x$dailyStreak' : null,
@@ -483,14 +491,6 @@ class _PlayModeGrid extends StatelessWidget {
                 muted: dailyUnlocked && dailyFinished,
                 locked: !dailyUnlocked,
                 onPressed: onDaily,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: MenuActionButton(
-                label: 'Graffiti',
-                enabled: !busy,
-                onPressed: onGraffiti,
               ),
             ),
           ],

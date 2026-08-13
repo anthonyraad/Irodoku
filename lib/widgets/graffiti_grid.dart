@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../core/bulk_note_rainbow_border.dart';
+import '../core/celebration_colors.dart';
+import '../core/organic_swatch_motion.dart';
+import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
+import '../models/palette_swatch.dart';
+import '../models/unit_celebration.dart';
 import '../providers/graffiti_provider.dart';
 import '../sudoku/sudoku_board.dart';
 import 'color_cell.dart';
@@ -23,20 +29,40 @@ class GraffitiGrid extends StatefulWidget {
 }
 
 class _GraffitiGridState extends State<GraffitiGrid>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 1100);
+  static const _staggerFraction = 0.045;
   static const _borderPulseDuration = Duration(milliseconds: 1400);
+  static const _rainbowBorderDuration = BulkNoteRainbowBorder.duration;
 
+  late final AnimationController _controller;
   late final AnimationController _borderPulseController;
+  late final AnimationController _rainbowBorderController;
+  int _lastCelebrationId = 0;
+  bool _holdingGlassMotion = false;
 
   @override
   void initState() {
     super.initState();
+    _lastCelebrationId = widget.game.celebration?.id ?? 0;
+    _controller = AnimationController(vsync: this, duration: _duration);
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        widget.game.clearCelebration();
+      }
+    });
     _borderPulseController = AnimationController(
       vsync: this,
       duration: _borderPulseDuration,
     );
+    _rainbowBorderController = AnimationController(
+      vsync: this,
+      duration: _rainbowBorderDuration,
+    );
     widget.game.addListener(_onGameChanged);
     _syncBorderPulse();
+    _syncRainbowBorder();
+    _syncGlassMotion();
   }
 
   @override
@@ -46,19 +72,64 @@ class _GraffitiGridState extends State<GraffitiGrid>
       oldWidget.game.removeListener(_onGameChanged);
       widget.game.addListener(_onGameChanged);
     }
+    _maybeStartCelebration();
     _syncBorderPulse();
+    _syncRainbowBorder();
+    _syncGlassMotion();
   }
 
   @override
   void dispose() {
     widget.game.removeListener(_onGameChanged);
+    _syncGlassMotion(forceOff: true);
+    _controller.dispose();
     _borderPulseController.dispose();
+    _rainbowBorderController.dispose();
     super.dispose();
   }
 
-  void _onGameChanged() => _syncBorderPulse();
+  void _onGameChanged() {
+    _maybeStartCelebration();
+    _syncBorderPulse();
+    _syncRainbowBorder();
+  }
+
+  void _syncGlassMotion({bool forceOff = false}) {
+    final needs = !forceOff &&
+        (widget.palette == GamePalette.glass ||
+            widget.palette == GamePalette.sky);
+    if (needs && !_holdingGlassMotion) {
+      OrganicSwatchMotion.retain();
+      _holdingGlassMotion = true;
+    } else if (!needs && _holdingGlassMotion) {
+      OrganicSwatchMotion.release();
+      _holdingGlassMotion = false;
+    }
+  }
+
+  void _maybeStartCelebration() {
+    final celebration = widget.game.celebration;
+    if (celebration == null) return;
+    if (celebration.id == _lastCelebrationId) return;
+    _lastCelebrationId = celebration.id;
+    _controller.forward(from: 0);
+  }
+
+  double _cellProgress(int stagger) {
+    final start = stagger * _staggerFraction;
+    const end = 1.0;
+    if (_controller.value <= start) return 0;
+    return ((_controller.value - start) / (end - start)).clamp(0.0, 1.0);
+  }
 
   void _syncBorderPulse() {
+    if (widget.game.bulkNoteSelect) {
+      if (_borderPulseController.isAnimating) {
+        _borderPulseController.stop();
+        _borderPulseController.value = 0;
+      }
+      return;
+    }
     final selected =
         widget.game.selectedRow != null && widget.game.selectedCol != null;
     if (selected) {
@@ -71,6 +142,19 @@ class _GraffitiGridState extends State<GraffitiGrid>
     }
   }
 
+  void _syncRainbowBorder() {
+    if (widget.game.bulkNoteSelect &&
+        widget.game.selectedRow != null &&
+        widget.game.selectedCol != null) {
+      if (!_rainbowBorderController.isAnimating) {
+        _rainbowBorderController.repeat(reverse: true);
+      }
+    } else {
+      _rainbowBorderController.stop();
+      _rainbowBorderController.value = 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = widget.game;
@@ -80,6 +164,8 @@ class _GraffitiGridState extends State<GraffitiGrid>
     final selectedRow = game.selectedRow;
     final selectedCol = game.selectedCol;
     final hasSelection = selectedRow != null && selectedCol != null;
+    final bulkNoteSelect = game.bulkNoteSelect;
+    final celebration = game.celebration;
 
     return AspectRatio(
       aspectRatio: 1,
@@ -91,28 +177,40 @@ class _GraffitiGridState extends State<GraffitiGrid>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            _buildCellLayer(
-              game: game,
-              palette: widget.palette,
-              thin: thin,
-              thick: thick,
-              selectedRow: selectedRow,
-              selectedCol: selectedCol,
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (context, _) => _buildCellLayer(
+                game: game,
+                palette: widget.palette,
+                thin: thin,
+                thick: thick,
+                selectedRow: selectedRow,
+                selectedCol: selectedCol,
+                celebration: celebration,
+              ),
             ),
             if (hasSelection)
               AnimatedBuilder(
-                animation: _borderPulseController,
+                animation: bulkNoteSelect
+                    ? _rainbowBorderController
+                    : _borderPulseController,
                 builder: (context, _) => IgnorePointer(
                   child: CustomPaint(
                     painter: _PeerUnitBorderPainter(
                       row: selectedRow,
                       col: selectedCol,
-                      color: IrodokuTheme.relatedUnitBorderPulse(
-                        brightness,
-                        Curves.easeInOut.transform(
-                          _borderPulseController.value,
-                        ),
-                      ),
+                      color: bulkNoteSelect
+                          ? null
+                          : IrodokuTheme.relatedUnitBorderPulse(
+                              brightness,
+                              Curves.easeInOut.transform(
+                                _borderPulseController.value,
+                              ),
+                            ),
+                      rainbowPhase: bulkNoteSelect
+                          ? _rainbowBorderController.value
+                          : null,
+                      rainbowBrightness: bulkNoteSelect ? brightness : null,
                     ),
                   ),
                 ),
@@ -130,6 +228,7 @@ class _GraffitiGridState extends State<GraffitiGrid>
     required Color thick,
     required int? selectedRow,
     required int? selectedCol,
+    required UnitCelebration? celebration,
   }) {
     final hasSelection = selectedRow != null && selectedCol != null;
     final selectedCell = hasSelection
@@ -152,14 +251,37 @@ class _GraffitiGridState extends State<GraffitiGrid>
           child: Row(
             children: List.generate(SudokuBoard.size, (col) {
               final cell = game.cells[row][col];
-              final isSelected =
-                  game.selectedRow == row && game.selectedCol == col;
+              final isSelected = game.isCellSelected(row, col);
               final isRelated =
                   washPeers && inSelectedUnit(row, col) && !isSelected;
               final isSameColor = washPeers &&
                   !isSelected &&
                   selectedValue != 0 &&
                   cell.value == selectedValue;
+
+              PaletteSwatch? celebrationSwatch;
+              var celebrationScale = 1.0;
+              var celebrationShimmer = 0.0;
+
+              if (celebration != null &&
+                  celebration.contains(row, col) &&
+                  _controller.isAnimating) {
+                final stagger = celebration.staggerFor(row, col);
+                final t = _cellProgress(stagger);
+                if (t > 0) {
+                  final originalValue = celebration.originalValueFor(row, col);
+                  final original =
+                      IrodokuPalette.swatchForValue(originalValue, palette)!;
+                  celebrationSwatch = CelebrationColors.swatchFor(
+                    t: t,
+                    stagger: stagger,
+                    original: original,
+                    palette: palette,
+                  );
+                  celebrationScale = CelebrationColors.scaleFor(t);
+                  celebrationShimmer = CelebrationColors.shimmerFor(t);
+                }
+              }
 
               final rightW = (col + 1) % 3 == 0 && col != 8 ? 2.0 : 0.6;
               final bottomW = (row + 1) % 3 == 0 && row != 8 ? 2.0 : 0.6;
@@ -180,9 +302,17 @@ class _GraffitiGridState extends State<GraffitiGrid>
                         isRelated: isRelated,
                         isSameColor: isSameColor,
                         palette: palette,
+                        bulkNoteSelect: game.bulkNoteSelect,
+                        celebrationSwatch: celebrationSwatch,
+                        celebrationScale: celebrationScale,
+                        celebrationShimmer: celebrationShimmer,
                         row: row,
                         col: col,
+                        noteClearWave: game.noteClearWave,
                         onTap: () => game.selectCell(row, col),
+                        onLongPress: !game.controlsEnabled || !cell.isEditable
+                            ? null
+                            : () => game.handleCellLongPress(row, col),
                       ),
                       Positioned(
                         right: 0,
@@ -215,24 +345,40 @@ class _GraffitiGridState extends State<GraffitiGrid>
 class _PeerUnitBorderPainter extends CustomPainter {
   final int row;
   final int col;
-  final Color color;
+  final Color? color;
+  final double? rainbowPhase;
+  final Brightness? rainbowBrightness;
 
   const _PeerUnitBorderPainter({
     required this.row,
     required this.col,
     required this.color,
+    this.rainbowPhase,
+    this.rainbowBrightness,
   });
+
+  Paint _strokePaint(Size size) {
+    if (rainbowPhase != null && rainbowBrightness != null) {
+      return BulkNoteRainbowBorder.strokePaint(
+        size: size,
+        phase: rainbowPhase!,
+        brightness: rainbowBrightness!,
+      );
+    }
+
+    return Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4.0
+      ..strokeCap = StrokeCap.square
+      ..isAntiAlias = true
+      ..color = color!;
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     final cellW = size.width / SudokuBoard.size;
     final cellH = size.height / SudokuBoard.size;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0
-      ..strokeCap = StrokeCap.square
-      ..isAntiAlias = true
-      ..color = color;
+    final paint = _strokePaint(size);
 
     final boxCol = col ~/ 3;
     final boxRow = row ~/ 3;
@@ -368,6 +514,8 @@ class _PeerUnitBorderPainter extends CustomPainter {
   bool shouldRepaint(covariant _PeerUnitBorderPainter oldDelegate) {
     return oldDelegate.row != row ||
         oldDelegate.col != col ||
-        oldDelegate.color != color;
+        oldDelegate.color != color ||
+        oldDelegate.rainbowPhase != rainbowPhase ||
+        oldDelegate.rainbowBrightness != rainbowBrightness;
   }
 }

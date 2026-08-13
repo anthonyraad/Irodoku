@@ -7,8 +7,11 @@ import 'package:flutter/foundation.dart';
 import '../models/cell.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
+import '../models/note_clear_wave.dart';
+import '../models/unit_celebration.dart';
 import '../services/graffiti_firebase_service.dart';
 import '../services/sound_service.dart';
+import '../sudoku/sudoku_board.dart';
 import '../sudoku/sudoku_generator.dart';
 import 'settings_provider.dart';
 import 'stats_provider.dart';
@@ -54,6 +57,11 @@ class _FillUndo extends _GraffitiUndo {
   });
 }
 
+class _BulkNoteUndo extends _GraffitiUndo {
+  final List<_NoteUndo> changes;
+  const _BulkNoteUndo(this.changes);
+}
+
 /// Multiplayer Graffiti session (Firebase RTDB). Separate from [GameProvider].
 class GraffitiProvider extends ChangeNotifier {
   GraffitiProvider({
@@ -87,10 +95,18 @@ class GraffitiProvider extends ChangeNotifier {
     (_) => List.generate(9, (_) => const Cell()),
   );
   List<int> _solution = List.filled(81, 0);
+  Set<String> _completedUnits = {};
+  UnitCelebration? _celebration;
+  int _celebrationSeq = 0;
+  NoteClearWave? _noteClearWave;
+  int _noteClearWaveSeq = 0;
+  int _noteClearWaveClearToken = 0;
 
   int? _selectedRow;
   int? _selectedCol;
   bool _noteMode = false;
+  bool _bulkNoteSelect = false;
+  final Set<int> _bulkSelected = {};
   final List<_GraffitiUndo> _undoStack = [];
 
   int _myCorrect = 0;
@@ -122,6 +138,11 @@ class GraffitiProvider extends ChangeNotifier {
   int? get selectedRow => _selectedRow;
   int? get selectedCol => _selectedCol;
   bool get noteMode => _noteMode;
+  bool get bulkNoteSelect => _bulkNoteSelect;
+  NoteClearWave? get noteClearWave => _noteClearWave;
+  UnitCelebration? get celebration => _celebration;
+  bool get hasCellSelection =>
+      _selectedRow != null || _bulkNoteSelect || _noteMode;
   bool get canUndo => _undoStack.isNotEmpty && !_eliminated;
   int get myCorrect => _myCorrect;
   int get myMistakes => _myMistakes;
@@ -142,14 +163,33 @@ class GraffitiProvider extends ChangeNotifier {
   }
 
   bool get canEraseSelected {
+    if (!controlsEnabled) return false;
+    if (_bulkNoteSelect && _bulkSelected.length >= 2) {
+      return _bulkEditableCells().any((rc) => _cells[rc.$1][rc.$2].hasNotes);
+    }
     final cell = selectedCell;
-    if (cell == null || !controlsEnabled) return false;
+    if (cell == null) return false;
     return cell.isEditable && (cell.value != 0 || cell.hasNotes);
   }
+
+  bool isCellSelected(int row, int col) {
+    if (_bulkNoteSelect) {
+      return _bulkSelected.contains(_cellKey(row, col));
+    }
+    return _selectedRow == row && _selectedCol == col;
+  }
+
+  static int _cellKey(int row, int col) => row * 9 + col;
 
   void clearToast() {
     if (_toast == null) return;
     _toast = null;
+    notifyListeners();
+  }
+
+  void clearCelebration() {
+    if (_celebration == null) return;
+    _celebration = null;
     notifyListeners();
   }
 
@@ -403,6 +443,11 @@ class GraffitiProvider extends ChangeNotifier {
       _hydratePalette(data);
       _hydrateBoard(data);
       _hydrateStats(data);
+      // First snapshot into play seeds units silently; later snapshots
+      // (including opponent fills) celebrate newly completed units.
+      final celebrateUnits =
+          _phase == GraffitiPhase.playing && gameState == 'playing';
+      _syncCompletedUnits(celebrate: celebrateUnits);
       if (gameState == 'playing') {
         _phase = GraffitiPhase.playing;
         _statusMessage = _solo ? 'Playing solo' : 'Graffiti';
@@ -482,6 +527,7 @@ class GraffitiProvider extends ChangeNotifier {
     }
 
     final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
+    final newlyLocked = <(int, int, int)>[];
     final next = List.generate(
       9,
       (r) => List.generate(9, (c) {
@@ -490,6 +536,7 @@ class GraffitiProvider extends ChangeNotifier {
             : 0;
         final remote = board['${r}_$c'];
         final localNotes = _cells[r][c].notes;
+        final wasConfirmed = _cells[r][c].isLocked || _cells[r][c].isGiven;
 
         if (given != 0) {
           return Cell(value: given, isGiven: true, isLocked: true);
@@ -499,6 +546,9 @@ class GraffitiProvider extends ChangeNotifier {
           final v = (cell['v'] as num?)?.toInt() ?? 0;
           final locked = cell['locked'] == true;
           final mistake = cell['mistake'] == true;
+          if (locked && !wasConfirmed && v != 0) {
+            newlyLocked.add((r, c, v));
+          }
           return Cell(
             value: v,
             notes: locked ? const {} : localNotes,
@@ -510,7 +560,31 @@ class GraffitiProvider extends ChangeNotifier {
       }),
     );
     _cells = next;
+    for (final (r, c, v) in newlyLocked) {
+      _clearPeerNotes(r, c, v);
+    }
     _pruneInvalidFillUndos();
+    _pruneLockedBulkCells();
+  }
+
+  void _pruneLockedBulkCells() {
+    if (!_bulkNoteSelect) return;
+    _bulkSelected.removeWhere((key) {
+      final row = key ~/ 9;
+      final col = key % 9;
+      return !_cells[row][col].isEditable;
+    });
+    if (_bulkSelected.isEmpty) {
+      _exitBulkNoteSelect();
+      return;
+    }
+    if (_selectedRow != null &&
+        _selectedCol != null &&
+        !_bulkSelected.contains(_cellKey(_selectedRow!, _selectedCol!))) {
+      final last = _bulkSelected.last;
+      _selectedRow = last ~/ 9;
+      _selectedCol = last % 9;
+    }
   }
 
   void _pruneInvalidFillUndos() {
@@ -559,6 +633,23 @@ class GraffitiProvider extends ChangeNotifier {
     if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
       return;
     }
+    final cell = _cells[row][col];
+    if (!cell.isEditable) return;
+
+    if (_bulkNoteSelect) {
+      final key = _cellKey(row, col);
+      if (_bulkSelected.contains(key) && _bulkSelectionHasNotes()) {
+        _exitBulkNoteSelect();
+        _noteMode = false;
+        _selectedRow = row;
+        _selectedCol = col;
+        notifyListeners();
+        return;
+      }
+      _toggleBulkCell(row, col);
+      return;
+    }
+
     if (_selectedRow == row && _selectedCol == col) {
       _selectedRow = null;
       _selectedCol = null;
@@ -569,24 +660,123 @@ class GraffitiProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Hold on a cell: enter bulk note select, or exit bulk to single-cell note mode.
+  void handleCellLongPress(int row, int col) {
+    if (!controlsEnabled) return;
+    if (!_cells[row][col].isEditable) return;
+
+    if (_bulkNoteSelect) {
+      _exitBulkNoteSelect();
+      _noteMode = true;
+      _selectedRow = row;
+      _selectedCol = col;
+      notifyListeners();
+      return;
+    }
+
+    enterBulkNoteSelect(row, col);
+  }
+
+  void enterBulkNoteSelect(int row, int col) {
+    if (!controlsEnabled) return;
+    if (!_cells[row][col].isEditable) return;
+
+    _bulkNoteSelect = true;
+    if (!_noteMode) _noteMode = true;
+    _bulkSelected.add(_cellKey(row, col));
+    _selectedRow = row;
+    _selectedCol = col;
+    notifyListeners();
+  }
+
+  bool get canEnterBulkNoteSelectFromToolbar {
+    if (!controlsEnabled) return false;
+    return !_bulkNoteSelect;
+  }
+
+  void enterBulkNoteSelectFromToolbar() {
+    if (!canEnterBulkNoteSelectFromToolbar) return;
+    final r = _selectedRow;
+    final c = _selectedCol;
+    if (r != null && c != null && _cells[r][c].isEditable) {
+      enterBulkNoteSelect(r, c);
+      return;
+    }
+    _bulkNoteSelect = true;
+    if (!_noteMode) _noteMode = true;
+    _selectedRow = null;
+    _selectedCol = null;
+    notifyListeners();
+  }
+
+  void _toggleBulkCell(int row, int col) {
+    if (!_cells[row][col].isEditable) return;
+    final key = _cellKey(row, col);
+    if (_bulkSelected.contains(key)) {
+      _bulkSelected.remove(key);
+      if (_bulkSelected.isEmpty) {
+        _exitBulkNoteSelect();
+        _selectedRow = null;
+        _selectedCol = null;
+      } else if (_selectedRow == row && _selectedCol == col) {
+        final last = _bulkSelected.last;
+        _selectedRow = last ~/ 9;
+        _selectedCol = last % 9;
+      }
+    } else {
+      _bulkSelected.add(key);
+      _selectedRow = row;
+      _selectedCol = col;
+    }
+    notifyListeners();
+  }
+
+  void _exitBulkNoteSelect() {
+    _bulkNoteSelect = false;
+    _bulkSelected.clear();
+  }
+
+  bool _bulkSelectionHasNotes() {
+    for (final key in _bulkSelected) {
+      final row = key ~/ 9;
+      final col = key % 9;
+      if (_cells[row][col].hasNotes) return true;
+    }
+    return false;
+  }
+
+  void clearSelection() {
+    if (_selectedRow == null && !_bulkNoteSelect && !_noteMode) return;
+    _exitBulkNoteSelect();
+    _selectedRow = null;
+    _selectedCol = null;
+    _noteMode = false;
+    notifyListeners();
+  }
+
   void toggleNoteMode() {
     if (!controlsEnabled) return;
-    _noteMode = !_noteMode;
+    final turningOn = !_noteMode;
+    if (turningOn || _bulkNoteSelect) {
+      _exitBulkNoteSelect();
+    }
+    _noteMode = turningOn;
     notifyListeners();
   }
 
   Future<void> inputColor(int value) async {
     if (!controlsEnabled || value < 1 || value > 9) return;
+
+    if (_noteMode) {
+      _toggleSelectedNote(value);
+      return;
+    }
+
     final r = _selectedRow;
     final c = _selectedCol;
     if (r == null || c == null) return;
     final cell = _cells[r][c];
     if (!cell.isEditable) return;
-
-    if (_noteMode) {
-      _toggleNote(r, c, value);
-      return;
-    }
 
     final code = _roomCode;
     final pid = _playerId;
@@ -608,7 +798,11 @@ class GraffitiProvider extends ChangeNotifier {
     if (correct) {
       _cells[r][c] = Cell(value: value, isLocked: true);
       // Correct fills are shared/locked — not undoable.
-      _playSound(_placementConfirmSound(value));
+      _clearPeerNotes(r, c, value);
+      final unitCompleted = _syncCompletedUnits(celebrate: true);
+      if (!unitCompleted && !_cellBelongsToCompletedUnit(r, c)) {
+        _playSound(_placementConfirmSound(value));
+      }
     } else {
       _undoStack.add(
         _FillUndo(row: r, col: c, value: value, wasMistake: true),
@@ -621,6 +815,10 @@ class GraffitiProvider extends ChangeNotifier {
 
   void addNote(int value) {
     if (!controlsEnabled) return;
+    if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
+      _applyNoteToBulk(value, add: true);
+      return;
+    }
     final r = _selectedRow;
     final c = _selectedCol;
     if (r == null || c == null) return;
@@ -629,10 +827,55 @@ class GraffitiProvider extends ChangeNotifier {
 
   void removeNote(int value) {
     if (!controlsEnabled) return;
+    if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
+      _applyNoteToBulk(value, add: false);
+      return;
+    }
     final r = _selectedRow;
     final c = _selectedCol;
     if (r == null || c == null) return;
     _toggleNote(r, c, value, forceRemove: true);
+  }
+
+  void _toggleSelectedNote(int value) {
+    if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
+      final targets = _bulkEditableCells().toList();
+      if (targets.isEmpty) return;
+      final allHave = targets.every(
+        (rc) => _cells[rc.$1][rc.$2].hasNote(value),
+      );
+      _applyNoteToBulk(value, add: !allHave);
+      return;
+    }
+    final r = _selectedRow;
+    final c = _selectedCol;
+    if (r == null || c == null) return;
+    _toggleNote(r, c, value);
+  }
+
+  Iterable<(int, int)> _bulkEditableCells() sync* {
+    for (final key in _bulkSelected) {
+      final row = key ~/ 9;
+      final col = key % 9;
+      if (_cells[row][col].isEditable) yield (row, col);
+    }
+  }
+
+  void _applyNoteToBulk(int value, {required bool add}) {
+    final targets = _bulkEditableCells().toList();
+    if (targets.isEmpty) return;
+    final changes = <_NoteUndo>[];
+    for (final (row, col) in targets) {
+      final cell = _cells[row][col];
+      final next = add ? cell.withNoteAdded(value) : cell.withNoteRemoved(value);
+      if (identical(next, cell)) continue;
+      _cells[row][col] = next;
+      changes.add(_NoteUndo(row: row, col: col, value: value, added: add));
+    }
+    if (changes.isEmpty) return;
+    _undoStack.add(_BulkNoteUndo(changes));
+    _playSound(add ? _sounds.playNote : _sounds.playNoteDeselect);
+    notifyListeners();
   }
 
   void _toggleNote(
@@ -656,6 +899,10 @@ class GraffitiProvider extends ChangeNotifier {
 
   Future<void> clearSelectedCell() async {
     if (!controlsEnabled) return;
+    if (_bulkNoteSelect && _bulkSelected.length >= 2) {
+      _clearNotesInBulkSelection();
+      return;
+    }
     final r = _selectedRow;
     final c = _selectedCol;
     if (r == null || c == null) return;
@@ -677,6 +924,23 @@ class GraffitiProvider extends ChangeNotifier {
     }
   }
 
+  void _clearNotesInBulkSelection() {
+    final targets = _bulkEditableCells()
+        .where((rc) => _cells[rc.$1][rc.$2].hasNotes)
+        .toList();
+    if (targets.isEmpty) return;
+    final changes = <_NoteUndo>[];
+    for (final (row, col) in targets) {
+      final cell = _cells[row][col];
+      for (final n in cell.notes) {
+        changes.add(_NoteUndo(row: row, col: col, value: n, added: true));
+      }
+      _cells[row][col] = cell.copyWith(clearNotes: true);
+    }
+    _undoStack.add(_BulkNoteUndo(changes));
+    notifyListeners();
+  }
+
   Future<void> undo() async {
     if (!canUndo) return;
     final entry = _undoStack.removeLast();
@@ -696,6 +960,17 @@ class GraffitiProvider extends ChangeNotifier {
         ):
         // Clears the fill only — mistake Xs are permanent.
         await _undoFill(row, col, value, wasMistake: wasMistake, pushUndo: false);
+      case _BulkNoteUndo(:final changes):
+        for (final change in changes.reversed) {
+          final cell = _cells[change.row][change.col];
+          if (!cell.isEditable) continue;
+          _cells[change.row][change.col] = change.added
+              ? cell.withNoteRemoved(change.value)
+              : cell.withNoteAdded(change.value);
+        }
+        final added = changes.any((c) => c.added);
+        _playSound(added ? _sounds.playNoteDeselect : _sounds.playNote);
+        notifyListeners();
     }
   }
 
@@ -736,6 +1011,101 @@ class GraffitiProvider extends ChangeNotifier {
   void _playSound(Future<void> Function() play) {
     if (!_settings.soundEnabled) return;
     unawaited(play());
+  }
+
+  /// Removes [value] from notes in the same row, column, and box as (row, col).
+  void _clearPeerNotes(int row, int col, int value) {
+    final seq = ++_noteClearWaveSeq;
+    _noteClearWave = NoteClearWave(
+      row: row,
+      col: col,
+      value: value,
+      seq: seq,
+    );
+    final clearToken = ++_noteClearWaveClearToken;
+    Future<void>.delayed(const Duration(milliseconds: 520), () {
+      if (_noteClearWaveClearToken != clearToken) return;
+      if (_noteClearWave?.seq == seq) {
+        _noteClearWave = null;
+      }
+    });
+
+    final boxRow = row ~/ 3;
+    final boxCol = col ~/ 3;
+    for (var r = 0; r < SudokuBoard.size; r++) {
+      for (var c = 0; c < SudokuBoard.size; c++) {
+        if (r == row && c == col) continue;
+        final sameUnit = r == row ||
+            c == col ||
+            (r ~/ 3 == boxRow && c ~/ 3 == boxCol);
+        if (!sameUnit) continue;
+
+        final peer = _cells[r][c];
+        if (!peer.isEditable || !peer.hasNote(value)) continue;
+        _cells[r][c] = peer.withNoteRemoved(value);
+      }
+    }
+  }
+
+  /// Keys for rows/cols/boxes fully filled with locked correct colors.
+  Set<String> _successfullyCompletedUnits() {
+    if (_solution.length != 81) return {};
+    final keys = <String>{};
+    for (var i = 0; i < SudokuBoard.size; i++) {
+      keys.add('r$i');
+      keys.add('c$i');
+      keys.add('b$i');
+    }
+    return keys.where((key) {
+      final positions = SudokuBoard.positionsForUnitKey(key);
+      return positions.every((pos) {
+        final cell = _cells[pos.$1][pos.$2];
+        if (!cell.isLocked && !cell.isGiven) return false;
+        return cell.value == _solution[pos.$1 * 9 + pos.$2];
+      });
+    }).toSet();
+  }
+
+  bool _syncCompletedUnits({required bool celebrate}) {
+    final now = _successfullyCompletedUnits();
+    final newly = now.difference(_completedUnits);
+    _completedUnits = now;
+    if (celebrate && newly.isNotEmpty) {
+      _celebration = _buildCelebration(newly);
+      _playSound(_sounds.playComplete);
+      return true;
+    }
+    return false;
+  }
+
+  UnitCelebration _buildCelebration(Set<String> unitKeys) {
+    final cellStagger = <(int, int), int>{};
+    final originalValues = <(int, int), int>{};
+
+    for (final key in unitKeys) {
+      final positions = SudokuBoard.positionsForUnitKey(key);
+      for (var i = 0; i < positions.length; i++) {
+        final pos = positions[i];
+        final existing = cellStagger[pos];
+        if (existing == null || i < existing) {
+          cellStagger[pos] = i;
+        }
+        originalValues[pos] = _cells[pos.$1][pos.$2].value;
+      }
+    }
+
+    return UnitCelebration(
+      id: ++_celebrationSeq,
+      cellStagger: cellStagger,
+      originalValues: originalValues,
+    );
+  }
+
+  bool _cellBelongsToCompletedUnit(int row, int col) {
+    final box = (row ~/ 3) * 3 + (col ~/ 3);
+    return _completedUnits.contains('r$row') ||
+        _completedUnits.contains('c$col') ||
+        _completedUnits.contains('b$box');
   }
 
   Future<void> Function() _placementConfirmSound(int value) {
@@ -786,9 +1156,13 @@ class GraffitiProvider extends ChangeNotifier {
     _sessionPalette = null;
     _cells = List.generate(9, (_) => List.generate(9, (_) => const Cell()));
     _solution = List.filled(81, 0);
+    _completedUnits = {};
+    _celebration = null;
+    _noteClearWave = null;
     _selectedRow = null;
     _selectedCol = null;
     _noteMode = false;
+    _exitBulkNoteSelect();
     _undoStack.clear();
     _myCorrect = 0;
     _myMistakes = 0;
