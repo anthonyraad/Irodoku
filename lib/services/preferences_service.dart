@@ -25,6 +25,8 @@ class PreferencesService {
   static const _keyGraffitiWins = 'stats_graffiti_wins';
   static const _keyGraffitiLosses = 'stats_graffiti_losses';
   static const _keyGraffitiDraws = 'stats_graffiti_draws';
+  static const _keyTotalXp = 'stats_total_xp';
+  static const _keyXpLastAwardDay = 'stats_xp_last_award_day';
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
   static const _keyParkedRegularGame = 'parked_regular_game';
@@ -97,6 +99,14 @@ class PreferencesService {
 
   Future<void> setDevMode(bool enabled) async {
     await _prefs.setBool(_keyDevMode, enabled);
+  }
+
+  bool get hasTotalXp => _prefs.containsKey(_keyTotalXp);
+
+  String? getXpLastAwardDay() => _prefs.getString(_keyXpLastAwardDay);
+
+  Future<void> setXpLastAwardDay(String dayKey) async {
+    await _prefs.setString(_keyXpLastAwardDay, dayKey);
   }
 
   /// `yyyy-MM-dd` of the last completed Daily Irodoku, or null.
@@ -202,6 +212,7 @@ class PreferencesService {
       graffitiWins: _prefs.getInt(_keyGraffitiWins) ?? 0,
       graffitiLosses: _prefs.getInt(_keyGraffitiLosses) ?? 0,
       graffitiDraws: _prefs.getInt(_keyGraffitiDraws) ?? 0,
+      totalXp: _prefs.getInt(_keyTotalXp) ?? 0,
     );
   }
 
@@ -214,6 +225,7 @@ class PreferencesService {
     await _prefs.setInt(_keyGraffitiWins, stats.graffitiWins);
     await _prefs.setInt(_keyGraffitiLosses, stats.graffitiLosses);
     await _prefs.setInt(_keyGraffitiDraws, stats.graffitiDraws);
+    await _prefs.setInt(_keyTotalXp, stats.totalXp);
     for (final d in Difficulty.values) {
       final time = stats.bestTimes[d];
       if (time == null) {

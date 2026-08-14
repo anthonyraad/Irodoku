@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'menu_select_sound.dart';
+
 /// Bordered Main Menu-style action button (Classic, Stats, Settings, etc.).
 class MenuActionButton extends StatelessWidget {
   static const _borderRadius = BorderRadius.all(Radius.circular(8));
@@ -55,7 +57,12 @@ class MenuActionButton extends StatelessWidget {
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: interactive ? onPressed : null,
+            onTap: interactive
+                ? () {
+                    playMenuSelectSound(context);
+                    onPressed();
+                  }
+                : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               child: Row(

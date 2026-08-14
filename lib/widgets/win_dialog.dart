@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/player_xp.dart';
+import 'menu_select_sound.dart';
+import 'xp_gain_panel.dart';
+
 const _resultTransitionDuration = Duration(milliseconds: 200);
 
 Widget _resultTransition(
@@ -26,6 +30,7 @@ Future<void> showWinDialog(
   required String time,
   required VoidCallback onNewGame,
   bool showNewGame = true,
+  XpAward? xp,
 }) {
   return showGeneralDialog(
     context: context,
@@ -48,19 +53,25 @@ Future<void> showWinDialog(
           textAlign: TextAlign.center,
           style: TextStyle(color: ink),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _VictoryIcon(dark: dark),
-            const SizedBox(height: 16),
-            Text(
-              time,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: ink,
-                  ),
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _VictoryIcon(dark: dark),
+              const SizedBox(height: 16),
+              Text(
+                time,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: ink,
+                    ),
+              ),
+              if (xp != null) ...[
+                const SizedBox(height: 16),
+                XpGainPanel(award: xp, ink: ink),
+              ],
+            ],
+          ),
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -70,10 +81,10 @@ Future<void> showWinDialog(
                 backgroundColor: ink,
                 foregroundColor: onInk,
               ),
-              onPressed: () {
+              onPressed: withMenuSelect(context, () {
                 Navigator.of(context).pop();
                 onNewGame();
-              },
+              }),
               child: const Text('New Game'),
             ),
           TextButton(
@@ -159,10 +170,10 @@ Future<void> showLoseDialog(
                 backgroundColor: ink,
                 foregroundColor: onInk,
               ),
-              onPressed: () {
+              onPressed: withMenuSelect(context, () {
                 Navigator.of(context).pop();
                 onNewGame();
-              },
+              }),
               child: const Text('New Game'),
             ),
           TextButton(

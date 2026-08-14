@@ -32,6 +32,21 @@ class Achievement {
   /// Color value 1–9 for this column.
   int get colorValue => col + 1;
 
+  static const int rowCount = 8;
+  static const int columnCount = 9;
+
+  /// XP for finishing a full Achievements-page row (row 1 → 1000, … row 8 → 8000).
+  static int xpForCompletedRow(int rowIndex) => (rowIndex + 1) * 1000;
+
+  static bool isRowComplete(Set<String> unlockedIds, int rowIndex) {
+    for (var col = 0; col < columnCount; col++) {
+      if (!unlockedIds.contains('r${rowIndex + 1}c${col + 1}')) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   static const List<Achievement> all = [
     // Row 1 — Default
     Achievement(row: 0, col: 0, title: 'Win 3 games with Default palette'),

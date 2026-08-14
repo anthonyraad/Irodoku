@@ -7,7 +7,9 @@ import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
 import '../providers/stats_provider.dart';
+import '../widgets/menu_select_sound.dart';
 import '../widgets/typing_title.dart';
+import '../widgets/xp_gain_panel.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -52,6 +54,7 @@ class _StatsScreenState extends State<StatsScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const MenuBackButton(),
         title: _showChromatic
             ? Stack(
                 alignment: Alignment.center,
@@ -103,6 +106,10 @@ class _StatsScreenState extends State<StatsScreen> {
                   showChromaticButton ? 72 + bottomInset : 16,
                 ),
                 children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: _LevelCard(totalXp: stats.totalXp),
+                  ),
                   if (_showChromatic) ...[
                     _StatCard(
                       children: [
@@ -193,9 +200,9 @@ class _StatsScreenState extends State<StatsScreen> {
                       textStyle: Theme.of(context).textTheme.titleMedium
                           ?.copyWith(fontWeight: FontWeight.w600),
                     ),
-                    onPressed: () {
+                    onPressed: withMenuSelect(context, () {
                       setState(() => _showChromatic = !_showChromatic);
-                    },
+                    }),
                     child: Text(
                       _showChromatic ? '< All' : 'Chromatic >',
                     ),
@@ -260,6 +267,27 @@ class _PalettePreviewRow extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _LevelCard extends StatelessWidget {
+  final int totalXp;
+
+  const _LevelCard({required this.totalXp});
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Theme.of(context).colorScheme.onSurface;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: XpLevelBar(totalXp: totalXp, ink: ink),
     );
   }
 }

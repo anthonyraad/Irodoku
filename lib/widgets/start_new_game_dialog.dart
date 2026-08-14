@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'menu_select_sound.dart';
 import 'typing_title.dart';
 
 /// Minimal confirm used when starting a new game would discard mid-match progress.
@@ -37,7 +38,10 @@ Future<bool?> showStartNewGameDialog(BuildContext context) {
               backgroundColor: ink,
               foregroundColor: onInk,
             ),
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: withMenuSelect(
+              context,
+              () => Navigator.of(context).pop(true),
+            ),
             child: const Text('Yes'),
           ),
         ],

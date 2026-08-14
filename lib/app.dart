@@ -11,6 +11,7 @@ import 'providers/settings_provider.dart';
 import 'providers/stats_provider.dart';
 import 'screens/game_screen.dart';
 import 'services/preferences_service.dart';
+import 'services/sound_service.dart';
 
 class IrodokuApp extends StatelessWidget {
   final PreferencesService preferences;
@@ -22,6 +23,10 @@ class IrodokuApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         Provider<PreferencesService>.value(value: preferences),
+        Provider<SoundService>(
+          create: (_) => SoundService(),
+          dispose: (_, sounds) => sounds.dispose(),
+        ),
         ChangeNotifierProvider(
           create: (_) => StatsProvider(preferences),
         ),
@@ -40,6 +45,7 @@ class IrodokuApp extends StatelessWidget {
             stats: context.read<StatsProvider>(),
             achievements: context.read<AchievementsProvider>(),
             preferences: preferences,
+            sounds: context.read<SoundService>(),
           ),
         ),
         ChangeNotifierProvider(
@@ -49,6 +55,7 @@ class IrodokuApp extends StatelessWidget {
           create: (context) => GraffitiProvider(
             settings: context.read<SettingsProvider>(),
             stats: context.read<StatsProvider>(),
+            sounds: context.read<SoundService>(),
           ),
         ),
       ],

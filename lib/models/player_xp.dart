@@ -1,0 +1,181 @@
+import 'dart:math' as math;
+
+import 'difficulty.dart';
+import 'game_stats.dart';
+
+/// Prestige XP: stored as [totalXp]; level / progress are derived.
+abstract final class PlayerXp {
+  static const firstWinOfDayBonus = 50;
+  static const chromaticBonus = 25;
+  static const flawlessModifier = 0.25;
+  static const fastModifier = 0.25;
+
+  static int baseXp(Difficulty difficulty) => switch (difficulty) {
+        Difficulty.easy => 50,
+        Difficulty.medium => 100,
+        Difficulty.hard => 175,
+        Difficulty.expert => 275,
+        Difficulty.master => 400,
+      };
+
+  /// Daily Challenge is a flat base (that day's difficulty still gates Fast).
+  static const dailyBaseXp = 150;
+  static const dailyStreakBonus = 25;
+  static const dailyStreakBonusMin = 3;
+
+  /// Graffiti has no ladder tier — treated as Medium for base + speed.
+  static const graffitiDifficulty = Difficulty.medium;
+
+  static Duration fastThreshold(Difficulty difficulty) => switch (difficulty) {
+        Difficulty.easy => const Duration(minutes: 5),
+        Difficulty.medium => const Duration(minutes: 8),
+        Difficulty.hard => const Duration(minutes: 13),
+        Difficulty.expert => const Duration(minutes: 20),
+        Difficulty.master => const Duration(minutes: 45),
+      };
+
+  /// XP to go from [level] to [level]+1 (not cumulative).
+  static int xpToReach(int level) {
+    if (level < 1) return 100;
+    return (100 * math.pow(level, 1.3)).round();
+  }
+
+  static int levelFor(int totalXp) {
+    var remaining = math.max(0, totalXp);
+    var level = 1;
+    while (true) {
+      final need = xpToReach(level);
+      if (remaining < need) return level;
+      remaining -= need;
+      level++;
+    }
+  }
+
+  /// XP into the current level, and XP required to finish this level.
+  /// Not lifetime / not cumulative to next level.
+  static ({int intoLevel, int toNext}) progress(int totalXp) {
+    var remaining = math.max(0, totalXp);
+    var level = 1;
+    while (true) {
+      final need = xpToReach(level);
+      if (remaining < need) {
+        return (intoLevel: remaining, toNext: need);
+      }
+      remaining -= need;
+      level++;
+    }
+  }
+
+  static double progressFraction(int totalXp) {
+    final p = progress(totalXp);
+    if (p.toNext <= 0) return 1;
+    return (p.intoLevel / p.toNext).clamp(0.0, 1.0);
+  }
+
+  /// One-time seed: wins × base XP (no bonuses) + Graffiti wins × Medium.
+  static int backfillFrom(GameStats stats) {
+    var xp = 0;
+    for (final difficulty in Difficulty.values) {
+      xp += stats.winsFor(difficulty) * baseXp(difficulty);
+    }
+    xp += stats.graffitiWins * baseXp(graffitiDifficulty);
+    return xp;
+  }
+
+  static XpAward compute({
+    required Difficulty difficulty,
+    required int mistakes,
+    required Duration elapsed,
+    required bool firstWinOfDay,
+    required int previousTotal,
+    String? sourceLabel,
+    bool daily = false,
+    int dailyStreak = 0,
+    bool chromatic = false,
+    int achievedXp = 0,
+  }) {
+    final base = daily ? dailyBaseXp : baseXp(difficulty);
+    final flawless = mistakes == 0;
+    final fast = elapsed < fastThreshold(difficulty);
+    final flawlessXp = flawless ? (base * flawlessModifier).floor() : 0;
+    final fastXp = fast ? (base * fastModifier).floor() : 0;
+    final firstOfDay = firstWinOfDay ? firstWinOfDayBonus : 0;
+    final streak = daily && dailyStreak >= dailyStreakBonusMin
+        ? dailyStreakBonus
+        : 0;
+    final chromaticXp = chromatic ? chromaticBonus : 0;
+    final earned = base +
+        flawlessXp +
+        fastXp +
+        firstOfDay +
+        streak +
+        chromaticXp +
+        achievedXp;
+    return XpAward(
+      baseXp: base,
+      difficulty: difficulty,
+      sourceLabel: sourceLabel ?? (daily ? 'Daily' : difficulty.label),
+      flawless: flawless,
+      fast: fast,
+      firstWinOfDay: firstWinOfDay,
+      streak: streak > 0,
+      chromatic: chromaticXp > 0,
+      achievedXp: achievedXp,
+      flawlessXp: flawlessXp,
+      fastXp: fastXp,
+      earned: earned,
+      previousTotal: previousTotal,
+      newTotal: previousTotal + earned,
+    );
+  }
+}
+
+class XpAward {
+  final int baseXp;
+  final Difficulty difficulty;
+  final String sourceLabel;
+  final bool flawless;
+  final bool fast;
+  final bool firstWinOfDay;
+  final bool streak;
+  final bool chromatic;
+  final int achievedXp;
+  final int flawlessXp;
+  final int fastXp;
+  final int earned;
+  final int previousTotal;
+  final int newTotal;
+
+  const XpAward({
+    required this.baseXp,
+    required this.difficulty,
+    required this.sourceLabel,
+    required this.flawless,
+    required this.fast,
+    required this.firstWinOfDay,
+    required this.streak,
+    required this.chromatic,
+    this.achievedXp = 0,
+    required this.flawlessXp,
+    required this.fastXp,
+    required this.earned,
+    required this.previousTotal,
+    required this.newTotal,
+  });
+
+  int get previousLevel => PlayerXp.levelFor(previousTotal);
+  int get newLevel => PlayerXp.levelFor(newTotal);
+  bool get leveledUp => newLevel > previousLevel;
+
+  /// Receipt lines that sum to [earned].
+  List<({String label, int xp})> get breakdown => [
+        (label: '$sourceLabel finish', xp: baseXp),
+        if (flawless) (label: 'Flawless', xp: flawlessXp),
+        if (fast) (label: 'Speedy', xp: fastXp),
+        if (chromatic) (label: 'Chromatic', xp: PlayerXp.chromaticBonus),
+        if (achievedXp > 0) (label: 'Achieved', xp: achievedXp),
+        if (firstWinOfDay)
+          (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
+        if (streak) (label: 'Streak', xp: PlayerXp.dailyStreakBonus),
+      ];
+}

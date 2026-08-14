@@ -7,14 +7,17 @@ import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../providers/graffiti_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/stats_provider.dart';
 import '../services/graffiti_firebase_service.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/graffiti_grid.dart';
 import '../widgets/menu_action_button.dart';
+import '../widgets/menu_select_sound.dart';
 import '../widgets/mistake_display.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/typing_title.dart';
+import '../widgets/xp_gain_panel.dart';
 
 class GraffitiScreen extends StatefulWidget {
   const GraffitiScreen({super.key});
@@ -73,7 +76,7 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
             child: const Text('Stay'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
+            onPressed: withMenuSelect(ctx, () => Navigator.pop(ctx, true)),
             child: const Text('Leave'),
           ),
         ],
@@ -98,7 +101,10 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
             title: const TypingTitle(text: 'Graffiti'),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => _confirmLeave(context, game),
+              onPressed: withMenuSelect(
+                context,
+                () => _confirmLeave(context, game),
+              ),
             ),
             actions: [
               if (game.roomCode != null)
@@ -180,12 +186,12 @@ class _LobbyBody extends StatelessWidget {
             const SizedBox(height: 8),
             Center(
               child: TextButton(
-                onPressed: () {
+                onPressed: withMenuSelect(context, () {
                   Clipboard.setData(ClipboardData(text: game.roomCode!));
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Code copied')),
                   );
-                },
+                }),
                 child: const Text('[copy]'),
               ),
             ),
@@ -237,9 +243,10 @@ class _LobbyBody extends StatelessWidget {
                     vertical: 14,
                   ),
                 ),
-                onPressed: game.busy
-                    ? null
-                    : () => game.joinRoom(joinController.text),
+                onPressed: withMenuSelectOrNull(
+                  context,
+                  game.busy ? null : () => game.joinRoom(joinController.text),
+                ),
                 child: const Text('Join'),
               ),
             ],
@@ -272,6 +279,7 @@ class _GameBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final controlsEnabled = game.controlsEnabled;
     final outcome = game.outcome;
+    final xpAward = context.watch<StatsProvider>().lastXpAward;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -365,16 +373,42 @@ class _GameBody extends StatelessWidget {
                           SizedBox(
                             height: pickerHeight,
                             child: Center(
-                              child: Text(
-                                overlayLabel,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface,
-                                    ),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        overlayLabel,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface,
+                                            ),
+                                      ),
+                                      if (outcome == GraffitiOutcome.win &&
+                                          xpAward != null) ...[
+                                        const SizedBox(height: 10),
+                                        SizedBox(
+                                          width: boardSize - 16,
+                                          child: XpGainPanel(
+                                            award: xpAward,
+                                            ink: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface,
+                                            compact: true,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
                           )

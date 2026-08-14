@@ -133,6 +133,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final stats = statsProvider.stats;
           final chromaticUnlocked = statsProvider.areAllMenuPalettesUnlocked;
           final dailyUnlocked = statsProvider.isDailyChallengeUnlocked;
+          final graffitiUnlocked = statsProvider.isGraffitiUnlocked;
           final dailyFinished = game.isDailyFinishedToday;
           final dailyStreak = game.dailyStreakDisplay;
           return ListView(
@@ -146,6 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   dailyFinished: dailyFinished,
                   dailyStreak: dailyStreak,
                   chromaticUnlocked: chromaticUnlocked,
+                  graffitiUnlocked: graffitiUnlocked,
                   iroenUnlocked: statsProvider.isIroenUnlocked,
                   onClassic: () => _onClassicPressed(context, game),
                   onDaily: () => _onDailyPressed(
@@ -154,7 +156,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     unlocked: dailyUnlocked,
                     stats: stats,
                   ),
-                  onGraffiti: () => _onGraffitiPressed(context),
+                  onGraffiti: () => _onGraffitiPressed(
+                    context,
+                    unlocked: graffitiUnlocked,
+                    stats: stats,
+                  ),
                   onChromatic: () => _onChromaticPressed(
                     context,
                     game,
@@ -302,13 +308,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _onGraffitiPressed(BuildContext context) async {
+  Future<void> _onGraffitiPressed(
+    BuildContext context, {
+    required bool unlocked,
+    required GameStats stats,
+  }) async {
+    if (!unlocked) {
+      _showGraffitiLockedSnackBar(context, stats);
+      return;
+    }
     _hideTitleIcons();
     await Navigator.of(context).push(
       IrodokuPageRoute(builder: (_) => const GraffitiScreen()),
     );
     if (!mounted) return;
     _scheduleTitleIcons();
+  }
+
+  void _showGraffitiLockedSnackBar(BuildContext context, GameStats stats) {
+    const need = GameStats.graffitiUnlockEasyWins;
+    final have = stats.winsFor(Difficulty.easy);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: SizedBox(
+            width: double.infinity,
+            child: Text.rich(
+              TextSpan(
+                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                    TextStyle(
+                      color: Theme.of(context).colorScheme.onInverseSurface,
+                    ),
+                children: [
+                  TextSpan(text: 'Win $need '),
+                  const TextSpan(
+                    text: 'Easy',
+                    style: TextStyle(
+                      color: Colors.lightBlueAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(text: ' game ($have/$need)'),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
   }
 
   void _showDailyLockedSnackBar(BuildContext context, GameStats stats) {
@@ -441,6 +490,7 @@ class _PlayModeGrid extends StatelessWidget {
   final bool dailyFinished;
   final int dailyStreak;
   final bool chromaticUnlocked;
+  final bool graffitiUnlocked;
   final bool iroenUnlocked;
   final VoidCallback onClassic;
   final VoidCallback onDaily;
@@ -454,6 +504,7 @@ class _PlayModeGrid extends StatelessWidget {
     required this.dailyFinished,
     required this.dailyStreak,
     required this.chromaticUnlocked,
+    required this.graffitiUnlocked,
     required this.iroenUnlocked,
     required this.onClassic,
     required this.onDaily,
@@ -478,6 +529,7 @@ class _PlayModeGrid extends StatelessWidget {
               child: MenuActionButton(
                 label: 'Graffiti',
                 enabled: !busy,
+                locked: !graffitiUnlocked,
                 onPressed: onGraffiti,
               ),
             ),

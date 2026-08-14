@@ -12,6 +12,7 @@ import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/menu_action_button.dart';
+import '../widgets/menu_select_sound.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/typing_title.dart';
 
@@ -25,6 +26,7 @@ class AppSettingsScreen extends StatelessWidget {
       data: IrodokuTheme.settingsTheme(Theme.of(context)),
       child: Scaffold(
         appBar: AppBar(
+          leading: const MenuBackButton(),
           title: const TypingTitle(text: 'Settings'),
         ),
         body: ListView(

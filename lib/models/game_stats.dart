@@ -7,6 +7,9 @@ class GameStats {
   /// Medium wins required before Daily Challenge unlocks.
   static const int dailyChallengeUnlockMediumWins = 1;
 
+  /// Easy wins required before Graffiti unlocks.
+  static const int graffitiUnlockEasyWins = 1;
+
   final int currentStreak;
   final int bestStreak;
   final int gamesPlayed;
@@ -22,6 +25,8 @@ class GameStats {
   final int graffitiWins;
   final int graffitiLosses;
   final int graffitiDraws;
+  /// Lifetime prestige XP. Level is derived from this (not stored).
+  final int totalXp;
 
   const GameStats({
     this.currentStreak = 0,
@@ -39,6 +44,7 @@ class GameStats {
     this.graffitiWins = 0,
     this.graffitiLosses = 0,
     this.graffitiDraws = 0,
+    this.totalXp = 0,
   });
 
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
@@ -95,6 +101,9 @@ class GameStats {
   bool get isDailyChallengeUnlocked =>
       winsFor(Difficulty.medium) >= dailyChallengeUnlockMediumWins;
 
+  bool get isGraffitiUnlocked =>
+      winsFor(Difficulty.easy) >= graffitiUnlockEasyWins;
+
   Difficulty get highestUnlocked {
     Difficulty best = Difficulty.easy;
     for (final d in Difficulty.values) {
@@ -119,6 +128,7 @@ class GameStats {
     int? graffitiWins,
     int? graffitiLosses,
     int? graffitiDraws,
+    int? totalXp,
   }) {
     return GameStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -138,6 +148,7 @@ class GameStats {
       graffitiWins: graffitiWins ?? this.graffitiWins,
       graffitiLosses: graffitiLosses ?? this.graffitiLosses,
       graffitiDraws: graffitiDraws ?? this.graffitiDraws,
+      totalXp: totalXp ?? this.totalXp,
     );
   }
 }

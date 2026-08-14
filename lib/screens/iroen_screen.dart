@@ -9,6 +9,7 @@ import '../widgets/color_picker.dart';
 import '../widgets/iroen_gallery_sheet.dart';
 import '../widgets/iroen_grid.dart';
 import '../widgets/iroen_toolbar.dart';
+import '../widgets/menu_select_sound.dart';
 import '../widgets/typing_title.dart';
 
 class IroenScreen extends StatelessWidget {
@@ -23,6 +24,7 @@ class IroenScreen extends StatelessWidget {
           onTap: iroen.hasCellSelection ? iroen.clearSelection : null,
           child: Scaffold(
             appBar: AppBar(
+              leading: const MenuBackButton(),
               title: const TypingTitle(text: 'Iroen'),
               actions: [
                 IconButton(
@@ -39,10 +41,13 @@ class IroenScreen extends StatelessWidget {
                     label: Text('${iroen.gallery.length}'),
                     child: const Icon(Icons.collections_bookmark_outlined),
                   ),
-                  onPressed: () => showIroenGallerySheet(
-                    context: context,
-                    iroen: iroen,
-                    settings: settings,
+                  onPressed: withMenuSelect(
+                    context,
+                    () => showIroenGallerySheet(
+                      context: context,
+                      iroen: iroen,
+                      settings: settings,
+                    ),
                   ),
                 ),
               ],

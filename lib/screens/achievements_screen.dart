@@ -10,6 +10,7 @@ import '../models/achievement.dart';
 import '../models/palette_swatch.dart';
 import '../providers/achievements_provider.dart';
 import '../widgets/circle_reveal_clipper.dart';
+import '../widgets/menu_select_sound.dart';
 import '../widgets/typing_title.dart';
 
 class AchievementsScreen extends StatefulWidget {
@@ -94,6 +95,7 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const MenuBackButton(),
         title: TypingTitle(
           text: 'Achievements',
           onTap: _triggerColorCycle,

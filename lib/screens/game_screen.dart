@@ -8,10 +8,12 @@ import '../core/theme.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/stats_provider.dart';
 import '../widgets/chromatic_palette_transition.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/game_toolbar.dart';
+import '../widgets/menu_select_sound.dart';
 import '../widgets/mistake_display.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/sudoku_grid.dart';
@@ -91,6 +93,7 @@ class _GameScreenState extends State<GameScreen> {
           time: game.formatElapsed(),
           showNewGame: !widget.isDailyRoute,
           onNewGame: _onNewGame,
+          xp: context.read<StatsProvider>().lastXpAward,
         );
       });
     } else if (game.isLost && !_resultDialogShown) {
@@ -138,7 +141,10 @@ class _GameScreenState extends State<GameScreen> {
                   ? IconButton(
                       tooltip: 'Main Menu',
                       icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: withMenuSelect(
+                        context,
+                        () => Navigator.of(context).pop(),
+                      ),
                     )
                   : null,
               title: TypingTitle(
@@ -171,7 +177,7 @@ class _GameScreenState extends State<GameScreen> {
                       height: 24,
                       filterQuality: FilterQuality.none,
                     ),
-                    onPressed: () async {
+                    onPressed: withMenuSelect(context, () async {
                       await Navigator.of(context).push(
                         IrodokuPageRoute(
                           builder: (_) => const SettingsScreen(),
@@ -179,7 +185,7 @@ class _GameScreenState extends State<GameScreen> {
                       );
                       if (!mounted) return;
                       setState(() => _titlePlayToken++);
-                    },
+                    }),
                   ),
               ],
             ),

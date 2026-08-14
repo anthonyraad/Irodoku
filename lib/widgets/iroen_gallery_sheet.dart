@@ -7,6 +7,7 @@ import '../models/iroen_mosaic.dart';
 import '../models/palette_swatch.dart';
 import '../providers/iroen_provider.dart';
 import '../providers/settings_provider.dart';
+import 'menu_select_sound.dart';
 
 ThemeData _mosaicsMonoTheme(BuildContext context) {
   final base = Theme.of(context);
@@ -97,9 +98,10 @@ class _IroenGallerySheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: iroen.canSaveToGallery
-                        ? () => _save(context)
-                        : null,
+                    onPressed: withMenuSelectOrNull(
+                      context,
+                      iroen.canSaveToGallery ? () => _save(context) : null,
+                    ),
                     icon: const Icon(Icons.save_outlined, size: 20),
                     label: Text(
                       iroen.activeMosaicId == null ? 'Save' : 'Update',
@@ -109,9 +111,10 @@ class _IroenGallerySheet extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: iroen.canSaveAsNew
-                        ? () => _saveAsNew(context)
-                        : null,
+                    onPressed: withMenuSelectOrNull(
+                      context,
+                      iroen.canSaveAsNew ? () => _saveAsNew(context) : null,
+                    ),
                     icon: const Icon(Icons.add, size: 20),
                     label: const Text('Save as new'),
                   ),
@@ -120,7 +123,10 @@ class _IroenGallerySheet extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: () => _confirmNewCanvas(context),
+              onPressed: withMenuSelect(
+                context,
+                () => _confirmNewCanvas(context),
+              ),
               icon: const Icon(Icons.note_add_outlined, size: 20),
               label: const Text('New blank canvas'),
             ),
@@ -156,7 +162,10 @@ class _IroenGallerySheet extends StatelessWidget {
                     return _MosaicCard(
                       mosaic: mosaic,
                       isActive: isActive,
-                      onTap: () => _load(context, mosaic),
+                      onTap: withMenuSelect(
+                        context,
+                        () => _load(context, mosaic),
+                      ),
                       onLongPress: () => _mosaicMenu(context, mosaic),
                     );
                   },
@@ -211,7 +220,10 @@ class _IroenGallerySheet extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: withMenuSelect(
+              context,
+              () => Navigator.pop(context, true),
+            ),
             child: const Text('Load'),
           ),
         ],
@@ -240,7 +252,10 @@ class _IroenGallerySheet extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: withMenuSelect(
+              context,
+              () => Navigator.pop(context, true),
+            ),
             child: const Text('Clear'),
           ),
         ],
@@ -263,7 +278,10 @@ class _IroenGallerySheet extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.drive_file_rename_outline),
                 title: const Text('Rename'),
-                onTap: () => Navigator.pop(context, 'rename'),
+                onTap: withMenuSelect(
+                  context,
+                  () => Navigator.pop(context, 'rename'),
+                ),
               ),
               ListTile(
                 leading: Icon(
@@ -274,7 +292,10 @@ class _IroenGallerySheet extends StatelessWidget {
                   'Delete',
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-                onTap: () => Navigator.pop(context, 'delete'),
+                onTap: withMenuSelect(
+                  context,
+                  () => Navigator.pop(context, 'delete'),
+                ),
               ),
             ],
           ),
@@ -311,7 +332,10 @@ class _IroenGallerySheet extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
+            onPressed: withMenuSelect(
+              context,
+              () => Navigator.pop(context, controller.text),
+            ),
             child: const Text('Save'),
           ),
         ],
@@ -337,7 +361,10 @@ class _IroenGallerySheet extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: withMenuSelect(
+              context,
+              () => Navigator.pop(context, true),
+            ),
             child: const Text('Delete'),
           ),
         ],

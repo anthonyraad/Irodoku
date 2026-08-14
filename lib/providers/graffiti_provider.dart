@@ -70,11 +70,13 @@ class GraffitiProvider extends ChangeNotifier {
     SoundService? sounds,
   })  : _settings = settings,
         _stats = stats,
+        _ownsSounds = sounds == null,
         _sounds = sounds ?? SoundService();
 
   final SettingsProvider _settings;
   final StatsProvider _stats;
   final SoundService _sounds;
+  final bool _ownsSounds;
 
   GraffitiPhase _phase = GraffitiPhase.idle;
   String? _roomCode;
@@ -496,7 +498,11 @@ class GraffitiProvider extends ChangeNotifier {
     };
     if (result == null) return;
     _recordedMatchResult = true;
-    unawaited(_stats.recordGraffitiResult(result));
+    unawaited(_stats.recordGraffitiResult(
+      result,
+      mistakes: _myMistakes,
+      elapsed: _elapsed,
+    ));
   }
 
   Future<void> _hostStartGame() async {
@@ -1213,7 +1219,7 @@ class GraffitiProvider extends ChangeNotifier {
   void dispose() {
     _timer?.cancel();
     _roomSub?.cancel();
-    unawaited(_sounds.dispose());
+    if (_ownsSounds) unawaited(_sounds.dispose());
     super.dispose();
   }
 }

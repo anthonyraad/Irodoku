@@ -34,6 +34,7 @@ class SoundService {
   static const _complete = 'sounds/complete.mp3';
   static const _gameWin = 'sounds/gamewin.mp3';
   static const _achievement = 'sounds/achievement.mp3';
+  static const _menuSelect = 'sounds/menuselect.mp3';
 
   /// Glass / Sky: one pitch per color value 1–9.
   static const _noteConfirmsByValue = <String>[
@@ -64,6 +65,7 @@ class SoundService {
     _complete,
     _gameWin,
     _achievement,
+    _menuSelect,
   ];
 
   /// Playback gains tuned for typical phone speakers (peak + body vs confirm).
@@ -91,6 +93,7 @@ class SoundService {
     _complete: 0.57,
     _gameWin: 0.72,
     _achievement: 0.79,
+    _menuSelect: 0.6,
   };
 
   static double _volumeFor(String asset) => _volumes[asset] ?? 1.0;
@@ -175,6 +178,7 @@ class SoundService {
   Future<void> playComplete() => _play(_complete);
   Future<void> playGameWin() => _play(_gameWin);
   Future<void> playAchievement() => _play(_achievement);
+  Future<void> playMenuSelect() => _play(_menuSelect);
 
   Future<void> _playPooledNote(String assetPath) async {
     if (_disposed) return;

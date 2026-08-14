@@ -1,17 +1,29 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../models/player_xp.dart';
 import '../services/preferences_service.dart';
 
 class StatsProvider extends ChangeNotifier {
   final PreferencesService _prefs;
   GameStats _stats;
+  XpAward? _lastXpAward;
 
-  StatsProvider(this._prefs) : _stats = _prefs.loadStats();
+  Future<void> _writeQueue = Future.value();
+
+  StatsProvider(this._prefs) : _stats = _prefs.loadStats() {
+    if (!_prefs.hasTotalXp) {
+      _stats = _stats.copyWith(totalXp: PlayerXp.backfillFrom(_stats));
+      unawaited(persist());
+    }
+  }
 
   GameStats get stats => _stats;
+  XpAward? get lastXpAward => _lastXpAward;
 
   bool get devMode => _prefs.getDevMode();
 
@@ -30,12 +42,14 @@ class StatsProvider extends ChangeNotifier {
   bool get isDailyChallengeUnlocked =>
       devMode || _stats.isDailyChallengeUnlocked;
 
+  bool get isGraffitiUnlocked => devMode || _stats.isGraffitiUnlocked;
+
   void notifyDevModeChanged() => notifyListeners();
 
   Future<void> recordGameStarted() async {
     _stats = _stats.copyWith(gamesPlayed: _stats.gamesPlayed + 1);
     notifyListeners();
-    await _prefs.saveStats(_stats);
+    await persist();
   }
 
   Future<List<GamePalette>> recordWin({
@@ -44,6 +58,9 @@ class StatsProvider extends ChangeNotifier {
     required int mistakes,
     required GamePalette palette,
     bool chromatic = false,
+    bool daily = false,
+    int dailyStreak = 0,
+    int achievedXp = 0,
   }) async {
     final newlyUnlocked = recordWinSync(
       difficulty: difficulty,
@@ -51,6 +68,9 @@ class StatsProvider extends ChangeNotifier {
       mistakes: mistakes,
       palette: palette,
       chromatic: chromatic,
+      daily: daily,
+      dailyStreak: dailyStreak,
+      achievedXp: achievedXp,
     );
     await persist();
     return newlyUnlocked;
@@ -62,6 +82,9 @@ class StatsProvider extends ChangeNotifier {
     required int mistakes,
     required GamePalette palette,
     bool chromatic = false,
+    bool daily = false,
+    int dailyStreak = 0,
+    int achievedXp = 0,
   }) {
     final newlyUnlocked = _applyWin(
       difficulty: difficulty,
@@ -69,15 +92,66 @@ class StatsProvider extends ChangeNotifier {
       mistakes: mistakes,
       palette: palette,
       chromatic: chromatic,
+      daily: daily,
+      dailyStreak: dailyStreak,
+      achievedXp: achievedXp,
     );
     notifyListeners();
     return newlyUnlocked;
   }
 
-  Future<void> persist() => _prefs.saveStats(_stats);
+  Future<void> persist() {
+    _writeQueue = _writeQueue.catchError((_) {}).then((_) {
+      return _prefs.saveStats(_stats);
+    });
+    return _writeQueue;
+  }
+
+  String _todayKey() {
+    final now = DateTime.now();
+    final y = now.year.toString().padLeft(4, '0');
+    final m = now.month.toString().padLeft(2, '0');
+    final d = now.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  bool get isFirstWinOfDay => _prefs.getXpLastAwardDay() != _todayKey();
+
+  XpAward _awardWinXp({
+    required Difficulty difficulty,
+    required int mistakes,
+    required Duration elapsed,
+    String? sourceLabel,
+    bool daily = false,
+    int dailyStreak = 0,
+    bool chromatic = false,
+    int achievedXp = 0,
+  }) {
+    final first = isFirstWinOfDay;
+    final award = PlayerXp.compute(
+      difficulty: difficulty,
+      mistakes: mistakes,
+      elapsed: elapsed,
+      firstWinOfDay: first,
+      previousTotal: _stats.totalXp,
+      sourceLabel: sourceLabel,
+      daily: daily,
+      dailyStreak: dailyStreak,
+      chromatic: chromatic,
+      achievedXp: achievedXp,
+    );
+    _stats = _stats.copyWith(totalXp: award.newTotal);
+    _lastXpAward = award;
+    unawaited(_prefs.setXpLastAwardDay(_todayKey()));
+    return award;
+  }
 
   /// Persists a finished Graffiti match. Mutual defeat counts as a loss.
-  Future<void> recordGraffitiResult(GraffitiMatchResult result) async {
+  Future<void> recordGraffitiResult(
+    GraffitiMatchResult result, {
+    int mistakes = 0,
+    Duration elapsed = Duration.zero,
+  }) async {
     _stats = switch (result) {
       GraffitiMatchResult.win =>
         _stats.copyWith(graffitiWins: _stats.graffitiWins + 1),
@@ -86,8 +160,18 @@ class StatsProvider extends ChangeNotifier {
       GraffitiMatchResult.draw =>
         _stats.copyWith(graffitiDraws: _stats.graffitiDraws + 1),
     };
+    if (result == GraffitiMatchResult.win) {
+      _awardWinXp(
+        difficulty: PlayerXp.graffitiDifficulty,
+        mistakes: mistakes,
+        elapsed: elapsed,
+        sourceLabel: 'Graffiti',
+      );
+    } else {
+      _lastXpAward = null;
+    }
     notifyListeners();
-    await _prefs.saveStats(_stats);
+    await persist();
   }
 
   List<GamePalette> _applyWin({
@@ -96,6 +180,9 @@ class StatsProvider extends ChangeNotifier {
     required int mistakes,
     required GamePalette palette,
     required bool chromatic,
+    required bool daily,
+    required int dailyStreak,
+    required int achievedXp,
   }) {
     final newStreak = _stats.currentStreak + 1;
     final bestStreak =
@@ -192,12 +279,21 @@ class StatsProvider extends ChangeNotifier {
       bestStreakByPalette: bestStreakByPalette,
       currentStreakByPalette: currentStreakByPalette,
     );
+    _awardWinXp(
+      difficulty: difficulty,
+      mistakes: mistakes,
+      elapsed: elapsed,
+      daily: daily,
+      dailyStreak: dailyStreak,
+      chromatic: chromatic,
+      achievedXp: achievedXp,
+    );
     return newlyUnlocked;
   }
 
   Future<void> resetStreak({required GamePalette palette}) async {
     resetStreakSync(palette: palette);
-    await _prefs.saveStats(_stats);
+    await persist();
   }
 
   void resetStreakSync({required GamePalette palette}) {

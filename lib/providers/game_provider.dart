@@ -42,6 +42,7 @@ class GameProvider extends ChangeNotifier {
   final AchievementsProvider _achievements;
   final PreferencesService _prefs;
   final SoundService _sounds;
+  final bool _ownsSounds;
 
   late List<List<Cell>> _cells;
   SudokuBoard? _solution;
@@ -133,6 +134,7 @@ class GameProvider extends ChangeNotifier {
         _stats = stats,
         _achievements = achievements,
         _prefs = preferences,
+        _ownsSounds = sounds == null,
         _sounds = sounds ?? SoundService() {
     _gameDifficulty = settings.difficulty;
     _cells = List.generate(
@@ -220,6 +222,15 @@ class GameProvider extends ChangeNotifier {
       return 0;
     }
     return _prefs.getDailyStreak();
+  }
+
+  /// Streak after today's Daily win: continues from yesterday, else resets to 1.
+  int _dailyStreakAfterThisWin() {
+    final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
+    final last = _prefs.getDailyLastCompletedDay();
+    if (last == dayKey) return _prefs.getDailyStreak();
+    final yesterday = DailyIrodoku.previousDayKey(dayKey);
+    return last == yesterday ? _prefs.getDailyStreak() + 1 : 1;
   }
 
   /// All-time highest Daily Iro win streak (survives losses / missed days).
@@ -1596,17 +1607,6 @@ class GameProvider extends ChangeNotifier {
     if (!_winRecorded) {
       _winRecorded = true;
       final winPalette = activePalette;
-      _pendingPaletteUnlocks = _stats.recordWinSync(
-        difficulty: _gameDifficulty,
-        elapsed: _elapsed,
-        mistakes: _mistakes,
-        palette: winPalette,
-        chromatic: _settings.chromatic && !_isDaily,
-      );
-      _settings.ensurePaletteUnlocked(_stats.stats);
-      unawaited(_stats.persist());
-      // Expert wins may unlock Master — start warming a board immediately.
-      unawaited(prefetchMasterPuzzle());
       unawaited(
         _achievements.evaluateWin(
           difficulty: _gameDifficulty,
@@ -1616,6 +1616,27 @@ class GameProvider extends ChangeNotifier {
           ctx: _achievementGameContext(),
         ),
       );
+      if (_isDaily) {
+        unawaited(
+          _achievements.onDailyChallengeWon(
+            streak: _dailyStreakAfterThisWin(),
+          ),
+        );
+      }
+      _pendingPaletteUnlocks = _stats.recordWinSync(
+        difficulty: _gameDifficulty,
+        elapsed: _elapsed,
+        mistakes: _mistakes,
+        palette: winPalette,
+        chromatic: _settings.chromatic && !_isDaily,
+        daily: _isDaily,
+        dailyStreak: _isDaily ? _dailyStreakAfterThisWin() : 0,
+        achievedXp: _achievements.consumeAchievedXp(),
+      );
+      _settings.ensurePaletteUnlocked(_stats.stats);
+      unawaited(_stats.persist());
+      // Expert wins may unlock Master — start warming a board immediately.
+      unawaited(prefetchMasterPuzzle());
       if (_isDaily) {
         _heldDaily = null;
         unawaited(_prefs.clearParkedDailyGame());
@@ -1637,8 +1658,7 @@ class GameProvider extends ChangeNotifier {
       return;
     }
 
-    final yesterday = DailyIrodoku.previousDayKey(dayKey);
-    final streak = last == yesterday ? _prefs.getDailyStreak() + 1 : 1;
+    final streak = _dailyStreakAfterThisWin();
     await _prefs.setDailyProgress(
       lastCompletedDay: dayKey,
       streak: streak,
@@ -2096,7 +2116,7 @@ class GameProvider extends ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
-    unawaited(_sounds.dispose());
+    if (_ownsSounds) unawaited(_sounds.dispose());
     super.dispose();
   }
 }

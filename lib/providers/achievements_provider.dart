@@ -23,6 +23,8 @@ class AchievementsProvider extends ChangeNotifier {
   SettingsProvider? _settings;
   SoundService? _sounds;
   int _unlockSoundEpoch = 0;
+  /// 0-based rows completed since the last XP grant (live unlocks only).
+  final List<int> _pendingCompletedRows = [];
 
   AchievementsProvider(this._prefs)
       : _progress = _prefs.loadAchievements(),
@@ -240,9 +242,13 @@ class AchievementsProvider extends ChangeNotifier {
     Duration announceDelay = Duration.zero,
   }) {
     if (_progress.isUnlocked(id)) return false;
-    final unlocked = Set<String>.from(_progress.unlockedIds)..add(id);
+    final before = Set<String>.from(_progress.unlockedIds);
+    final unlocked = Set<String>.from(before)..add(id);
     _progress = _progress.copyWith(unlockedIds: unlocked);
-    if (announce) _playUnlockSound(delay: announceDelay);
+    if (announce) {
+      _playUnlockSound(delay: announceDelay);
+      _recordNewlyCompletedRows(before, unlocked);
+    }
     return true;
   }
 
@@ -252,15 +258,38 @@ class AchievementsProvider extends ChangeNotifier {
     Duration announceDelay = Duration.zero,
   }) {
     var changed = false;
-    final unlocked = Set<String>.from(_progress.unlockedIds);
+    final before = Set<String>.from(_progress.unlockedIds);
+    final unlocked = Set<String>.from(before);
     for (final id in ids) {
       if (unlocked.add(id)) changed = true;
     }
     if (changed) {
       _progress = _progress.copyWith(unlockedIds: unlocked);
-      if (announce) _playUnlockSound(delay: announceDelay);
+      if (announce) {
+        _playUnlockSound(delay: announceDelay);
+        _recordNewlyCompletedRows(before, unlocked);
+      }
     }
     return changed;
+  }
+
+  void _recordNewlyCompletedRows(Set<String> before, Set<String> after) {
+    for (var row = 0; row < Achievement.rowCount; row++) {
+      if (Achievement.isRowComplete(after, row) &&
+          !Achievement.isRowComplete(before, row)) {
+        _pendingCompletedRows.add(row);
+      }
+    }
+  }
+
+  /// XP for rows completed since the last grant; clears the pending list.
+  int consumeAchievedXp() {
+    var xp = 0;
+    for (final row in _pendingCompletedRows) {
+      xp += Achievement.xpForCompletedRow(row);
+    }
+    _pendingCompletedRows.clear();
+    return xp;
   }
 
   void _playUnlockSound({Duration delay = Duration.zero}) {
