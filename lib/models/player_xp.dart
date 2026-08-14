@@ -6,9 +6,10 @@ import 'game_stats.dart';
 /// Prestige XP: stored as [totalXp]; level / progress are derived.
 abstract final class PlayerXp {
   static const firstWinOfDayBonus = 50;
-  static const chromaticBonus = 25;
+  static const chromaticBonus = 40;
   static const flawlessModifier = 0.25;
   static const fastModifier = 0.25;
+  static const wetPaintModifier = 0.25;
 
   static int baseXp(Difficulty difficulty) => switch (difficulty) {
         Difficulty.easy => 50,
@@ -92,6 +93,7 @@ abstract final class PlayerXp {
     bool daily = false,
     int dailyStreak = 0,
     bool chromatic = false,
+    bool wetPaint = false,
     int achievedXp = 0,
   }) {
     final base = daily ? dailyBaseXp : baseXp(difficulty);
@@ -99,6 +101,9 @@ abstract final class PlayerXp {
     final fast = elapsed < fastThreshold(difficulty);
     final flawlessXp = flawless ? (base * flawlessModifier).floor() : 0;
     final fastXp = fast ? (base * fastModifier).floor() : 0;
+    final wetPaintXp = !daily && !chromatic && wetPaint
+        ? (base * wetPaintModifier).floor()
+        : 0;
     final firstOfDay = firstWinOfDay ? firstWinOfDayBonus : 0;
     final streak = daily && dailyStreak >= dailyStreakBonusMin
         ? dailyStreakBonus
@@ -107,6 +112,7 @@ abstract final class PlayerXp {
     final earned = base +
         flawlessXp +
         fastXp +
+        wetPaintXp +
         firstOfDay +
         streak +
         chromaticXp +
@@ -120,9 +126,11 @@ abstract final class PlayerXp {
       firstWinOfDay: firstWinOfDay,
       streak: streak > 0,
       chromatic: chromaticXp > 0,
+      wetPaint: wetPaintXp > 0,
       achievedXp: achievedXp,
       flawlessXp: flawlessXp,
       fastXp: fastXp,
+      wetPaintXp: wetPaintXp,
       earned: earned,
       previousTotal: previousTotal,
       newTotal: previousTotal + earned,
@@ -139,9 +147,11 @@ class XpAward {
   final bool firstWinOfDay;
   final bool streak;
   final bool chromatic;
+  final bool wetPaint;
   final int achievedXp;
   final int flawlessXp;
   final int fastXp;
+  final int wetPaintXp;
   final int earned;
   final int previousTotal;
   final int newTotal;
@@ -155,9 +165,11 @@ class XpAward {
     required this.firstWinOfDay,
     required this.streak,
     required this.chromatic,
+    this.wetPaint = false,
     this.achievedXp = 0,
     required this.flawlessXp,
     required this.fastXp,
+    this.wetPaintXp = 0,
     required this.earned,
     required this.previousTotal,
     required this.newTotal,
@@ -172,8 +184,9 @@ class XpAward {
         (label: '$sourceLabel finish', xp: baseXp),
         if (flawless) (label: 'Flawless', xp: flawlessXp),
         if (fast) (label: 'Speedy', xp: fastXp),
+        if (wetPaint) (label: 'Wet paint', xp: wetPaintXp),
         if (chromatic) (label: 'Chromatic', xp: PlayerXp.chromaticBonus),
-        if (achievedXp > 0) (label: 'Achieved', xp: achievedXp),
+        if (achievedXp > 0) (label: 'Artistry', xp: achievedXp),
         if (firstWinOfDay)
           (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
         if (streak) (label: 'Streak', xp: PlayerXp.dailyStreakBonus),

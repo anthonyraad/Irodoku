@@ -121,6 +121,7 @@ class StatsProvider extends ChangeNotifier {
     required Difficulty difficulty,
     required int mistakes,
     required Duration elapsed,
+    required GamePalette palette,
     String? sourceLabel,
     bool daily = false,
     int dailyStreak = 0,
@@ -128,6 +129,11 @@ class StatsProvider extends ChangeNotifier {
     int achievedXp = 0,
   }) {
     final first = isFirstWinOfDay;
+    final lastPalette = _prefs.getXpLastWinPalette();
+    final wetPaint = !daily &&
+        !chromatic &&
+        lastPalette != null &&
+        lastPalette != palette.storageKey;
     final award = PlayerXp.compute(
       difficulty: difficulty,
       mistakes: mistakes,
@@ -138,11 +144,15 @@ class StatsProvider extends ChangeNotifier {
       daily: daily,
       dailyStreak: dailyStreak,
       chromatic: chromatic,
+      wetPaint: wetPaint,
       achievedXp: achievedXp,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
     unawaited(_prefs.setXpLastAwardDay(_todayKey()));
+    if (!daily && !chromatic) {
+      unawaited(_prefs.setXpLastWinPalette(palette.storageKey));
+    }
     return award;
   }
 
@@ -151,6 +161,7 @@ class StatsProvider extends ChangeNotifier {
     GraffitiMatchResult result, {
     int mistakes = 0,
     Duration elapsed = Duration.zero,
+    required GamePalette palette,
   }) async {
     _stats = switch (result) {
       GraffitiMatchResult.win =>
@@ -165,6 +176,7 @@ class StatsProvider extends ChangeNotifier {
         difficulty: PlayerXp.graffitiDifficulty,
         mistakes: mistakes,
         elapsed: elapsed,
+        palette: palette,
         sourceLabel: 'Graffiti',
       );
     } else {
@@ -283,6 +295,7 @@ class StatsProvider extends ChangeNotifier {
       difficulty: difficulty,
       mistakes: mistakes,
       elapsed: elapsed,
+      palette: palette,
       daily: daily,
       dailyStreak: dailyStreak,
       chromatic: chromatic,

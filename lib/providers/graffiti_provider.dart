@@ -443,13 +443,19 @@ class GraffitiProvider extends ChangeNotifier {
 
     if (gameState == 'playing' || gameState == 'finished') {
       _hydratePalette(data);
-      _hydrateBoard(data);
+      final remoteConfirms = _hydrateBoard(data);
       _hydrateStats(data);
       // First snapshot into play seeds units silently; later snapshots
       // (including opponent fills) celebrate newly completed units.
       final celebrateUnits =
           _phase == GraffitiPhase.playing && gameState == 'playing';
       _syncCompletedUnits(celebrate: celebrateUnits);
+      if (celebrateUnits) {
+        for (final (r, c, v) in remoteConfirms) {
+          if (_cellBelongsToCompletedUnit(r, c)) continue;
+          _playSound(_placementConfirmSound(v));
+        }
+      }
       if (gameState == 'playing') {
         _phase = GraffitiPhase.playing;
         _statusMessage = _solo ? 'Playing solo' : 'Graffiti';
@@ -502,6 +508,7 @@ class GraffitiProvider extends ChangeNotifier {
       result,
       mistakes: _myMistakes,
       elapsed: _elapsed,
+      palette: activePalette,
     ));
   }
 
@@ -525,7 +532,7 @@ class GraffitiProvider extends ChangeNotifier {
     );
   }
 
-  void _hydrateBoard(Map<dynamic, dynamic> data) {
+  List<(int, int, int)> _hydrateBoard(Map<dynamic, dynamic> data) {
     final puzzle = List<dynamic>.from(data['puzzle'] as List? ?? []);
     final solution = List<dynamic>.from(data['solution'] as List? ?? []);
     if (solution.length == 81) {
@@ -534,6 +541,7 @@ class GraffitiProvider extends ChangeNotifier {
 
     final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
     final newlyLocked = <(int, int, int)>[];
+    final remoteConfirms = <(int, int, int)>[];
     final next = List.generate(
       9,
       (r) => List.generate(9, (c) {
@@ -554,6 +562,10 @@ class GraffitiProvider extends ChangeNotifier {
           final mistake = cell['mistake'] == true;
           if (locked && !wasConfirmed && v != 0) {
             newlyLocked.add((r, c, v));
+            final by = cell['by']?.toString();
+            if (by != null && by != _playerId && by != 'given') {
+              remoteConfirms.add((r, c, v));
+            }
           }
           return Cell(
             value: v,
@@ -571,6 +583,7 @@ class GraffitiProvider extends ChangeNotifier {
     }
     _pruneInvalidFillUndos();
     _pruneLockedBulkCells();
+    return remoteConfirms;
   }
 
   void _pruneLockedBulkCells() {

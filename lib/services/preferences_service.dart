@@ -27,6 +27,7 @@ class PreferencesService {
   static const _keyGraffitiDraws = 'stats_graffiti_draws';
   static const _keyTotalXp = 'stats_total_xp';
   static const _keyXpLastAwardDay = 'stats_xp_last_award_day';
+  static const _keyXpLastWinPalette = 'stats_xp_last_win_palette';
   static const _keyUnlockedPalettes = 'unlocked_palettes';
   static const _keyPausedGame = 'paused_game';
   static const _keyParkedRegularGame = 'parked_regular_game';
@@ -107,6 +108,13 @@ class PreferencesService {
 
   Future<void> setXpLastAwardDay(String dayKey) async {
     await _prefs.setString(_keyXpLastAwardDay, dayKey);
+  }
+
+  /// Storage key of the palette used on the last XP-awarding win, or null.
+  String? getXpLastWinPalette() => _prefs.getString(_keyXpLastWinPalette);
+
+  Future<void> setXpLastWinPalette(String paletteKey) async {
+    await _prefs.setString(_keyXpLastWinPalette, paletteKey);
   }
 
   /// `yyyy-MM-dd` of the last completed Daily Irodoku, or null.

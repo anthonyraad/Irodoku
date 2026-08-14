@@ -145,7 +145,76 @@ void main() {
     expect(three.earned, 175);
   });
 
-  test('Chromatic adds a flat 25 XP', () {
+  test('Wet paint adds 25% of base, rounded down', () {
+    final samePalette = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    final switched = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      wetPaint: true,
+    );
+    expect(samePalette.wetPaint, isFalse);
+    expect(samePalette.wetPaintXp, 0);
+    expect(samePalette.earned, 175);
+    expect(switched.wetPaint, isTrue);
+    expect(switched.wetPaintXp, 43);
+    expect(switched.earned, 218);
+    expect(
+      switched.breakdown,
+      [
+        (label: 'Hard finish', xp: 175),
+        (label: 'Wet paint', xp: 43),
+      ],
+    );
+  });
+
+  test('Wet paint never applies to Daily Challenge', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      daily: true,
+      wetPaint: true,
+    );
+    expect(award.wetPaint, isFalse);
+    expect(award.wetPaintXp, 0);
+    expect(award.earned, 150);
+    expect(award.breakdown, [(label: 'Daily finish', xp: 150)]);
+  });
+
+  test('Wet paint never applies to Chromatic', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      chromatic: true,
+      wetPaint: true,
+    );
+    expect(award.wetPaint, isFalse);
+    expect(award.wetPaintXp, 0);
+    expect(award.earned, 215);
+    expect(
+      award.breakdown,
+      [
+        (label: 'Hard finish', xp: 175),
+        (label: 'Chromatic', xp: 40),
+      ],
+    );
+  });
+
+  test('Chromatic adds a flat 40 XP', () {
     final classic = PlayerXp.compute(
       difficulty: Difficulty.easy,
       mistakes: 1,
@@ -164,17 +233,17 @@ void main() {
     expect(classic.chromatic, isFalse);
     expect(classic.earned, 50);
     expect(chromatic.chromatic, isTrue);
-    expect(chromatic.earned, 75);
+    expect(chromatic.earned, 90);
     expect(
       chromatic.breakdown,
       [
         (label: 'Easy finish', xp: 50),
-        (label: 'Chromatic', xp: 25),
+        (label: 'Chromatic', xp: 40),
       ],
     );
   });
 
-  test('completing an achievement row adds Achieved XP', () {
+  test('completing an achievement row adds Artistry XP', () {
     expect(Achievement.xpForCompletedRow(0), 1000);
     expect(Achievement.xpForCompletedRow(7), 8000);
     final almost = {
@@ -196,7 +265,7 @@ void main() {
       award.breakdown,
       [
         (label: 'Easy finish', xp: 50),
-        (label: 'Achieved', xp: 1000),
+        (label: 'Artistry', xp: 1000),
       ],
     );
   });

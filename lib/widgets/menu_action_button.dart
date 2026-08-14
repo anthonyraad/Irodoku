@@ -34,6 +34,14 @@ class MenuActionButton extends StatelessWidget {
     final fill =
         visuallyMuted ? scheme.surfaceContainerHighest : scheme.surface;
 
+    final labelStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: ink,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+        );
+    final lineHeight =
+        (labelStyle?.fontSize ?? 16) * (labelStyle?.height ?? 1.3);
+
     return SizedBox(
       width: double.infinity,
       child: DecoratedBox(
@@ -69,10 +77,18 @@ class MenuActionButton extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Flexible(
-                    child: _MenuActionLabel(
-                      label: label,
-                      color: ink,
-                      struckThrough: muted,
+                    child: SizedBox(
+                      height: lineHeight,
+                      width: double.infinity,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: _MenuActionLabel(
+                          label: label,
+                          color: ink,
+                          struckThrough: muted,
+                          style: labelStyle,
+                        ),
+                      ),
                     ),
                   ),
                   if (locked) ...[
@@ -80,13 +96,18 @@ class MenuActionButton extends StatelessWidget {
                     Icon(Icons.lock_outline, size: 20, color: ink),
                   ] else if (trailing != null) ...[
                     const SizedBox(width: 10),
-                    Text(
-                      trailing!,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: ink,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
-                          ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        trailing!,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: ink,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                      ),
                     ),
                   ],
                 ],
@@ -104,22 +125,24 @@ class _MenuActionLabel extends StatelessWidget {
   final String label;
   final Color color;
   final bool struckThrough;
+  final TextStyle? style;
 
   const _MenuActionLabel({
     required this.label,
     required this.color,
     required this.struckThrough,
+    required this.style,
   });
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-        );
-
-    final text = Text(label, textAlign: TextAlign.center, style: style);
+    final text = Text(
+      label,
+      textAlign: TextAlign.center,
+      maxLines: 1,
+      softWrap: false,
+      style: style,
+    );
     if (!struckThrough) return text;
 
     return Stack(
