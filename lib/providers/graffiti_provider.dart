@@ -107,6 +107,7 @@ class GraffitiProvider extends ChangeNotifier {
   int? _selectedRow;
   int? _selectedCol;
   bool _noteMode = false;
+  bool _usedNotes = false;
   bool _bulkNoteSelect = false;
   final Set<int> _bulkSelected = {};
   final List<_GraffitiUndo> _undoStack = [];
@@ -509,6 +510,7 @@ class GraffitiProvider extends ChangeNotifier {
       mistakes: _myMistakes,
       elapsed: _elapsed,
       palette: activePalette,
+      noteless: !_usedNotes,
     ));
   }
 
@@ -892,6 +894,7 @@ class GraffitiProvider extends ChangeNotifier {
       changes.add(_NoteUndo(row: row, col: col, value: value, added: add));
     }
     if (changes.isEmpty) return;
+    if (add) _usedNotes = true;
     _undoStack.add(_BulkNoteUndo(changes));
     _playSound(add ? _sounds.playNote : _sounds.playNoteDeselect);
     notifyListeners();
@@ -911,6 +914,7 @@ class GraffitiProvider extends ChangeNotifier {
     if (forceRemove && !has) return;
     final added = forceAdd || (!forceRemove && !has);
     _cells[r][c] = added ? cell.withNoteAdded(value) : cell.withNoteRemoved(value);
+    if (added) _usedNotes = true;
     _undoStack.add(_NoteUndo(row: r, col: c, value: value, added: added));
     _playSound(added ? _sounds.playNote : _sounds.playNoteDeselect);
     notifyListeners();
@@ -1181,6 +1185,7 @@ class GraffitiProvider extends ChangeNotifier {
     _selectedRow = null;
     _selectedCol = null;
     _noteMode = false;
+    _usedNotes = false;
     _exitBulkNoteSelect();
     _undoStack.clear();
     _myCorrect = 0;

@@ -783,6 +783,7 @@ class GameProvider extends ChangeNotifier {
       isDaily: _isDaily,
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
+      usedNotes: _usedNotes,
     );
   }
 
@@ -1632,6 +1633,7 @@ class GameProvider extends ChangeNotifier {
         daily: _isDaily,
         dailyStreak: _isDaily ? _dailyStreakAfterThisWin() : 0,
         achievedXp: _achievements.consumeAchievedXp(),
+        noteless: !_usedNotes,
       );
       _settings.ensurePaletteUnlocked(_stats.stats);
       unawaited(_stats.persist());
@@ -1886,6 +1888,7 @@ class GameProvider extends ChangeNotifier {
       isDaily: held.isDaily,
       dailyDayKey: held.dailyDayKey,
       sessionPalette: held.sessionPalette,
+      usedNotes: held.usedNotes,
     );
   }
 
@@ -1924,7 +1927,7 @@ class GameProvider extends ChangeNotifier {
       lastFillColor: null,
       lastFillRow: null,
       lastFillCol: null,
-      usedNotes: false,
+      usedNotes: paused.usedNotes,
       usedUndo: false,
       pausedThisGame: true,
       completedRowColBoxSimultaneously: false,
@@ -1970,6 +1973,7 @@ class GameProvider extends ChangeNotifier {
     _completedUnits = _successfullyCompletedUnits();
     _celebration = null;
     _resetAchievementSession();
+    _usedNotes = paused.usedNotes;
   }
 
   _HeldGameSession _captureHeld() {

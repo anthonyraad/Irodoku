@@ -14,6 +14,7 @@ class PausedGame {
 
   /// Live session palette (Chromatic hop / Daily), not the saved Config choice.
   final GamePalette? sessionPalette;
+  final bool usedNotes;
 
   const PausedGame({
     required this.difficulty,
@@ -24,6 +25,7 @@ class PausedGame {
     this.isDaily = false,
     this.dailyDayKey,
     this.sessionPalette,
+    this.usedNotes = false,
   });
 
   Map<String, Object?> toJson() {
@@ -35,6 +37,7 @@ class PausedGame {
       'isDaily': isDaily,
       'dailyDayKey': dailyDayKey,
       'sessionPalette': sessionPalette?.storageKey,
+      'usedNotes': usedNotes,
       'cells': [
         for (final cell in cells)
           {
@@ -85,6 +88,7 @@ class PausedGame {
     }
 
     final sessionKey = json['sessionPalette'] as String?;
+    final notesOnBoard = cells.any((cell) => cell.hasNotes);
     return PausedGame(
       difficulty: Difficulty.fromStorageKey(json['difficulty'] as String?),
       elapsed: Duration(milliseconds: json['elapsedMs'] as int? ?? 0),
@@ -95,6 +99,7 @@ class PausedGame {
       dailyDayKey: json['dailyDayKey'] as String?,
       sessionPalette:
           sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),
+      usedNotes: json['usedNotes'] as bool? ?? notesOnBoard,
     );
   }
 

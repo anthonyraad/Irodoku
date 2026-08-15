@@ -537,7 +537,7 @@ class _PlayModeGrid extends StatelessWidget {
             Expanded(
               child: MenuActionButton(
                 label: 'Daily Challenge',
-                trailing:
+                badge:
                     dailyUnlocked && dailyStreak > 0 ? 'x$dailyStreak' : null,
                 enabled: !busy,
                 muted: dailyUnlocked && dailyFinished,

@@ -176,6 +176,51 @@ void main() {
     );
   });
 
+  test('Freestyle adds 40% of base, rounded down', () {
+    final withNotes = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    final noteless = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      noteless: true,
+    );
+    expect(withNotes.noteless, isFalse);
+    expect(withNotes.notelessXp, 0);
+    expect(withNotes.earned, 175);
+    expect(noteless.noteless, isTrue);
+    expect(noteless.notelessXp, 70);
+    expect(noteless.earned, 245);
+    expect(
+      noteless.breakdown,
+      [
+        (label: 'Hard finish', xp: 175),
+        (label: 'Freestyle', xp: 70),
+      ],
+    );
+  });
+
+  test('Freestyle applies to Daily Challenge', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      daily: true,
+      noteless: true,
+    );
+    expect(award.notelessXp, 60);
+    expect(award.earned, 210);
+  });
+
   test('Wet paint never applies to Daily Challenge', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.hard,

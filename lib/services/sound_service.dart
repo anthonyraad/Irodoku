@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
@@ -34,7 +36,16 @@ class SoundService {
   static const _complete = 'sounds/complete.mp3';
   static const _gameWin = 'sounds/gamewin.mp3';
   static const _achievement = 'sounds/achievement.mp3';
-  static const _menuSelect = 'sounds/menuselect.mp3';
+  static const _menuSelect1 = 'sounds/menuselect1.mp3';
+  static const _menuSelect2 = 'sounds/menuselect2.mp3';
+  static const _menuSelect3 = 'sounds/menuselect3.mp3';
+  static const _menuSelect4 = 'sounds/menuselect4.mp3';
+  static const _menuSelects = [
+    _menuSelect1,
+    _menuSelect2,
+    _menuSelect3,
+    _menuSelect4,
+  ];
 
   /// Glass / Sky: one pitch per color value 1–9.
   static const _noteConfirmsByValue = <String>[
@@ -65,7 +76,7 @@ class SoundService {
     _complete,
     _gameWin,
     _achievement,
-    _menuSelect,
+    ..._menuSelects,
   ];
 
   /// Playback gains tuned for typical phone speakers (peak + body vs confirm).
@@ -93,7 +104,10 @@ class SoundService {
     _complete: 0.57,
     _gameWin: 0.72,
     _achievement: 0.79,
-    _menuSelect: 0.6,
+    _menuSelect1: 0.3,
+    _menuSelect2: 0.3,
+    _menuSelect3: 0.3,
+    _menuSelect4: 0.3,
   };
 
   static double _volumeFor(String asset) => _volumes[asset] ?? 1.0;
@@ -110,6 +124,9 @@ class SoundService {
   final Map<String, int> _notePoolCursor = {};
   AudioPlayer? _fallbackPlayer;
   bool _disposed = false;
+  final _random = Random();
+  final List<String> _menuSelectBag = [];
+  String? _lastMenuSelect;
 
   Future<void> _init() async {
     try {
@@ -178,7 +195,31 @@ class SoundService {
   Future<void> playComplete() => _play(_complete);
   Future<void> playGameWin() => _play(_gameWin);
   Future<void> playAchievement() => _play(_achievement);
-  Future<void> playMenuSelect() => _play(_menuSelect);
+  Future<void> playMenuSelect() => _play(_nextMenuSelect());
+
+  String _nextMenuSelect() {
+    if (_menuSelectBag.isEmpty) _refillMenuSelectBag();
+    final next = _menuSelectBag.removeLast();
+    _lastMenuSelect = next;
+    return next;
+  }
+
+  void _refillMenuSelectBag() {
+    _menuSelectBag
+      ..clear()
+      ..addAll(_menuSelects)
+      ..shuffle(_random);
+    if (_lastMenuSelect != null &&
+        _menuSelectBag.isNotEmpty &&
+        _menuSelectBag.last == _lastMenuSelect) {
+      final swapAt = _menuSelectBag.lastIndexWhere((s) => s != _lastMenuSelect);
+      if (swapAt >= 0) {
+        final swap = _menuSelectBag[swapAt];
+        _menuSelectBag[swapAt] = _menuSelectBag.last;
+        _menuSelectBag.last = swap;
+      }
+    }
+  }
 
   Future<void> _playPooledNote(String assetPath) async {
     if (_disposed) return;

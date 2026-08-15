@@ -61,6 +61,7 @@ class StatsProvider extends ChangeNotifier {
     bool daily = false,
     int dailyStreak = 0,
     int achievedXp = 0,
+    bool noteless = false,
   }) async {
     final newlyUnlocked = recordWinSync(
       difficulty: difficulty,
@@ -71,6 +72,7 @@ class StatsProvider extends ChangeNotifier {
       daily: daily,
       dailyStreak: dailyStreak,
       achievedXp: achievedXp,
+      noteless: noteless,
     );
     await persist();
     return newlyUnlocked;
@@ -85,6 +87,7 @@ class StatsProvider extends ChangeNotifier {
     bool daily = false,
     int dailyStreak = 0,
     int achievedXp = 0,
+    bool noteless = false,
   }) {
     final newlyUnlocked = _applyWin(
       difficulty: difficulty,
@@ -95,6 +98,7 @@ class StatsProvider extends ChangeNotifier {
       daily: daily,
       dailyStreak: dailyStreak,
       achievedXp: achievedXp,
+      noteless: noteless,
     );
     notifyListeners();
     return newlyUnlocked;
@@ -127,6 +131,7 @@ class StatsProvider extends ChangeNotifier {
     int dailyStreak = 0,
     bool chromatic = false,
     int achievedXp = 0,
+    bool noteless = false,
   }) {
     final first = isFirstWinOfDay;
     final lastPalette = _prefs.getXpLastWinPalette();
@@ -145,6 +150,7 @@ class StatsProvider extends ChangeNotifier {
       dailyStreak: dailyStreak,
       chromatic: chromatic,
       wetPaint: wetPaint,
+      noteless: noteless,
       achievedXp: achievedXp,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
@@ -162,6 +168,7 @@ class StatsProvider extends ChangeNotifier {
     int mistakes = 0,
     Duration elapsed = Duration.zero,
     required GamePalette palette,
+    bool noteless = false,
   }) async {
     _stats = switch (result) {
       GraffitiMatchResult.win =>
@@ -178,6 +185,7 @@ class StatsProvider extends ChangeNotifier {
         elapsed: elapsed,
         palette: palette,
         sourceLabel: 'Graffiti',
+        noteless: noteless,
       );
     } else {
       _lastXpAward = null;
@@ -195,6 +203,7 @@ class StatsProvider extends ChangeNotifier {
     required bool daily,
     required int dailyStreak,
     required int achievedXp,
+    required bool noteless,
   }) {
     final newStreak = _stats.currentStreak + 1;
     final bestStreak =
@@ -300,6 +309,7 @@ class StatsProvider extends ChangeNotifier {
       dailyStreak: dailyStreak,
       chromatic: chromatic,
       achievedXp: achievedXp,
+      noteless: noteless,
     );
     return newlyUnlocked;
   }

@@ -25,70 +25,14 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget build(BuildContext context) {
     final titleStyle = Theme.of(context).appBarTheme.titleTextStyle ??
         Theme.of(context).textTheme.titleLarge;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // Deeper (light mode) / brighter (dark mode) stops so no band washes out
-    // against the app bar — especially yellow on light gray.
-    final rainbowColors = isDark
-        ? const [
-            Color(0xFFFF8A80),
-            Color(0xFFFFB74D),
-            Color(0xFFFFD54F),
-            Color(0xFF81C784),
-            Color(0xFF64B5F6),
-            Color(0xFFCE93D8),
-          ]
-        : const [
-            Color(0xFFB71C1C),
-            Color(0xFFE65100),
-            Color(0xFFF9A825),
-            Color(0xFF2E7D32),
-            Color(0xFF1565C0),
-            Color(0xFF6A1B9A),
-          ];
-    final title = TypingTitle(
-      text: 'Stats',
-      style: _showChromatic
-          ? titleStyle?.copyWith(color: Colors.white)
-          : titleStyle,
-    );
 
     return Scaffold(
       appBar: AppBar(
         leading: const MenuBackButton(),
-        title: _showChromatic
-            ? Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Soft silhouette so thin Balatro strokes stay legible.
-                  TypingTitle(
-                    text: 'Stats',
-                    style: titleStyle?.copyWith(
-                      color: isDark
-                          ? Colors.black.withValues(alpha: 0.55)
-                          : Colors.white.withValues(alpha: 0.9),
-                      shadows: [
-                        Shadow(
-                          color: isDark
-                              ? Colors.black.withValues(alpha: 0.65)
-                              : Colors.white.withValues(alpha: 0.95),
-                          blurRadius: 2,
-                          offset: const Offset(0, 0.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ShaderMask(
-                    blendMode: BlendMode.srcIn,
-                    shaderCallback: (bounds) => LinearGradient(
-                      colors: rainbowColors,
-                    ).createShader(
-                      Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-                    ),
-                    child: title,
-                  ),
-                ],
-              )
-            : title,
+        title: TypingTitle(
+          text: 'Stats',
+          style: titleStyle,
+        ),
       ),
       body: Consumer2<StatsProvider, GameProvider>(
         builder: (context, statsProvider, game, _) {
@@ -110,18 +54,18 @@ class _StatsScreenState extends State<StatsScreen> {
                     padding: const EdgeInsets.only(bottom: 20),
                     child: _LevelCard(totalXp: stats.totalXp),
                   ),
+                  _GamesWonCard(
+                    chromatic: _showChromatic,
+                    gamesWon: stats.gamesWon,
+                    chromaticGamesWon: stats.chromaticGamesWon,
+                    bestStreak: stats.bestStreak,
+                    dailyBestStreak: game.dailyBestStreak,
+                    graffitiRecord: stats.graffitiRecordLabel,
+                  ),
+                  const SizedBox(height: 20),
+                  const _DifficultyStatsHeader(),
+                  const SizedBox(height: 8),
                   if (_showChromatic) ...[
-                    _StatCard(
-                      children: [
-                        _StatRow(
-                          label: 'Games won',
-                          value: '${stats.chromaticGamesWon}',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const _DifficultyStatsHeader(),
-                    const SizedBox(height: 8),
                     _StatCard(
                       children: [
                         for (final difficulty in Difficulty.values)
@@ -135,31 +79,6 @@ class _StatsScreenState extends State<StatsScreen> {
                       ],
                     ),
                   ] else ...[
-                    _StatCard(
-                      children: [
-                        _StatRow(
-                          label: 'Games won',
-                          value: '${stats.gamesWon}',
-                        ),
-                        _StatRow(
-                          label: 'Game streak',
-                          value: '${stats.bestStreak}',
-                          indent: true,
-                        ),
-                        _StatRow(
-                          label: 'Daily streak',
-                          value: '${game.dailyBestStreak}',
-                          indent: true,
-                        ),
-                        _StatRow(
-                          label: 'Graffiti record',
-                          value: stats.graffitiRecordLabel,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const _DifficultyStatsHeader(),
-                    const SizedBox(height: 8),
                     _StatCard(
                       children: [
                         for (final difficulty in Difficulty.values)
@@ -267,6 +186,154 @@ class _PalettePreviewRow extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _GamesWonCard extends StatefulWidget {
+  final bool chromatic;
+  final int gamesWon;
+  final int chromaticGamesWon;
+  final int bestStreak;
+  final int dailyBestStreak;
+  final String graffitiRecord;
+
+  const _GamesWonCard({
+    required this.chromatic,
+    required this.gamesWon,
+    required this.chromaticGamesWon,
+    required this.bestStreak,
+    required this.dailyBestStreak,
+    required this.graffitiRecord,
+  });
+
+  @override
+  State<_GamesWonCard> createState() => _GamesWonCardState();
+}
+
+class _GamesWonCardState extends State<_GamesWonCard>
+    with SingleTickerProviderStateMixin {
+  static const _staggerMs = 68;
+  static const _popMs = 153;
+  static const _extraCount = 3;
+
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(
+        milliseconds: _staggerMs * (_extraCount - 1) + _popMs,
+      ),
+      value: widget.chromatic ? 1 : 0,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _GamesWonCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.chromatic == widget.chromatic) return;
+    if (widget.chromatic) {
+      _controller.forward();
+    } else {
+      _controller.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Animation<double> _extraCollapse(int extraIndex) {
+    final totalMs = _staggerMs * (_extraCount - 1) + _popMs;
+    final startMs = _staggerMs * (_extraCount - 1 - extraIndex);
+    return CurvedAnimation(
+      parent: _controller,
+      curve: Interval(
+        startMs / totalMs,
+        (startMs + _popMs) / totalMs,
+        curve: Curves.easeInCubic,
+      ),
+    );
+  }
+
+  Widget _collapsingExtra({
+    required int extraIndex,
+    required Widget row,
+  }) {
+    final collapse = _extraCollapse(extraIndex);
+    final hide = Tween<double>(begin: 1, end: 0).animate(collapse);
+    return SizeTransition(
+      sizeFactor: hide,
+      axisAlignment: -1,
+      child: FadeTransition(
+        opacity: hide,
+        child: ScaleTransition(
+          alignment: Alignment.topCenter,
+          scale: hide,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Divider(
+                height: 1,
+                indent: 16,
+                endIndent: 16,
+                color: Theme.of(context).dividerColor,
+              ),
+              row,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color ??
+            Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          _StatRow(
+            label: 'Games won',
+            value:
+                '${widget.chromatic ? widget.chromaticGamesWon : widget.gamesWon}',
+          ),
+          _collapsingExtra(
+            extraIndex: 0,
+            row: _StatRow(
+              label: 'Game streak',
+              value: '${widget.bestStreak}',
+              indent: true,
+            ),
+          ),
+          _collapsingExtra(
+            extraIndex: 1,
+            row: _StatRow(
+              label: 'Daily streak',
+              value: '${widget.dailyBestStreak}',
+              indent: true,
+            ),
+          ),
+          _collapsingExtra(
+            extraIndex: 2,
+            row: _StatRow(
+              label: 'Graffiti record',
+              value: widget.graffitiRecord,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

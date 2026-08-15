@@ -7,7 +7,7 @@ class MenuActionButton extends StatelessWidget {
   static const _borderRadius = BorderRadius.all(Radius.circular(8));
 
   final String label;
-  final String? trailing;
+  final String? badge;
   final bool enabled;
   final bool muted;
   final bool locked;
@@ -17,7 +17,7 @@ class MenuActionButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
-    this.trailing,
+    this.badge,
     this.enabled = true,
     this.muted = false,
     this.locked = false,
@@ -44,77 +44,76 @@ class MenuActionButton extends StatelessWidget {
 
     return SizedBox(
       width: double.infinity,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: _borderRadius,
-          boxShadow: interactive && !visuallyMuted
-              ? [
-                  BoxShadow(
-                    color: scheme.shadow.withValues(alpha: 0.26),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
-        ),
-        child: Material(
-          color: fill,
-          shape: RoundedRectangleBorder(
-            borderRadius: _borderRadius,
-            side: BorderSide(color: border, width: 2.5),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: interactive
-                ? () {
-                    playMenuSelectSound(context);
-                    onPressed();
-                  }
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: SizedBox(
-                      height: lineHeight,
-                      width: double.infinity,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: _MenuActionLabel(
-                          label: label,
-                          color: ink,
-                          struckThrough: muted,
-                          style: labelStyle,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: _borderRadius,
+              boxShadow: interactive && !visuallyMuted
+                  ? [
+                      BoxShadow(
+                        color: scheme.shadow.withValues(alpha: 0.26),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Material(
+              color: fill,
+              shape: RoundedRectangleBorder(
+                borderRadius: _borderRadius,
+                side: BorderSide(color: border, width: 2.5),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: interactive
+                    ? () {
+                        playMenuSelectSound(context);
+                        onPressed();
+                      }
+                    : null,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: SizedBox(
+                          height: lineHeight,
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: _MenuActionLabel(
+                              label: label,
+                              color: ink,
+                              struckThrough: muted,
+                              style: labelStyle,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      if (locked) ...[
+                        const SizedBox(width: 10),
+                        Icon(Icons.lock_outline, size: 20, color: ink),
+                      ],
+                    ],
                   ),
-                  if (locked) ...[
-                    const SizedBox(width: 10),
-                    Icon(Icons.lock_outline, size: 20, color: ink),
-                  ] else if (trailing != null) ...[
-                    const SizedBox(width: 10),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        trailing!,
-                        maxLines: 1,
-                        softWrap: false,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: ink,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.3,
-                            ),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          if (badge != null && badge!.isNotEmpty)
+            Positioned(
+              top: -8,
+              right: -6,
+              child: IgnorePointer(
+                child: _MenuActionBadge(label: badge!),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -162,6 +161,45 @@ class _MenuActionLabel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _MenuActionBadge extends StatelessWidget {
+  final String label;
+
+  const _MenuActionBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.onSurface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.surface, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.22),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(7, 2, 7, 3),
+        child: Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: scheme.surface,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+                height: 1.1,
+              ),
+        ),
+      ),
     );
   }
 }
