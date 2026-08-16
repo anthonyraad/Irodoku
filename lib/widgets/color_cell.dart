@@ -33,6 +33,7 @@ class ColorCell extends StatefulWidget {
   /// Board position; used with [noteClearWave] for outward dismiss stagger.
   final int? row;
   final int? col;
+  final bool pocket;
   final NoteClearWave? noteClearWave;
 
   const ColorCell({
@@ -54,6 +55,7 @@ class ColorCell extends StatefulWidget {
     this.colorCycleSteps = 4,
     this.row,
     this.col,
+    this.pocket = false,
     this.noteClearWave,
   });
 
@@ -436,6 +438,7 @@ class _ColorCellState extends State<ColorCell>
                       celebrating && widget.celebrationShimmer > 0
                           ? widget.celebrationShimmer
                           : 0,
+                  pocket: widget.pocket,
                   repaint: paintListenables,
                 ),
                 child: const SizedBox.expand(),
@@ -511,6 +514,7 @@ class _CellPainter extends CustomPainter {
   final Color? sameColorWash;
   final Color? givenWash;
   final double celebrationShimmer;
+  final bool pocket;
 
   _CellPainter({
     required this.emptyFill,
@@ -526,6 +530,7 @@ class _CellPainter extends CustomPainter {
     required this.sameColorWash,
     required this.givenWash,
     required this.celebrationShimmer,
+    required this.pocket,
     super.repaint,
   });
 
@@ -551,15 +556,25 @@ class _CellPainter extends CustomPainter {
       drawSwatchRect(canvas, rect, committedSwatch!);
       if (revealing) canvas.restore();
     } else if (notes.isNotEmpty) {
-      final slotW = size.width / 3;
-      final slotH = size.height / 3;
-      for (var value = 1; value <= 9; value++) {
+      final noteCols = 3;
+      final noteRows = pocket ? 2 : 3;
+      final noteMax = pocket ? 6 : 9;
+      final slotW = size.width / noteCols;
+      final slotH = pocket ? slotW : size.height / noteRows;
+      final gridH = slotH * noteRows;
+      final originY = (size.height - gridH) / 2;
+      for (var value = 1; value <= noteMax; value++) {
         if (!notes.contains(value)) continue;
         final swatch = noteSwatches![value];
         if (swatch == null) continue;
-        final row = (value - 1) ~/ 3;
-        final col = (value - 1) % 3;
-        final slot = Rect.fromLTWH(col * slotW, row * slotH, slotW, slotH);
+        final row = (value - 1) ~/ noteCols;
+        final col = (value - 1) % noteCols;
+        final slot = Rect.fromLTWH(
+          col * slotW,
+          originY + row * slotH,
+          slotW,
+          slotH,
+        );
         final noteT = (noteReveal?[value] ?? 1).clamp(0.0, 1.0);
         if (noteT <= 0) continue;
         _paintNoteSlot(canvas, slot, swatch, noteT, noteOutlines?[value]);
@@ -640,6 +655,7 @@ class _CellPainter extends CustomPainter {
         relatedWash != oldDelegate.relatedWash ||
         sameColorWash != oldDelegate.sameColorWash ||
         givenWash != oldDelegate.givenWash ||
-        celebrationShimmer != oldDelegate.celebrationShimmer;
+        celebrationShimmer != oldDelegate.celebrationShimmer ||
+        pocket != oldDelegate.pocket;
   }
 }

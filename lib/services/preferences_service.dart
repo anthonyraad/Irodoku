@@ -33,6 +33,7 @@ class PreferencesService {
   static const _keyParkedRegularGame = 'parked_regular_game';
   static const _keyParkedChromaticGame = 'parked_chromatic_game';
   static const _keyParkedDailyGame = 'parked_daily_game';
+  static const _keyParkedPocketGame = 'parked_pocket_game';
   static const _keyCompletedDailyGame = 'completed_daily_game';
   static const _keyFailedDailyGame = 'failed_daily_game';
   static const _keyIroenState = 'iroen_state';
@@ -362,6 +363,16 @@ class PreferencesService {
 
   Future<void> clearParkedDailyGame() async {
     await _prefs.remove(_keyParkedDailyGame);
+  }
+
+  PausedGame? loadParkedPocketGame() => _loadPaused(_keyParkedPocketGame);
+
+  Future<void> saveParkedPocketGame(PausedGame game) async {
+    await _prefs.setString(_keyParkedPocketGame, jsonEncode(game.toJson()));
+  }
+
+  Future<void> clearParkedPocketGame() async {
+    await _prefs.remove(_keyParkedPocketGame);
   }
 
   PausedGame? loadCompletedDailyGame() => _loadPaused(_keyCompletedDailyGame);

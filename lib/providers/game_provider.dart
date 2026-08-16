@@ -3,7 +3,6 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
-import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/cell.dart';
 import '../models/daily_irodoku.dart';
@@ -34,8 +33,19 @@ List<List<int>> generatePuzzleIsolate(List<Object> args) {
   return [generated.puzzle.toFlat(), generated.solution.toFlat()];
 }
 
+/// Top-level entry for isolate-friendly Pocket puzzle generation.
+///
+/// [seed] `< 0` means unseeded [Random].
+/// Returns `[puzzleFlat, solutionFlat]` as length-36 int lists.
+List<List<int>> generatePocketIsolate(int seed) {
+  final random = seed < 0 ? Random() : Random(seed);
+  final generated = SudokuGenerator(random: random).generatePocket();
+  return [generated.puzzle.toFlat(), generated.solution.toFlat()];
+}
+
 class GameProvider extends ChangeNotifier {
   static const int maxMistakes = 3;
+  static const int pocketMaxMistakes = 2;
 
   final SettingsProvider _settings;
   final StatsProvider _stats;
@@ -99,6 +109,7 @@ class GameProvider extends ChangeNotifier {
 
   bool _isDaily = false;
   String? _dailyDayKey;
+  bool _isPocket = false;
 
   /// Daily-only display palette — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
@@ -111,6 +122,9 @@ class GameProvider extends ChangeNotifier {
 
   /// In-progress Daily parked while browsing Main Menu.
   _HeldGameSession? _heldDaily;
+
+  /// Pocket puzzle parked while Classic/Chromatic/Daily is active.
+  _HeldGameSession? _heldPocket;
 
   /// After cold restore of a paused Daily, home should open Main Menu → Daily.
   bool _openDailyRoutePending = false;
@@ -168,6 +182,15 @@ class GameProvider extends ChangeNotifier {
   bool get bulkNoteSelect => _bulkNoteSelect;
   NoteClearWave? get noteClearWave => _noteClearWave;
   bool get isDaily => _isDaily;
+  bool get isPocket => _isPocket;
+  int get mistakeLimit =>
+      _isPocket ? pocketMaxMistakes : maxMistakes;
+  int get gridSize =>
+      _isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
+  int get boxW =>
+      _isPocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
+  int get boxH =>
+      _isPocket ? SudokuBoard.pocketBoxHeight : SudokuBoard.boxSize;
 
   /// True when reopening today's completed Daily for viewing only.
   bool get isDailyReview => _dailyReviewMode;
@@ -264,7 +287,7 @@ class GameProvider extends ChangeNotifier {
     return cell.isEditable && !cell.isEmpty;
   }
 
-  static int _cellKey(int row, int col) => row * SudokuBoard.size + col;
+  int _cellKey(int row, int col) => row * gridSize + col;
 
   Cell cellAt(int row, int col) => _cells[row][col];
 
@@ -280,7 +303,7 @@ class GameProvider extends ChangeNotifier {
     if (_isGenerating || _isPaused || _isLost) return;
     if (!_hasActiveGame && !_isWon) return;
     if (_celebration != null) return;
-    final half = IrodokuPalette.colorsFor(activePalette).length ~/ 2;
+    final half = gridSize ~/ 2;
     _colorCycleSteps = half + Random().nextInt(2); // 4 or 5 of 9 colors
     _colorCycleFilterValue = onlyValue;
     _colorCycleSeq++;
@@ -445,7 +468,7 @@ class GameProvider extends ChangeNotifier {
         return false;
       }
       if (!_isDaily) {
-        await _parkRegularFromLive();
+        await _parkHomeLive();
       }
       _applyFinishedDailyReview(completed, won: true);
       notifyListeners();
@@ -459,7 +482,7 @@ class GameProvider extends ChangeNotifier {
         return false;
       }
       if (!_isDaily) {
-        await _parkRegularFromLive();
+        await _parkHomeLive();
       }
       _applyFinishedDailyReview(failed, won: false);
       notifyListeners();
@@ -471,7 +494,7 @@ class GameProvider extends ChangeNotifier {
     // Resume a daily parked while browsing Main Menu.
     if (_heldDaily != null && _heldDaily!.dailyDayKey == challenge.dayKey) {
       if (!_isDaily) {
-        await _parkRegularFromLive();
+        await _parkHomeLive();
       }
       _applyHeld(_heldDaily!);
       _heldDaily = null;
@@ -506,7 +529,7 @@ class GameProvider extends ChangeNotifier {
 
     // Park the regular puzzle before replacing the live board with daily.
     if (!_isDaily) {
-      await _parkRegularFromLive();
+      await _parkHomeLive();
     } else {
       // Stale leftover daily on the live board — drop it.
       _heldDaily = null;
@@ -564,7 +587,7 @@ class GameProvider extends ChangeNotifier {
       final parked = preferChromatic
           ? _prefs.loadParkedChromaticGame()
           : _prefs.loadParkedRegularGame();
-      if (parked != null && !parked.isDaily) {
+      if (parked != null && !parked.isDaily && !parked.isPocket) {
         held = _heldFromPaused(parked);
         heldIsChromatic = preferChromatic;
       }
@@ -573,7 +596,7 @@ class GameProvider extends ChangeNotifier {
       final parkedAlt = preferChromatic
           ? _prefs.loadParkedRegularGame()
           : _prefs.loadParkedChromaticGame();
-      if (parkedAlt != null && !parkedAlt.isDaily) {
+      if (parkedAlt != null && !parkedAlt.isDaily && !parkedAlt.isPocket) {
         held = _heldFromPaused(parkedAlt);
         heldIsChromatic = !preferChromatic;
       }
@@ -615,13 +638,20 @@ class GameProvider extends ChangeNotifier {
     int? seed,
     String? dailyDayKey,
     bool preserveHeldDaily = false,
+    bool? pocket,
   }) async {
     final startingDaily = dailyDayKey != null;
+    final startingPocket = !startingDaily && (pocket ?? _isPocket);
     _dailyReviewMode = false;
     if (startingDaily) {
-      // Fresh Daily replaces any parked Daily; keep parked regular.
+      // Fresh Daily replaces any parked Daily; keep parked regular / pocket.
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
+    } else if (startingPocket) {
+      // New Pocket keeps parked Classic/Chromatic/Daily.
+      _heldPocket = null;
+      await _prefs.clearParkedPocketGame();
+      _sessionPalette = null;
     } else if (preserveHeldDaily) {
       // Regenerate the live Classic/Chromatic board without wiping Daily.
       // When Daily is still the live board (under Main Menu), only re-park it —
@@ -637,6 +667,9 @@ class GameProvider extends ChangeNotifier {
         notifyListeners();
         return;
       }
+      if (_isPocket) {
+        await _parkPocketFromLive();
+      }
       if (_settings.chromatic) {
         _heldChromatic = null;
         await _prefs.clearParkedChromaticGame();
@@ -651,10 +684,12 @@ class GameProvider extends ChangeNotifier {
       _heldDaily = null;
       _heldRegular = null;
       _heldChromatic = null;
+      _heldPocket = null;
       _sessionPalette = null;
       await _prefs.clearParkedDailyGame();
       await _prefs.clearParkedRegularGame();
       await _prefs.clearParkedChromaticGame();
+      await _prefs.clearParkedPocketGame();
       await _prefs.clearPaletteBeforeDaily();
     }
 
@@ -677,6 +712,9 @@ class GameProvider extends ChangeNotifier {
     _gameDifficulty = difficulty ?? _settings.difficulty;
     _isDaily = startingDaily;
     _dailyDayKey = dailyDayKey;
+    _isPocket = startingPocket;
+    final n = gridSize;
+    _cells = List.generate(n, (_) => List.generate(n, (_) => const Cell()));
     if (startingDaily && _sessionPalette == null) {
       _sessionPalette = DailyIrodoku.forDate().palette;
     }
@@ -689,9 +727,13 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
 
     final List<List<int>> boards;
-    final usedMasterWarmPath =
-        !startingDaily && _gameDifficulty == Difficulty.master && seed == null;
-    if (!startingDaily && _gameDifficulty == Difficulty.master) {
+    final usedMasterWarmPath = !startingDaily &&
+        !startingPocket &&
+        _gameDifficulty == Difficulty.master &&
+        seed == null;
+    if (startingPocket) {
+      boards = await compute(generatePocketIsolate, seed ?? -1);
+    } else if (!startingDaily && _gameDifficulty == Difficulty.master) {
       boards = await _obtainMasterBoards(seed: seed);
     } else {
       boards = await compute(
@@ -710,10 +752,10 @@ class GameProvider extends ChangeNotifier {
       return;
     }
 
-    final puzzle = SudokuBoard.fromFlat(boards[0]);
-    _solution = SudokuBoard.fromFlat(boards[1]);
-    _cells = List.generate(SudokuBoard.size, (r) {
-      return List.generate(SudokuBoard.size, (c) {
+    final puzzle = SudokuBoard.fromFlat(boards[0], pocket: startingPocket);
+    _solution = SudokuBoard.fromFlat(boards[1], pocket: startingPocket);
+    _cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
         final value = puzzle.get(r, c);
         return Cell(
           value: value,
@@ -725,7 +767,9 @@ class GameProvider extends ChangeNotifier {
     _isGenerating = false;
     _hasActiveGame = true;
     _completedUnits = _successfullyCompletedUnits();
-    await _stats.recordGameStarted();
+    if (!startingPocket) {
+      await _stats.recordGameStarted();
+    }
     _startTimer();
     notifyListeners();
   }
@@ -769,8 +813,8 @@ class GameProvider extends ChangeNotifier {
     if (solution == null) return null;
 
     final flatCells = <Cell>[
-      for (var r = 0; r < SudokuBoard.size; r++)
-        for (var c = 0; c < SudokuBoard.size; c++)
+      for (var r = 0; r < gridSize; r++)
+        for (var c = 0; c < gridSize; c++)
           _cells[r][c].copyWith(hasConflict: false),
     ];
 
@@ -781,6 +825,7 @@ class GameProvider extends ChangeNotifier {
       solution: solution.toFlat(),
       cells: flatCells,
       isDaily: _isDaily,
+      isPocket: _isPocket,
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
       usedNotes: _usedNotes,
@@ -882,7 +927,7 @@ class GameProvider extends ChangeNotifier {
         _selected = null;
       } else if (_selected?.$1 == row && _selected?.$2 == col) {
         final last = _bulkSelected.last;
-        _selected = (last ~/ SudokuBoard.size, last % SudokuBoard.size);
+        _selected = (last ~/ gridSize, last % gridSize);
       }
     } else {
       _bulkSelected.add(key);
@@ -898,8 +943,8 @@ class GameProvider extends ChangeNotifier {
 
   bool _bulkSelectionHasNotes() {
     for (final key in _bulkSelected) {
-      final row = key ~/ SudokuBoard.size;
-      final col = key % SudokuBoard.size;
+      final row = key ~/ gridSize;
+      final col = key % gridSize;
       if (_cells[row][col].hasNotes) return true;
     }
     return false;
@@ -965,7 +1010,7 @@ class GameProvider extends ChangeNotifier {
     _syncCompletedUnits(celebrate: false);
     _refreshConflicts();
     notifyListeners();
-    unawaited(_achievements.recordUndo());
+    if (!_isPocket) unawaited(_achievements.recordUndo());
   }
 
   void setSelectedColor(int value) {
@@ -987,7 +1032,7 @@ class GameProvider extends ChangeNotifier {
       _syncCompletedUnits(celebrate: false);
       _consecutiveDistinctFillColors.clear();
       notifyListeners();
-      unawaited(_achievements.recordErase());
+      if (!_isPocket) unawaited(_achievements.recordErase());
       return;
     }
 
@@ -1014,7 +1059,7 @@ class GameProvider extends ChangeNotifier {
     if (isMistake) {
       _mistakes++;
       _consecutiveDistinctFillColors.clear();
-      if (_mistakes >= maxMistakes) {
+      if (_mistakes >= mistakeLimit) {
         _playSound(_sounds.playGameLoss);
         _handleLoss();
         notifyListeners();
@@ -1081,14 +1126,14 @@ class GameProvider extends ChangeNotifier {
       });
     }
 
-    final boxRow = row ~/ 3;
-    final boxCol = col ~/ 3;
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    final boxRow = row ~/ boxH;
+    final boxCol = col ~/ boxW;
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
         if (r == row && c == col) continue;
         final sameUnit = r == row ||
             c == col ||
-            (r ~/ 3 == boxRow && c ~/ 3 == boxCol);
+            (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
         if (!sameUnit) continue;
 
         final peer = _cells[r][c];
@@ -1174,8 +1219,8 @@ class GameProvider extends ChangeNotifier {
 
   Iterable<(int, int)> _bulkEditableCells() sync* {
     for (final key in _bulkSelected) {
-      final row = key ~/ SudokuBoard.size;
-      final col = key % SudokuBoard.size;
+      final row = key ~/ gridSize;
+      final col = key % gridSize;
       if (_cells[row][col].isEditable) yield (row, col);
     }
   }
@@ -1252,7 +1297,7 @@ class GameProvider extends ChangeNotifier {
     // Only a committed-color erase breaks the 9-color consecutive chain.
     if (hadValue) {
       _consecutiveDistinctFillColors.clear();
-      unawaited(_achievements.recordErase());
+      if (!_isPocket) unawaited(_achievements.recordErase());
     }
     notifyListeners();
   }
@@ -1276,8 +1321,8 @@ class GameProvider extends ChangeNotifier {
 
   Map<(int, int), Cell> _snapshotLockedCells() {
     final locked = <(int, int), Cell>{};
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
         final cell = _cells[r][c];
         if (cell.isLocked) {
           locked[(r, c)] = Cell(
@@ -1306,8 +1351,8 @@ class GameProvider extends ChangeNotifier {
 
   List<List<Cell>> _cloneCells() {
     return List.generate(
-      SudokuBoard.size,
-      (r) => List.generate(SudokuBoard.size, (c) {
+      gridSize,
+      (r) => List.generate(gridSize, (c) {
         final cell = _cells[r][c];
         return Cell(
           value: cell.value,
@@ -1365,7 +1410,7 @@ class GameProvider extends ChangeNotifier {
   /// Hops use [_sessionPalette] only — the user's saved Config palette is left
   /// unchanged. Wins still credit [activePalette] (the finish hop).
   void _maybeChromaticShift() {
-    if (_isDaily) return;
+    if (_isDaily || _isPocket) return;
     if (!_settings.chromatic) return;
     final current = activePalette;
     final options = GamePalette.menuValues
@@ -1412,6 +1457,7 @@ class GameProvider extends ChangeNotifier {
     // On the winning fill, skip — evaluateWin unlocks these from ctx and
     // owns the delayed achievement sting (avoids a double play).
     if (!_toBoard().isValidSolution() &&
+        !_isPocket &&
         (_completedRowColBoxSimultaneously ||
             _completedNineUnitsInNineSeconds ||
             _filledNineDistinctColorsConsecutively)) {
@@ -1433,6 +1479,7 @@ class GameProvider extends ChangeNotifier {
     _firstFillColor ??= value;
     // Winning fill: evaluateWin records r5c5 from firstFillColor + delay SFX.
     if (isFirstFill &&
+        !_isPocket &&
         !_toBoard().isValidSolution() &&
         activePalette == GamePalette.pkmn &&
         value == 3) {
@@ -1457,7 +1504,7 @@ class GameProvider extends ChangeNotifier {
     }
     if (_consecutiveDistinctFillColors.length >= 9) {
       _filledNineDistinctColorsConsecutively = true;
-      if (!_toBoard().isValidSolution()) {
+      if (!_isPocket && !_toBoard().isValidSolution()) {
         unawaited(
           _achievements.recordSessionFlags(
             completedRowColBoxSimultaneously:
@@ -1473,7 +1520,7 @@ class GameProvider extends ChangeNotifier {
 
   void _markNoteTaken() {
     if (!_usedNotes) _usedNotes = true;
-    unawaited(_achievements.recordNoteTaken());
+    if (!_isPocket) unawaited(_achievements.recordNoteTaken());
   }
 
   void _resetAchievementSession() {
@@ -1504,7 +1551,7 @@ class GameProvider extends ChangeNotifier {
       usedUndo: _usedUndo,
       paused: _pausedThisGame,
       usedDarkMode: _settings.darkMode,
-      chromatic: _settings.chromatic && !_isDaily,
+      chromatic: _settings.chromatic && !_isDaily && !_isPocket,
       completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
       completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
       filledNineDistinctColorsConsecutively:
@@ -1523,7 +1570,7 @@ class GameProvider extends ChangeNotifier {
     if (solution == null) return keys;
 
     return keys.where((key) {
-      final positions = SudokuBoard.positionsForUnitKey(key);
+      final positions = board.positionsForUnit(key);
       return positions.every(
         (pos) => board.get(pos.$1, pos.$2) == solution.get(pos.$1, pos.$2),
       );
@@ -1533,9 +1580,10 @@ class GameProvider extends ChangeNotifier {
   UnitCelebration _buildCelebration(Set<String> unitKeys) {
     final cellStagger = <(int, int), int>{};
     final originalValues = <(int, int), int>{};
+    final board = _toBoard();
 
     for (final key in unitKeys) {
-      final positions = SudokuBoard.positionsForUnitKey(key);
+      final positions = board.positionsForUnit(key);
       for (var i = 0; i < positions.length; i++) {
         final pos = positions[i];
         final existing = cellStagger[pos];
@@ -1564,8 +1612,8 @@ class GameProvider extends ChangeNotifier {
     _refreshConflicts();
     if (!_lossRecorded) {
       _lossRecorded = true;
-      // Daily losses don't touch the regular palette streak.
-      if (!_isDaily) {
+      // Daily / Pocket losses don't touch the regular palette streak.
+      if (!_isDaily && !_isPocket) {
         _stats.resetStreakSync(palette: _settings.palette);
         unawaited(_stats.persist());
       }
@@ -1581,8 +1629,8 @@ class GameProvider extends ChangeNotifier {
   void _refreshConflicts() {
     final board = _toBoard();
     final conflicts = board.conflictingCells();
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
         final hasConflict = conflicts.contains((r, c));
         final cell = _cells[r][c];
         if (cell.hasConflict != hasConflict) {
@@ -1608,42 +1656,51 @@ class GameProvider extends ChangeNotifier {
     if (!_winRecorded) {
       _winRecorded = true;
       final winPalette = activePalette;
-      unawaited(
-        _achievements.evaluateWin(
+      if (_isPocket) {
+        _stats.awardPocketWin(
+          elapsed: _elapsed,
+          mistakes: _mistakes,
+          palette: winPalette,
+        );
+        unawaited(_stats.persist());
+      } else {
+        unawaited(
+          _achievements.evaluateWin(
+            difficulty: _gameDifficulty,
+            elapsed: _elapsed,
+            mistakes: _mistakes,
+            palette: winPalette,
+            ctx: _achievementGameContext(),
+          ),
+        );
+        if (_isDaily) {
+          unawaited(
+            _achievements.onDailyChallengeWon(
+              streak: _dailyStreakAfterThisWin(),
+            ),
+          );
+        }
+        _pendingPaletteUnlocks = _stats.recordWinSync(
           difficulty: _gameDifficulty,
           elapsed: _elapsed,
           mistakes: _mistakes,
           palette: winPalette,
-          ctx: _achievementGameContext(),
-        ),
-      );
-      if (_isDaily) {
-        unawaited(
-          _achievements.onDailyChallengeWon(
-            streak: _dailyStreakAfterThisWin(),
-          ),
+          chromatic: _settings.chromatic && !_isDaily,
+          daily: _isDaily,
+          dailyStreak: _isDaily ? _dailyStreakAfterThisWin() : 0,
+          achievedXp: _achievements.consumeAchievedXp(),
+          noteless: !_usedNotes,
         );
-      }
-      _pendingPaletteUnlocks = _stats.recordWinSync(
-        difficulty: _gameDifficulty,
-        elapsed: _elapsed,
-        mistakes: _mistakes,
-        palette: winPalette,
-        chromatic: _settings.chromatic && !_isDaily,
-        daily: _isDaily,
-        dailyStreak: _isDaily ? _dailyStreakAfterThisWin() : 0,
-        achievedXp: _achievements.consumeAchievedXp(),
-        noteless: !_usedNotes,
-      );
-      _settings.ensurePaletteUnlocked(_stats.stats);
-      unawaited(_stats.persist());
-      // Expert wins may unlock Master — start warming a board immediately.
-      unawaited(prefetchMasterPuzzle());
-      if (_isDaily) {
-        _heldDaily = null;
-        unawaited(_prefs.clearParkedDailyGame());
-        final completed = _snapshotLiveGame();
-        unawaited(_recordDailyCompletion(completedBoard: completed));
+        _settings.ensurePaletteUnlocked(_stats.stats);
+        unawaited(_stats.persist());
+        // Expert wins may unlock Master — start warming a board immediately.
+        unawaited(prefetchMasterPuzzle());
+        if (_isDaily) {
+          _heldDaily = null;
+          unawaited(_prefs.clearParkedDailyGame());
+          final completed = _snapshotLiveGame();
+          unawaited(_recordDailyCompletion(completedBoard: completed));
+        }
       }
     }
   }
@@ -1726,14 +1783,18 @@ class GameProvider extends ChangeNotifier {
     }
 
     final parkedRegular = _prefs.loadParkedRegularGame();
-    if (parkedRegular != null && !parkedRegular.isDaily) {
+    if (parkedRegular != null &&
+        !parkedRegular.isDaily &&
+        !parkedRegular.isPocket) {
       _heldRegular = _heldFromPaused(parkedRegular);
     } else if (parkedRegular != null) {
       await _prefs.clearParkedRegularGame();
     }
 
     final parkedChromatic = _prefs.loadParkedChromaticGame();
-    if (parkedChromatic != null && !parkedChromatic.isDaily) {
+    if (parkedChromatic != null &&
+        !parkedChromatic.isDaily &&
+        !parkedChromatic.isPocket) {
       _heldChromatic = _heldFromPaused(parkedChromatic);
     } else if (parkedChromatic != null) {
       await _prefs.clearParkedChromaticGame();
@@ -1747,11 +1808,27 @@ class GameProvider extends ChangeNotifier {
     } else if (parkedDaily != null) {
       await _prefs.clearParkedDailyGame();
     }
+
+    final parkedPocket = _prefs.loadParkedPocketGame();
+    if (parkedPocket != null && parkedPocket.isPocket) {
+      _heldPocket = _heldFromPaused(parkedPocket);
+    } else if (parkedPocket != null) {
+      await _prefs.clearParkedPocketGame();
+    }
+  }
+
+  /// Park Classic, Chromatic, or Pocket so Daily/mode-switch can replace live.
+  Future<void> _parkHomeLive() async {
+    if (_isPocket) {
+      await _parkPocketFromLive();
+    } else {
+      await _parkRegularFromLive();
+    }
   }
 
   /// Park the live non-daily board into Classic or Chromatic hold.
   Future<void> _parkRegularFromLive() async {
-    if (_isDaily) return;
+    if (_isDaily || _isPocket) return;
     if (!_hasActiveGame && !isGameOver && _solution == null) return;
     final held = _captureHeld();
     if (_settings.chromatic) {
@@ -1761,6 +1838,14 @@ class GameProvider extends ChangeNotifier {
       _heldRegular = held;
       await _persistParkedRegular();
     }
+  }
+
+  Future<void> _parkPocketFromLive() async {
+    if (!_isPocket) return;
+    if (!_hasActiveGame && !isGameOver && _solution == null) return;
+    _timer?.cancel();
+    _heldPocket = _captureHeld();
+    await _persistParkedPocket();
   }
 
   Future<void> _persistParkedRegular() async {
@@ -1805,6 +1890,20 @@ class GameProvider extends ChangeNotifier {
     await _prefs.saveParkedDailyGame(paused);
   }
 
+  Future<void> _persistParkedPocket() async {
+    final held = _heldPocket;
+    if (held == null) {
+      await _prefs.clearParkedPocketGame();
+      return;
+    }
+    final paused = _pausedFromHeld(held);
+    if (paused == null) {
+      await _prefs.clearParkedPocketGame();
+      return;
+    }
+    await _prefs.saveParkedPocketGame(paused);
+  }
+
   Future<void> _parkDailyIfLive() async {
     if (!_isDaily) return;
     _timer?.cancel();
@@ -1823,7 +1922,9 @@ class GameProvider extends ChangeNotifier {
   Future<void> openClassicGame() async {
     if (_isGenerating) return;
 
-    if (_isDaily) {
+    if (_isPocket) {
+      await _parkPocketFromLive();
+    } else if (_isDaily) {
       await _parkDailyIfLive();
     } else if (_settings.chromatic) {
       await _parkRegularFromLive();
@@ -1839,7 +1940,7 @@ class GameProvider extends ChangeNotifier {
       _heldRegular = null;
       await _prefs.clearParkedRegularGame();
     } else {
-      await startNewGame(preserveHeldDaily: true);
+      await startNewGame(preserveHeldDaily: true, pocket: false);
     }
     notifyListeners();
   }
@@ -1850,7 +1951,9 @@ class GameProvider extends ChangeNotifier {
     if (_isGenerating) return false;
     if (!_stats.areAllMenuPalettesUnlocked) return false;
 
-    if (_isDaily) {
+    if (_isPocket) {
+      await _parkPocketFromLive();
+    } else if (_isDaily) {
       await _parkDailyIfLive();
     } else if (!_settings.chromatic) {
       await _parkRegularFromLive();
@@ -1866,10 +1969,35 @@ class GameProvider extends ChangeNotifier {
       _heldChromatic = null;
       await _prefs.clearParkedChromaticGame();
     } else {
-      await startNewGame(preserveHeldDaily: true);
+      await startNewGame(preserveHeldDaily: true, pocket: false);
     }
     notifyListeners();
     return true;
+  }
+
+  /// Switch to Pocket mode for Main Menu → resume or start.
+  Future<void> openPocketGame() async {
+    if (_isGenerating) return;
+
+    if (_isPocket) {
+      notifyListeners();
+      return;
+    }
+
+    if (_isDaily) {
+      await _parkDailyIfLive();
+    } else {
+      await _parkRegularFromLive();
+    }
+
+    if (_heldPocket != null) {
+      _applyHeld(_heldPocket!);
+      _heldPocket = null;
+      await _prefs.clearParkedPocketGame();
+    } else {
+      await startNewGame(pocket: true, preserveHeldDaily: true);
+    }
+    notifyListeners();
   }
 
   PausedGame? _pausedFromHeld(_HeldGameSession held) {
@@ -1886,6 +2014,7 @@ class GameProvider extends ChangeNotifier {
       solution: solution,
       cells: flatCells,
       isDaily: held.isDaily,
+      isPocket: held.isPocket,
       dailyDayKey: held.dailyDayKey,
       sessionPalette: held.sessionPalette,
       usedNotes: held.usedNotes,
@@ -1893,9 +2022,10 @@ class GameProvider extends ChangeNotifier {
   }
 
   _HeldGameSession _heldFromPaused(PausedGame paused) {
-    final cells = List.generate(SudokuBoard.size, (r) {
-      return List.generate(SudokuBoard.size, (c) {
-        return paused.cells[r * SudokuBoard.size + c].copyWith();
+    final n = paused.isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
+    final cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
+        return paused.cells[r * n + c].copyWith();
       });
     });
     final sessionPalette = paused.isDaily
@@ -1921,6 +2051,7 @@ class GameProvider extends ChangeNotifier {
       bulkSelected: {},
       undoStack: const [],
       isDaily: paused.isDaily,
+      isPocket: paused.isPocket,
       dailyDayKey: paused.dailyDayKey,
       sessionPalette: sessionPalette,
       firstFillColor: null,
@@ -1958,15 +2089,17 @@ class GameProvider extends ChangeNotifier {
     _elapsed = paused.elapsed;
     _gameDifficulty = paused.difficulty;
     _isDaily = paused.isDaily;
+    _isPocket = paused.isPocket;
     _dailyDayKey = paused.dailyDayKey;
     _sessionPalette = sessionPalette;
-    _solution = SudokuBoard.fromFlat(paused.solution);
+    _solution = SudokuBoard.fromFlat(paused.solution, pocket: paused.isPocket);
     _noteMode = false;
     _undoStack.clear();
 
-    _cells = List.generate(SudokuBoard.size, (r) {
-      return List.generate(SudokuBoard.size, (c) {
-        return paused.cells[r * SudokuBoard.size + c];
+    final n = paused.isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
+    _cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
+        return paused.cells[r * n + c];
       });
     });
     _refreshConflicts();
@@ -2010,6 +2143,7 @@ class GameProvider extends ChangeNotifier {
           ),
       ],
       isDaily: _isDaily,
+      isPocket: _isPocket,
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
       firstFillColor: _firstFillColor,
@@ -2038,8 +2172,9 @@ class GameProvider extends ChangeNotifier {
     _cells = [
       for (final row in held.cells) [for (final cell in row) cell.copyWith()],
     ];
-    _solution =
-        held.solution == null ? null : SudokuBoard.fromFlat(held.solution!);
+    _solution = held.solution == null
+        ? null
+        : SudokuBoard.fromFlat(held.solution!, pocket: held.isPocket);
     _selected = held.selected;
     _elapsed = held.elapsed;
     _mistakes = held.mistakes;
@@ -2061,6 +2196,7 @@ class GameProvider extends ChangeNotifier {
       ..clear()
       ..addAll(held.undoStack);
     _isDaily = held.isDaily;
+    _isPocket = held.isPocket;
     _dailyDayKey = held.dailyDayKey;
     _sessionPalette = held.sessionPalette;
     _isGenerating = false;
@@ -2095,9 +2231,12 @@ class GameProvider extends ChangeNotifier {
   SudokuBoard _toBoard() {
     return SudokuBoard(
       List.generate(
-        SudokuBoard.size,
-        (r) => List.generate(SudokuBoard.size, (c) => _cells[r][c].value),
+        gridSize,
+        (r) => List.generate(gridSize, (c) => _cells[r][c].value),
       ),
+      n: gridSize,
+      boxWidth: boxW,
+      boxHeight: boxH,
     );
   }
 
@@ -2164,6 +2303,7 @@ class _HeldGameSession {
   final Set<int> bulkSelected;
   final List<_UndoSnapshot> undoStack;
   final bool isDaily;
+  final bool isPocket;
   final String? dailyDayKey;
   final GamePalette? sessionPalette;
   final int? firstFillColor;
@@ -2202,6 +2342,7 @@ class _HeldGameSession {
     required this.bulkSelected,
     required this.undoStack,
     required this.isDaily,
+    required this.isPocket,
     required this.dailyDayKey,
     required this.sessionPalette,
     required this.firstFillColor,

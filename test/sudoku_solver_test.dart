@@ -8,6 +8,18 @@ import 'package:irodoku/sudoku/sudoku_solver.dart';
 
 void main() {
   group('SudokuSolver', () {
+    test('solves an empty Pocket board into a valid 6×6 solution', () {
+      final solver = SudokuSolver();
+      final board = SudokuBoard.empty(pocket: true);
+
+      final solved = solver.solve(board, random: Random(42));
+
+      expect(solved, isTrue);
+      expect(board.n, 6);
+      expect(board.isComplete(), isTrue);
+      expect(board.isValidSolution(), isTrue);
+    });
+
     test('solves an empty board into a valid complete solution', () {
       final solver = SudokuSolver();
       final board = SudokuBoard.empty();
@@ -85,6 +97,32 @@ void main() {
       final conflicts = board.conflictingCells();
       expect(conflicts.contains((0, 0)), isTrue);
       expect(conflicts.contains((0, 1)), isTrue);
+    });
+
+    test('Pocket generates a unique 6×6 with 11–13 givens', () {
+      final generator = SudokuGenerator(random: Random(42));
+      final result = generator.generatePocket();
+
+      expect(result.puzzle.n, 6);
+      expect(result.puzzle.boxW, 3);
+      expect(result.puzzle.boxH, 2);
+      expect(result.solution.isValidSolution(), isTrue);
+      expect(result.puzzle.isValidSolution(), isFalse);
+      expect(SudokuSolver().hasUniqueSolution(result.puzzle), isTrue);
+
+      final givenCount = result.puzzle.toFlat().where((v) => v != 0).length;
+      expect(givenCount, greaterThanOrEqualTo(11));
+      expect(givenCount, lessThanOrEqualTo(13));
+
+      for (var r = 0; r < result.puzzle.n; r++) {
+        for (var c = 0; c < result.puzzle.n; c++) {
+          final given = result.puzzle.get(r, c);
+          if (given != 0) {
+            expect(given, result.solution.get(r, c));
+            expect(given, inInclusiveRange(1, 6));
+          }
+        }
+      }
     });
   });
 }

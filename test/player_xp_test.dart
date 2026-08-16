@@ -315,6 +315,83 @@ void main() {
     );
   });
 
+  test('Pocket is a flat 25 base XP', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.master,
+      mistakes: 2,
+      elapsed: const Duration(minutes: 5),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    expect(award.baseXp, 25);
+    expect(award.sourceLabel, 'Pocket');
+    expect(award.earned, 25);
+    expect(award.breakdown, [(label: 'Pocket finish', xp: 25)]);
+  });
+
+  test('Pocket Speedy is under 2:00', () {
+    final under = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 1, seconds: 59),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    final onThreshold = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 2),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    expect(under.fast, isTrue);
+    expect(under.fastXp, 6);
+    expect(under.earned, 31);
+    expect(onThreshold.fast, isFalse);
+    expect(onThreshold.earned, 25);
+  });
+
+  test('Pocket Flawless and First of day apply; extras do not', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 1),
+      firstWinOfDay: true,
+      previousTotal: 0,
+      pocket: true,
+      wetPaint: true,
+      noteless: true,
+      chromatic: true,
+      daily: true,
+      dailyStreak: 5,
+      achievedXp: 1000,
+    );
+    expect(award.baseXp, 25);
+    expect(award.flawless, isTrue);
+    expect(award.flawlessXp, 6);
+    expect(award.fast, isTrue);
+    expect(award.fastXp, 6);
+    expect(award.firstWinOfDay, isTrue);
+    expect(award.wetPaint, isFalse);
+    expect(award.noteless, isFalse);
+    expect(award.chromatic, isFalse);
+    expect(award.streak, isFalse);
+    expect(award.achievedXp, 0);
+    expect(award.earned, 87);
+    expect(
+      award.breakdown,
+      [
+        (label: 'Pocket finish', xp: 25),
+        (label: 'Flawless', xp: 6),
+        (label: 'Speedy', xp: 6),
+        (label: 'First of day', xp: 50),
+      ],
+    );
+  });
+
   test('backfill uses winsByDifficulty plus Graffiti, not chromatic twice', () {
     const stats = GameStats(
       winsByDifficulty: {

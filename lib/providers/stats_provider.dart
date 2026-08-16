@@ -132,11 +132,13 @@ class StatsProvider extends ChangeNotifier {
     bool chromatic = false,
     int achievedXp = 0,
     bool noteless = false,
+    bool pocket = false,
   }) {
     final first = isFirstWinOfDay;
     final lastPalette = _prefs.getXpLastWinPalette();
     final wetPaint = !daily &&
         !chromatic &&
+        !pocket &&
         lastPalette != null &&
         lastPalette != palette.storageKey;
     final award = PlayerXp.compute(
@@ -152,14 +154,32 @@ class StatsProvider extends ChangeNotifier {
       wetPaint: wetPaint,
       noteless: noteless,
       achievedXp: achievedXp,
+      pocket: pocket,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
     unawaited(_prefs.setXpLastAwardDay(_todayKey()));
-    if (!daily && !chromatic) {
+    if (!daily && !chromatic && !pocket) {
       unawaited(_prefs.setXpLastWinPalette(palette.storageKey));
     }
     return award;
+  }
+
+  /// Pocket wins grant XP only — no stats, streaks, unlocks, or last-win palette.
+  void awardPocketWin({
+    required Duration elapsed,
+    required int mistakes,
+    required GamePalette palette,
+  }) {
+    _awardWinXp(
+      difficulty: Difficulty.easy,
+      mistakes: mistakes,
+      elapsed: elapsed,
+      palette: palette,
+      sourceLabel: 'Pocket',
+      pocket: true,
+    );
+    notifyListeners();
   }
 
   /// Persists a finished Graffiti match. Mutual defeat counts as a loss.

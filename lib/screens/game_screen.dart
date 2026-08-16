@@ -150,7 +150,9 @@ class _GameScreenState extends State<GameScreen> {
               title: TypingTitle(
                 text: widget.isDailyRoute
                     ? 'Daily Challenge'
-                    : (settings.chromatic ? 'Chromatic' : 'Irodoku'),
+                    : game.isPocket
+                        ? 'Pocket'
+                        : (settings.chromatic ? 'Chromatic' : 'Irodoku'),
                 playToken: _titlePlayToken,
                 onTap: game.triggerColorCycle,
               ),
@@ -196,21 +198,36 @@ class _GameScreenState extends State<GameScreen> {
                   children: [
                     Row(
                       children: [
-                        TimerDisplay(time: game.formatElapsed()),
-                        const Spacer(),
-                        MistakeDisplay(mistakes: game.mistakes),
-                        const Spacer(),
-                        Text(
-                          widget.isDailyRoute
-                              ? (game.dailyDateLabel ?? '')
-                              : game.difficulty.label,
-                          style:
-                              Theme.of(context).textTheme.labelLarge?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withValues(alpha: 0.55),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: TimerDisplay(time: game.formatElapsed()),
+                          ),
+                        ),
+                        MistakeDisplay(
+                          mistakes: game.mistakes,
+                          maxMistakes: game.mistakeLimit,
+                        ),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: game.isPocket
+                                ? const SizedBox.shrink()
+                                : Text(
+                                    widget.isDailyRoute
+                                        ? (game.dailyDateLabel ?? '')
+                                        : game.difficulty.label,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelLarge
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.55),
+                                        ),
                                   ),
+                          ),
                         ),
                       ],
                     ),
@@ -223,33 +240,48 @@ class _GameScreenState extends State<GameScreen> {
                           const toolbarGap = 8.0;
                           final xlPicker = settings.xlPicker;
                           const xlSwatchCells = 3 * 0.85 * 0.85;
+                          final pocketPicker = game.isPocket;
+                          // Size the square like Classic (9×9) so Pocket's 6×6
+                          // is the same on-screen height and width.
+                          const layoutN = 9;
                           final belowFixed = reserveControlsLayout
                               ? toolbarGap +
                                   GameToolbar.height +
                                   pickerGap
                               : 0.0;
-                          final pickerRows = xlPicker ? xlSwatchCells * 3 : 1.0;
+                          const pocketSwatchScale = 0.70;
+                          final pickerRows = pocketPicker
+                              ? 2.0 * layoutN / 3.0 * pocketSwatchScale
+                              : (xlPicker ? xlSwatchCells * 3 : 1.0);
                           final cellFromWidth =
-                              (constraints.maxWidth - boardBorder * 2) / 9;
+                              (constraints.maxWidth - boardBorder * 2) /
+                                  layoutN;
                           final cellFromHeight = reserveControlsLayout
                               ? (constraints.maxHeight -
                                       belowFixed -
                                       boardBorder * 2) /
-                                  (9 + pickerRows)
+                                  (layoutN + pickerRows)
                               : (constraints.maxHeight -
                                       belowFixed -
                                       boardBorder * 2) /
-                                  9;
+                                  layoutN;
                           final cellSize =
                               math.min(cellFromWidth, cellFromHeight);
-                          final boardSize = cellSize * 9 + boardBorder * 2;
-                          final swatchSize = xlPicker ? cellSize * xlSwatchCells : cellSize;
-                          final pickerHeight =
-                              swatchSize * (xlPicker ? 3.0 : 1.0);
+                          final boardSize = cellSize * layoutN + boardBorder * 2;
+                          final boardInner = cellSize * layoutN;
+                          final swatchSize = pocketPicker
+                              ? boardInner / 3 * pocketSwatchScale
+                              : (xlPicker
+                                  ? cellSize * xlSwatchCells
+                                  : cellSize);
+                          final pickerHeight = pocketPicker
+                              ? swatchSize * 2.0
+                              : swatchSize * (xlPicker ? 3.0 : 1.0);
 
                           return ChromaticPaletteTransition(
                             palette: game.activePalette,
-                            animate: settings.chromatic || game.isDaily,
+                            animate: !game.isPocket &&
+                                (settings.chromatic || game.isDaily),
                             builder: (context, palette, swatches) {
                               return Align(
                                 alignment: Alignment.topCenter,
@@ -333,9 +365,12 @@ class _GameScreenState extends State<GameScreen> {
                                         if (showControls)
                                           IgnorePointer(
                                             ignoring: !controlsEnabled,
-                                            child: ColorPicker(
+                                            child: Align(
+                                              alignment: Alignment.center,
+                                              child: ColorPicker(
                                               swatchSize: swatchSize,
-                                              xlMode: xlPicker,
+                                              xlMode: xlPicker && !pocketPicker,
+                                              pocket: pocketPicker,
                                               palette: palette,
                                               displaySwatches: swatches,
                                               visible: true,
@@ -344,6 +379,7 @@ class _GameScreenState extends State<GameScreen> {
                                               onNoteAdded: game.addSelectedNote,
                                               onNoteRemoved:
                                                   game.removeSelectedNote,
+                                            ),
                                             ),
                                           )
                                         else

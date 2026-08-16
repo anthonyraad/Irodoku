@@ -483,7 +483,7 @@ Future<void> _onDifficultyChosen(
 
   // Daily still live under Main Menu — only update the setting so parked
   // Classic/Chromatic progress is not wiped.
-  if (game.isDaily) return;
+  if (game.isDaily || game.isPocket) return;
 
   final preserveDaily = game.hasResumableDaily;
 
@@ -513,7 +513,7 @@ Future<void> _onPaletteChosen(
 
   // Daily / Chromatic nested under menu: update the saved Config palette only.
   // Live Chromatic hops use a session palette and must not be overwritten here.
-  if (game.isDaily || settings.chromatic) {
+  if (game.isDaily || game.isPocket || settings.chromatic) {
     await settings.setPalette(palette);
     return;
   }

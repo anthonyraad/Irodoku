@@ -13,6 +13,9 @@ class ColorPicker extends StatelessWidget {
   final ValueChanged<int> onNoteRemoved;
   final bool visible;
   final bool xlMode;
+  final bool pocket;
+  /// When set (Pocket), swatch width can differ from [swatchSize] (height).
+  final double? swatchWidth;
   final GamePalette palette;
   /// Optional live swatches (e.g. chromatic crossfade); falls back to [palette].
   final List<PaletteSwatch>? displaySwatches;
@@ -27,6 +30,8 @@ class ColorPicker extends StatelessWidget {
     required this.palette,
     this.displaySwatches,
     this.xlMode = false,
+    this.pocket = false,
+    this.swatchWidth,
   });
 
   @override
@@ -34,7 +39,34 @@ class ColorPicker extends StatelessWidget {
     final line = IrodokuTheme.thinGridLine(IrodokuTheme.boardBrightness);
 
     Widget picker;
-    if (xlMode) {
+    if (pocket) {
+      final chipW = swatchWidth ?? swatchSize;
+      picker = SizedBox(
+        width: chipW * 3,
+        height: swatchSize * 2,
+        child: Column(
+          children: [
+            for (var row = 0; row < 2; row++)
+              SizedBox(
+                height: swatchSize,
+                child: Row(
+                  children: [
+                    for (var col = 0; col < 3; col++)
+                      SizedBox(
+                        width: chipW,
+                        height: swatchSize,
+                        child: _buildSwatch(
+                          index: row * 3 + col,
+                          line: line,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    } else if (xlMode) {
       picker = SizedBox(
         width: swatchSize * 3,
         height: swatchSize * 3,

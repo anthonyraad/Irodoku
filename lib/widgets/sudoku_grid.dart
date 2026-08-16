@@ -10,7 +10,6 @@ import '../models/game_palette.dart';
 import '../models/palette_swatch.dart';
 import '../models/unit_celebration.dart';
 import '../providers/game_provider.dart';
-import '../sudoku/sudoku_board.dart';
 import 'color_cell.dart';
 
 class SudokuGrid extends StatefulWidget {
@@ -234,6 +233,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                     painter: _PeerUnitBorderPainter(
                       row: selected.$1,
                       col: selected.$2,
+                      n: game.gridSize,
+                      boxW: game.boxW,
+                      boxH: game.boxH,
                       color: bulkNoteSelect
                           ? null
                           : IrodokuTheme.relatedUnitBorderPulse(
@@ -267,12 +269,15 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     required UnitCelebration? celebration,
     required (int, int)? selected,
   }) {
+    final n = game.gridSize;
+    final boxW = game.boxW;
+    final boxH = game.boxH;
     bool inSelectedUnit(int r, int c) {
       if (selected == null) return false;
       final (sr, sc) = selected;
       return r == sr ||
           c == sc ||
-          (r ~/ 3 == sr ~/ 3 && c ~/ 3 == sc ~/ 3);
+          (r ~/ boxH == sr ~/ boxH && c ~/ boxW == sc ~/ boxW);
     }
 
     final selectedCell =
@@ -282,10 +287,10 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     final washPeers = selectedCell != null && selectedCell.isEditable;
 
     return Column(
-      children: List.generate(SudokuBoard.size, (row) {
+      children: List.generate(n, (row) {
         return Expanded(
           child: Row(
-            children: List.generate(SudokuBoard.size, (col) {
+            children: List.generate(n, (col) {
               final cell = game.cellAt(row, col);
               final isSelected = game.isCellSelected(row, col);
               final isRelated =
@@ -323,12 +328,12 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                 }
               }
 
-              final rightW = (col + 1) % 3 == 0 && col != 8 ? 2.0 : 0.6;
-              final bottomW = (row + 1) % 3 == 0 && row != 8 ? 2.0 : 0.6;
+              final rightW = (col + 1) % boxW == 0 && col != n - 1 ? 2.0 : 0.6;
+              final bottomW = (row + 1) % boxH == 0 && row != n - 1 ? 2.0 : 0.6;
               final rightColor =
-                  (col + 1) % 3 == 0 && col != 8 ? thick : thin;
+                  (col + 1) % boxW == 0 && col != n - 1 ? thick : thin;
               final bottomColor =
-                  (row + 1) % 3 == 0 && row != 8 ? thick : thin;
+                  (row + 1) % boxH == 0 && row != n - 1 ? thick : thin;
 
               // Grid lines are overlays so they don't inset ColorCell.
               return Expanded(
@@ -354,6 +359,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         colorCycleSteps: game.colorCycleSteps,
                         row: row,
                         col: col,
+                        pocket: game.isPocket,
                         noteClearWave: game.noteClearWave,
                         onTap: game.isGenerating ||
                                 game.isGameOver ||
@@ -403,6 +409,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
 class _PeerUnitBorderPainter extends CustomPainter {
   final int row;
   final int col;
+  final int n;
+  final int boxW;
+  final int boxH;
   final Color? color;
   final double? rainbowPhase;
   final Brightness? rainbowBrightness;
@@ -410,6 +419,9 @@ class _PeerUnitBorderPainter extends CustomPainter {
   const _PeerUnitBorderPainter({
     required this.row,
     required this.col,
+    required this.n,
+    required this.boxW,
+    required this.boxH,
     required this.color,
     this.rainbowPhase,
     this.rainbowBrightness,
@@ -434,16 +446,16 @@ class _PeerUnitBorderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cellW = size.width / SudokuBoard.size;
-    final cellH = size.height / SudokuBoard.size;
+    final cellW = size.width / n;
+    final cellH = size.height / n;
     final paint = _strokePaint(size);
 
-    final boxCol = col ~/ 3;
-    final boxRow = row ~/ 3;
-    final boxLeft = boxCol * 3 * cellW;
-    final boxTop = boxRow * 3 * cellH;
-    final boxRight = boxLeft + 3 * cellW;
-    final boxBottom = boxTop + 3 * cellH;
+    final boxCol = col ~/ boxW;
+    final boxRow = row ~/ boxH;
+    final boxLeft = boxCol * boxW * cellW;
+    final boxTop = boxRow * boxH * cellH;
+    final boxRight = boxLeft + boxW * cellW;
+    final boxBottom = boxTop + boxH * cellH;
     final rowTop = row * cellH;
     final rowBottom = rowTop + cellH;
     final colLeft = col * cellW;
@@ -564,6 +576,9 @@ class _PeerUnitBorderPainter extends CustomPainter {
   bool shouldRepaint(covariant _PeerUnitBorderPainter oldDelegate) {
     return oldDelegate.row != row ||
         oldDelegate.col != col ||
+        oldDelegate.n != n ||
+        oldDelegate.boxW != boxW ||
+        oldDelegate.boxH != boxH ||
         oldDelegate.color != color ||
         oldDelegate.rainbowPhase != rainbowPhase ||
         oldDelegate.rainbowBrightness != rainbowBrightness;

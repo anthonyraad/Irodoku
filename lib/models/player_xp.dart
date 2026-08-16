@@ -25,6 +25,10 @@ abstract final class PlayerXp {
   static const dailyStreakBonus = 25;
   static const dailyStreakBonusMin = 3;
 
+  /// Pocket is a flat base; Speedy is under 2:00.
+  static const pocketBaseXp = 25;
+  static const pocketFastThreshold = Duration(minutes: 2);
+
   /// Graffiti has no ladder tier — treated as Medium for base + speed.
   static const graffitiDifficulty = Difficulty.medium;
 
@@ -97,21 +101,30 @@ abstract final class PlayerXp {
     bool wetPaint = false,
     bool noteless = false,
     int achievedXp = 0,
+    bool pocket = false,
   }) {
-    final base = daily ? dailyBaseXp : baseXp(difficulty);
+    final base = pocket
+        ? pocketBaseXp
+        : daily
+            ? dailyBaseXp
+            : baseXp(difficulty);
     final flawless = mistakes == 0;
-    final fast = elapsed < fastThreshold(difficulty);
+    final fast = pocket
+        ? elapsed < pocketFastThreshold
+        : elapsed < fastThreshold(difficulty);
     final flawlessXp = flawless ? (base * flawlessModifier).floor() : 0;
     final fastXp = fast ? (base * fastModifier).floor() : 0;
-    final notelessXp = noteless ? (base * notelessModifier).floor() : 0;
-    final wetPaintXp = !daily && !chromatic && wetPaint
+    final notelessXp =
+        !pocket && noteless ? (base * notelessModifier).floor() : 0;
+    final wetPaintXp = !daily && !chromatic && !pocket && wetPaint
         ? (base * wetPaintModifier).floor()
         : 0;
     final firstOfDay = firstWinOfDay ? firstWinOfDayBonus : 0;
-    final streak = daily && dailyStreak >= dailyStreakBonusMin
+    final streak = !pocket && daily && dailyStreak >= dailyStreakBonusMin
         ? dailyStreakBonus
         : 0;
-    final chromaticXp = chromatic ? chromaticBonus : 0;
+    final chromaticXp = !pocket && chromatic ? chromaticBonus : 0;
+    final artistryXp = pocket ? 0 : achievedXp;
     final earned = base +
         flawlessXp +
         fastXp +
@@ -120,11 +133,16 @@ abstract final class PlayerXp {
         firstOfDay +
         streak +
         chromaticXp +
-        achievedXp;
+        artistryXp;
     return XpAward(
       baseXp: base,
       difficulty: difficulty,
-      sourceLabel: sourceLabel ?? (daily ? 'Daily' : difficulty.label),
+      sourceLabel: sourceLabel ??
+          (pocket
+              ? 'Pocket'
+              : daily
+                  ? 'Daily'
+                  : difficulty.label),
       flawless: flawless,
       fast: fast,
       firstWinOfDay: firstWinOfDay,
@@ -132,7 +150,7 @@ abstract final class PlayerXp {
       chromatic: chromaticXp > 0,
       wetPaint: wetPaintXp > 0,
       noteless: notelessXp > 0,
-      achievedXp: achievedXp,
+      achievedXp: artistryXp,
       flawlessXp: flawlessXp,
       fastXp: fastXp,
       wetPaintXp: wetPaintXp,

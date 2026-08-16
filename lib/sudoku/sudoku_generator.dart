@@ -122,8 +122,8 @@ class SudokuGenerator {
     );
   }
 
-  SudokuBoard _generateFullSolution() {
-    final board = SudokuBoard.empty();
+  SudokuBoard _generateFullSolution({bool pocket = false}) {
+    final board = SudokuBoard.empty(pocket: pocket);
     final filled = _solver.solve(board, random: _random);
     if (!filled || !board.isValidSolution()) {
       throw StateError('Failed to generate a valid Sudoku solution');
@@ -142,8 +142,8 @@ class SudokuGenerator {
     int? failBudget,
   }) {
     final positions = <(int, int)>[
-      for (var r = 0; r < SudokuBoard.size; r++)
-        for (var c = 0; c < SudokuBoard.size; c++)
+      for (var r = 0; r < puzzle.n; r++)
+        for (var c = 0; c < puzzle.n; c++)
           if (puzzle.get(r, c) != 0) (r, c),
     ]..shuffle(_random);
 
@@ -174,11 +174,44 @@ class SudokuGenerator {
 
   int _countGivens(SudokuBoard puzzle) {
     var count = 0;
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    for (var r = 0; r < puzzle.n; r++) {
+      for (var c = 0; c < puzzle.n; c++) {
         if (puzzle.get(r, c) != 0) count++;
       }
     }
     return count;
+  }
+
+  /// Unique 6×6 mini Sudoku (2×3 boxes) with 11–13 givens.
+  GeneratedPuzzle generatePocket() {
+    const minGiven = 11;
+    const maxGiven = 13;
+    for (var s = 0; s < _maxSolutions; s++) {
+      final solution = _generateFullSolution(pocket: true);
+      for (var d = 0; d < _digOrdersPerSolution; d++) {
+        final puzzle = solution.copy();
+        _progressiveRemove(puzzle, stopAtOrBelow: maxGiven);
+        if (_countGivens(puzzle) > maxGiven) continue;
+
+        final deepenTarget = minGiven + _random.nextInt(maxGiven - minGiven + 1);
+        if (_countGivens(puzzle) > deepenTarget) {
+          _progressiveRemove(
+            puzzle,
+            stopAtOrBelow: deepenTarget,
+            failBudget: 16,
+          );
+        }
+
+        final givenCount = _countGivens(puzzle);
+        if (givenCount >= minGiven &&
+            givenCount <= maxGiven &&
+            _solver.hasUniqueSolution(puzzle)) {
+          return GeneratedPuzzle(puzzle: puzzle, solution: solution);
+        }
+      }
+    }
+    throw StateError(
+      'Failed to generate a Pocket puzzle with $minGiven–$maxGiven givens',
+    );
   }
 }

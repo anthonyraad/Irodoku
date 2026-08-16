@@ -12,6 +12,7 @@ import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/menu_action_button.dart';
+import '../widgets/menu_select_sound.dart';
 import 'achievements_screen.dart';
 import 'app_settings_screen.dart';
 import 'game_screen.dart';
@@ -171,6 +172,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     stats,
                     unlocked: statsProvider.isIroenUnlocked,
                   ),
+                  onPocket: () => _onPocketPressed(context, game),
                 ),
               ),
               const Divider(height: 32),
@@ -248,6 +250,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await game.openClassicGame();
     if (!context.mounted) return;
     // Route through PopScope so leaveMenuToRegular runs once.
+    await Navigator.of(context).maybePop();
+  }
+
+  Future<void> _onPocketPressed(
+    BuildContext context,
+    GameProvider game,
+  ) async {
+    await game.openPocketGame();
+    if (!context.mounted) return;
     await Navigator.of(context).maybePop();
   }
 
@@ -497,6 +508,7 @@ class _PlayModeGrid extends StatelessWidget {
   final VoidCallback onGraffiti;
   final VoidCallback onChromatic;
   final VoidCallback onIroen;
+  final VoidCallback onPocket;
 
   const _PlayModeGrid({
     required this.busy,
@@ -511,16 +523,17 @@ class _PlayModeGrid extends StatelessWidget {
     required this.onGraffiti,
     required this.onChromatic,
     required this.onIroen,
+    required this.onPocket,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        MenuActionButton(
-          label: 'Classic Game',
-          enabled: !busy,
-          onPressed: onClassic,
+        _ClassicOrPocketButton(
+          busy: busy,
+          onClassic: onClassic,
+          onPocket: onPocket,
         ),
         const SizedBox(height: 12),
         Row(
@@ -570,6 +583,105 @@ class _PlayModeGrid extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Full-width Classic / Pocket control. Swipe right for Pocket, left for Classic.
+/// Resets to Classic when Main Menu is disposed (leaving the menu).
+class _ClassicOrPocketButton extends StatefulWidget {
+  final bool busy;
+  final VoidCallback onClassic;
+  final VoidCallback onPocket;
+
+  const _ClassicOrPocketButton({
+    required this.busy,
+    required this.onClassic,
+    required this.onPocket,
+  });
+
+  @override
+  State<_ClassicOrPocketButton> createState() => _ClassicOrPocketButtonState();
+}
+
+class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
+    with SingleTickerProviderStateMixin {
+  static const _minDistance = 28.0;
+  static const _minVelocity = 180.0;
+  static const _ignoreTapAfterSwipe = Duration(milliseconds: 120);
+
+  bool _pocket = false;
+  double _dragDx = 0;
+  bool _ignoreTap = false;
+  Timer? _ignoreTapTimer;
+  late final AnimationController _shake;
+
+  @override
+  void initState() {
+    super.initState();
+    _shake = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 210),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ignoreTapTimer?.cancel();
+    _shake.dispose();
+    super.dispose();
+  }
+
+  void _setPocket(bool pocket) {
+    if (_pocket == pocket) return;
+    playMenuSelectSound(context);
+    setState(() => _pocket = pocket);
+    _shake.forward(from: 0);
+  }
+
+  void _suppressTapFromSwipe() {
+    _ignoreTap = true;
+    _ignoreTapTimer?.cancel();
+    _ignoreTapTimer = Timer(_ignoreTapAfterSwipe, () {
+      _ignoreTap = false;
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final swipeRight = _dragDx > _minDistance || velocity > _minVelocity;
+    final swipeLeft = _dragDx < -_minDistance || velocity < -_minVelocity;
+    _dragDx = 0;
+    if (swipeRight) {
+      _suppressTapFromSwipe();
+      _setPocket(true);
+    } else if (swipeLeft) {
+      _suppressTapFromSwipe();
+      _setPocket(false);
+    }
+  }
+
+  void _onPressed() {
+    if (_ignoreTap) return;
+    if (_pocket) {
+      widget.onPocket();
+    } else {
+      widget.onClassic();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onHorizontalDragStart: (_) => _dragDx = 0,
+      onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
+      onHorizontalDragEnd: _onDragEnd,
+      child: MenuActionButton(
+        label: _pocket ? 'Pocket' : 'Classic Game',
+        enabled: !widget.busy,
+        onPressed: _onPressed,
+        labelShake: _shake,
+      ),
     );
   }
 }

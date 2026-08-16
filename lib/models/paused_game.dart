@@ -10,6 +10,7 @@ class PausedGame {
   final List<int> solution;
   final List<Cell> cells;
   final bool isDaily;
+  final bool isPocket;
   final String? dailyDayKey;
 
   /// Live session palette (Chromatic hop / Daily), not the saved Config choice.
@@ -23,6 +24,7 @@ class PausedGame {
     required this.solution,
     required this.cells,
     this.isDaily = false,
+    this.isPocket = false,
     this.dailyDayKey,
     this.sessionPalette,
     this.usedNotes = false,
@@ -35,6 +37,7 @@ class PausedGame {
       'mistakes': mistakes,
       'solution': solution,
       'isDaily': isDaily,
+      'isPocket': isPocket,
       'dailyDayKey': dailyDayKey,
       'sessionPalette': sessionPalette?.storageKey,
       'usedNotes': usedNotes,
@@ -69,8 +72,12 @@ class PausedGame {
         .map((e) => e as int)
         .toList();
 
-    if (cells.length != SudokuBoard.size * SudokuBoard.size ||
-        solutionRaw.length != SudokuBoard.size * SudokuBoard.size) {
+    final isPocket = json['isPocket'] as bool? ??
+        cells.length == SudokuBoard.pocketSize * SudokuBoard.pocketSize;
+    final expected = isPocket
+        ? SudokuBoard.pocketSize * SudokuBoard.pocketSize
+        : SudokuBoard.size * SudokuBoard.size;
+    if (cells.length != expected || solutionRaw.length != expected) {
       throw const FormatException('Invalid paused game payload');
     }
 
@@ -96,6 +103,7 @@ class PausedGame {
       solution: solutionRaw,
       cells: cells,
       isDaily: json['isDaily'] as bool? ?? false,
+      isPocket: isPocket,
       dailyDayKey: json['dailyDayKey'] as String?,
       sessionPalette:
           sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),

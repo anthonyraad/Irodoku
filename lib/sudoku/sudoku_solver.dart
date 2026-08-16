@@ -10,7 +10,7 @@ class SudokuSolver {
     if (empty == null) return true;
 
     final (row, col) = empty;
-    final candidates = List<int>.generate(9, (i) => i + 1);
+    final candidates = List<int>.generate(board.n, (i) => i + 1);
     if (random != null) {
       candidates.shuffle(random);
     }
@@ -45,7 +45,7 @@ class SudokuSolver {
 
     final (row, col) = empty;
     var count = 0;
-    for (var value = 1; value <= 9; value++) {
+    for (var value = 1; value <= board.n; value++) {
       if (board.isValidPlacement(row, col, value)) {
         board.set(row, col, value);
         count += _countSolutions(board, limit);
@@ -57,8 +57,8 @@ class SudokuSolver {
   }
 
   (int, int)? _findEmpty(SudokuBoard board) {
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    for (var r = 0; r < board.n; r++) {
+      for (var c = 0; c < board.n; c++) {
         if (board.get(r, c) == 0) return (r, c);
       }
     }
@@ -68,14 +68,14 @@ class SudokuSolver {
   /// Most-constrained empty cell (fewest valid candidates). Speeds uniqueness.
   (int, int)? _findEmptyMrv(SudokuBoard board) {
     (int, int)? best;
-    var bestCount = 10;
+    var bestCount = board.n + 1;
 
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    for (var r = 0; r < board.n; r++) {
+      for (var c = 0; c < board.n; c++) {
         if (board.get(r, c) != 0) continue;
 
         var candidates = 0;
-        for (var value = 1; value <= 9; value++) {
+        for (var value = 1; value <= board.n; value++) {
           if (board.isValidPlacement(r, c, value)) candidates++;
         }
         if (candidates == 0) return (r, c);

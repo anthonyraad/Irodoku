@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'menu_select_sound.dart';
@@ -12,6 +14,8 @@ class MenuActionButton extends StatelessWidget {
   final bool muted;
   final bool locked;
   final VoidCallback onPressed;
+  /// 0–1 progress; when set, the label shakes horizontally as it runs.
+  final Animation<double>? labelShake;
 
   const MenuActionButton({
     super.key,
@@ -21,6 +25,7 @@ class MenuActionButton extends StatelessWidget {
     this.enabled = true,
     this.muted = false,
     this.locked = false,
+    this.labelShake,
   });
 
   @override
@@ -86,11 +91,13 @@ class MenuActionButton extends StatelessWidget {
                           width: double.infinity,
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: _MenuActionLabel(
-                              label: label,
-                              color: ink,
-                              struckThrough: muted,
-                              style: labelStyle,
+                            child: _shakingLabel(
+                              _MenuActionLabel(
+                                label: label,
+                                color: ink,
+                                struckThrough: muted,
+                                style: labelStyle,
+                              ),
                             ),
                           ),
                         ),
@@ -115,6 +122,20 @@ class MenuActionButton extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _shakingLabel(Widget child) {
+    final shake = labelShake;
+    if (shake == null) return child;
+    return AnimatedBuilder(
+      animation: shake,
+      builder: (context, child) {
+        final t = shake.value;
+        final dx = math.sin(t * math.pi * 5) * 4 * (1 - t);
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      },
+      child: child,
     );
   }
 }
