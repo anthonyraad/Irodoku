@@ -101,13 +101,13 @@ class SoundService {
     _plink: 1.0,
     _mistake: 1.0,
     _gameLoss: 1.0,
-    _note1: 0.41,
-    _note2: 0.41,
-    _note3: 0.41,
-    _note4: 0.41,
-    _deselect1: 0.95,
-    _deselect2: 0.95,
-    _deselect3: 0.95,
+    _note1: 0.5,
+    _note2: 0.5,
+    _note3: 0.5,
+    _note4: 0.5,
+    _deselect1: 1.0,
+    _deselect2: 1.0,
+    _deselect3: 1.0,
     // Hotter source assets — attenuated to sit with confirm/note.
     _rainbowConfirm: 0.70, // ~3 dB hotter mean than confirm.mp3
     // Glass/Sky note stings.

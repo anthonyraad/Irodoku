@@ -22,6 +22,37 @@ import '../widgets/typing_title.dart';
 import '../widgets/win_dialog.dart';
 import 'settings_screen.dart';
 
+/// Font size that keeps [text] on the AppBar's true center without hitting
+/// the leading or action clusters (otherwise Flutter shoves it left).
+TextStyle? _centeredAppBarTitleStyle(
+  BuildContext context, {
+  required String text,
+  required double leadingWidth,
+  required double actionsWidth,
+}) {
+  final base = Theme.of(context).appBarTheme.titleTextStyle;
+  if (base == null) return null;
+  final maxWidth = MediaQuery.sizeOf(context).width -
+      2 * math.max(leadingWidth, actionsWidth) -
+      8;
+  final baseSize = base.fontSize ?? 22;
+  if (maxWidth <= 0) return base.copyWith(fontSize: 13);
+
+  var fontSize = baseSize;
+  final painter = TextPainter(
+    textDirection: Directionality.of(context),
+    maxLines: 1,
+  );
+  while (fontSize > 13) {
+    painter
+      ..text = TextSpan(text: text, style: base.copyWith(fontSize: fontSize))
+      ..layout();
+    if (painter.width <= maxWidth) break;
+    fontSize -= 0.5;
+  }
+  return fontSize == baseSize ? base : base.copyWith(fontSize: fontSize);
+}
+
 class GameScreen extends StatefulWidget {
   /// When true, this route is the nested Daily Irodoku under Main Menu.
   final bool isDailyRoute;
@@ -104,6 +135,7 @@ class _GameScreenState extends State<GameScreen> {
           context,
           showNewGame: !widget.isDailyRoute,
           onNewGame: _onNewGame,
+          maxMistakes: game.mistakeLimit,
         );
       });
     } else if (!game.isGameOver) {
@@ -129,6 +161,21 @@ class _GameScreenState extends State<GameScreen> {
             !game.isGenerating &&
             !game.isGameOver;
 
+        final titleText = widget.isDailyRoute
+            ? 'Daily Challenge'
+            : game.isPocket && settings.chromatic
+                ? '[Chromatic]'
+                : game.isPocket
+                    ? 'Pocket'
+                    : (settings.chromatic ? 'Chromatic' : 'Irodoku');
+        final titleStyle = _centeredAppBarTitleStyle(
+          context,
+          text: titleText,
+          leadingWidth: widget.isDailyRoute ? 56 : 0,
+          actionsWidth:
+              kMinInteractiveDimension * (widget.isDailyRoute ? 1 : 3),
+        );
+
         final scaffold = GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: hasSelection
@@ -148,13 +195,9 @@ class _GameScreenState extends State<GameScreen> {
                     )
                   : null,
               title: TypingTitle(
-                text: widget.isDailyRoute
-                    ? 'Daily Challenge'
-                    : game.isPocket && settings.chromatic
-                        ? '[Chromatic]'
-                        : game.isPocket
-                            ? 'Pocket'
-                            : (settings.chromatic ? 'Chromatic' : 'Irodoku'),
+                text: titleText,
+                style: titleStyle,
+                textAlign: TextAlign.center,
                 playToken: _titlePlayToken,
                 onTap: game.triggerColorCycle,
               ),

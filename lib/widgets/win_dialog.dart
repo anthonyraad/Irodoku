@@ -128,6 +128,7 @@ Future<void> showLoseDialog(
   BuildContext context, {
   required VoidCallback onNewGame,
   bool showNewGame = true,
+  int maxMistakes = 3,
 }) {
   return showGeneralDialog(
     context: context,
@@ -153,7 +154,7 @@ Future<void> showLoseDialog(
         content: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            for (var i = 0; i < 3; i++)
+            for (var i = 0; i < maxMistakes; i++)
               Icon(
                 Icons.close,
                 size: 48,
