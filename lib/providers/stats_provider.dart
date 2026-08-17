@@ -133,6 +133,7 @@ class StatsProvider extends ChangeNotifier {
     int achievedXp = 0,
     bool noteless = false,
     bool pocket = false,
+    bool graffiti = false,
   }) {
     final first = isFirstWinOfDay;
     final lastPalette = _prefs.getXpLastWinPalette();
@@ -155,6 +156,7 @@ class StatsProvider extends ChangeNotifier {
       noteless: noteless,
       achievedXp: achievedXp,
       pocket: pocket,
+      graffiti: graffiti,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
@@ -165,12 +167,57 @@ class StatsProvider extends ChangeNotifier {
     return award;
   }
 
-  /// Pocket wins grant XP only — no stats, streaks, unlocks, or last-win palette.
+  /// Pocket wins grant XP plus Pocket/[Chromatic] win counts and best times.
+  /// Does not touch Classic streaks, unlocks, or last-win palette.
   void awardPocketWin({
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool chromatic = false,
   }) {
+    final pocketCurrent =
+        Map<GamePalette, int>.from(_stats.pocketCurrentStreakByPalette);
+    final pocketBest =
+        Map<GamePalette, int>.from(_stats.pocketBestStreakByPalette);
+    for (final p in GamePalette.values) {
+      if (p != palette) pocketCurrent[p] = 0;
+    }
+    final paletteCurrent = (pocketCurrent[palette] ?? 0) + 1;
+    pocketCurrent[palette] = paletteCurrent;
+    if (paletteCurrent > (pocketBest[palette] ?? 0)) {
+      pocketBest[palette] = paletteCurrent;
+    }
+
+    if (chromatic) {
+      final previous = _stats.pocketChromaticBestTime;
+      final chromaticStreak = _stats.pocketChromaticCurrentStreak + 1;
+      _stats = _stats.copyWith(
+        pocketChromaticWins: _stats.pocketChromaticWins + 1,
+        pocketChromaticBestTime:
+            previous == null || elapsed < previous ? elapsed : previous,
+        pocketCurrentStreakByPalette: pocketCurrent,
+        pocketBestStreakByPalette: pocketBest,
+        pocketChromaticCurrentStreak: chromaticStreak,
+        pocketChromaticBestStreak:
+            chromaticStreak > _stats.pocketChromaticBestStreak
+                ? chromaticStreak
+                : _stats.pocketChromaticBestStreak,
+      );
+    } else {
+      final previous = _stats.pocketBestTime;
+      final streak = _stats.pocketCurrentStreak + 1;
+      _stats = _stats.copyWith(
+        pocketWins: _stats.pocketWins + 1,
+        pocketBestTime:
+            previous == null || elapsed < previous ? elapsed : previous,
+        pocketCurrentStreakByPalette: pocketCurrent,
+        pocketBestStreakByPalette: pocketBest,
+        pocketCurrentStreak: streak,
+        pocketBestStreak: streak > _stats.pocketBestStreak
+            ? streak
+            : _stats.pocketBestStreak,
+      );
+    }
     _awardWinXp(
       difficulty: Difficulty.easy,
       mistakes: mistakes,
@@ -178,6 +225,7 @@ class StatsProvider extends ChangeNotifier {
       palette: palette,
       sourceLabel: 'Pocket',
       pocket: true,
+      chromatic: chromatic,
     );
     notifyListeners();
   }
@@ -206,6 +254,7 @@ class StatsProvider extends ChangeNotifier {
         palette: palette,
         sourceLabel: 'Graffiti',
         noteless: noteless,
+        graffiti: true,
       );
     } else {
       _lastXpAward = null;
@@ -349,6 +398,26 @@ class StatsProvider extends ChangeNotifier {
       currentStreak: 0,
       currentStreakByPalette: currentStreakByPalette,
     );
+    notifyListeners();
+  }
+
+  /// Pocket losses break that mode’s streak and palette streak only.
+  void resetPocketStreakSync({
+    required GamePalette palette,
+    required bool chromatic,
+  }) {
+    final pocketCurrent =
+        Map<GamePalette, int>.from(_stats.pocketCurrentStreakByPalette);
+    pocketCurrent[palette] = 0;
+    _stats = chromatic
+        ? _stats.copyWith(
+            pocketCurrentStreakByPalette: pocketCurrent,
+            pocketChromaticCurrentStreak: 0,
+          )
+        : _stats.copyWith(
+            pocketCurrentStreakByPalette: pocketCurrent,
+            pocketCurrentStreak: 0,
+          );
     notifyListeners();
   }
 }

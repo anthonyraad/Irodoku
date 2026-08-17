@@ -12,7 +12,10 @@ import '../widgets/typing_title.dart';
 import '../widgets/xp_gain_panel.dart';
 
 class StatsScreen extends StatefulWidget {
-  const StatsScreen({super.key});
+  /// Main Menu [Stats]: Pocket / [Chromatic] wins and best times only.
+  final bool pocket;
+
+  const StatsScreen({super.key, this.pocket = false});
 
   @override
   State<StatsScreen> createState() => _StatsScreenState();
@@ -30,14 +33,15 @@ class _StatsScreenState extends State<StatsScreen> {
       appBar: AppBar(
         leading: const MenuBackButton(),
         title: TypingTitle(
-          text: 'Stats',
+          text: widget.pocket ? '[Stats]' : 'Stats',
           style: titleStyle,
         ),
       ),
       body: Consumer2<StatsProvider, GameProvider>(
         builder: (context, statsProvider, game, _) {
           final stats = statsProvider.stats;
-          final showChromaticButton = statsProvider.areAllMenuPalettesUnlocked;
+          final showChromaticButton =
+              !widget.pocket && statsProvider.areAllMenuPalettesUnlocked;
           final bottomInset = MediaQuery.paddingOf(context).bottom;
 
           return Stack(
@@ -54,7 +58,56 @@ class _StatsScreenState extends State<StatsScreen> {
                     padding: const EdgeInsets.only(bottom: 20),
                     child: _LevelCard(totalXp: stats.totalXp),
                   ),
-                  _GamesWonCard(
+                  if (widget.pocket) ...[
+                    _StatCard(
+                      children: [
+                        _StatRow(
+                          label: 'Games won',
+                          value: '${stats.pocketGamesWon}',
+                        ),
+                        _StatRow(
+                          label: '[Pocket] streak',
+                          value: '${stats.pocketBestStreak}',
+                          indent: true,
+                        ),
+                        _StatRow(
+                          label: '[Chromatic] streak',
+                          value: '${stats.pocketChromaticBestStreak}',
+                          indent: true,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const _DifficultyStatsHeader(firstColumn: 'Mode'),
+                    const SizedBox(height: 8),
+                    _StatCard(
+                      children: [
+                        _DifficultyStatsRow(
+                          difficulty: '[Pocket]',
+                          bestTime: _formatBest(stats.pocketBestTime),
+                          wins: '${stats.pocketWins}',
+                        ),
+                        _DifficultyStatsRow(
+                          difficulty: '[Chromatic]',
+                          bestTime: _formatBest(stats.pocketChromaticBestTime),
+                          wins: '${stats.pocketChromaticWins}',
+                        ),
+                      ],
+                    ),
+                    if (stats.favoritePocketPalette
+                        case final favoritePalette?) ...[
+                      const SizedBox(height: 20),
+                      _StatCard(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: _PalettePreviewRow(palette: favoritePalette),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ] else ...[
+                    _GamesWonCard(
                     chromatic: _showChromatic,
                     gamesWon: stats.gamesWon,
                     chromaticGamesWon: stats.chromaticGamesWon,
@@ -102,6 +155,7 @@ class _StatsScreenState extends State<StatsScreen> {
                         ],
                       ),
                     ],
+                  ],
                   ],
                 ],
               ),
@@ -392,7 +446,9 @@ class _StatCard extends StatelessWidget {
 }
 
 class _DifficultyStatsHeader extends StatelessWidget {
-  const _DifficultyStatsHeader();
+  final String firstColumn;
+
+  const _DifficultyStatsHeader({this.firstColumn = 'Difficulty'});
 
   static TextStyle? _headerStyle(BuildContext context) {
     return Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -411,7 +467,7 @@ class _DifficultyStatsHeader extends StatelessWidget {
         children: [
           Expanded(
             flex: 4,
-            child: Text('Difficulty', style: style),
+            child: Text(firstColumn, style: style),
           ),
           Expanded(
             flex: 5,

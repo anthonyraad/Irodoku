@@ -6,7 +6,10 @@ import 'game_stats.dart';
 /// Prestige XP: stored as [totalXp]; level / progress are derived.
 abstract final class PlayerXp {
   static const firstWinOfDayBonus = 50;
-  static const chromaticBonus = 40;
+  /// 9×9 Chromatic: 75% of that difficulty's finish XP, rounded down.
+  static const chromaticModifier = 0.75;
+  /// Pocket [Chromatic] unit-hop games grant a smaller Chromatic line.
+  static const pocketChromaticBonus = 20;
   static const flawlessModifier = 0.25;
   static const fastModifier = 0.25;
   static const notelessModifier = 0.40;
@@ -20,6 +23,9 @@ abstract final class PlayerXp {
         Difficulty.master => 400,
       };
 
+  static int chromaticBonusFor(Difficulty difficulty) =>
+      (baseXp(difficulty) * chromaticModifier).floor();
+
   /// Daily Challenge is a flat base (that day's difficulty still gates Fast).
   static const dailyBaseXp = 150;
   static const dailyStreakBonus = 25;
@@ -29,8 +35,9 @@ abstract final class PlayerXp {
   static const pocketBaseXp = 25;
   static const pocketFastThreshold = Duration(minutes: 2);
 
-  /// Graffiti has no ladder tier — treated as Medium for base + speed.
+  /// Graffiti has no ladder tier — treated as Medium for base; Speedy is under 5:00.
   static const graffitiDifficulty = Difficulty.medium;
+  static const graffitiFastThreshold = Duration(minutes: 5);
 
   static Duration fastThreshold(Difficulty difficulty) => switch (difficulty) {
         Difficulty.easy => const Duration(minutes: 5),
@@ -102,6 +109,7 @@ abstract final class PlayerXp {
     bool noteless = false,
     int achievedXp = 0,
     bool pocket = false,
+    bool graffiti = false,
   }) {
     final base = pocket
         ? pocketBaseXp
@@ -111,7 +119,9 @@ abstract final class PlayerXp {
     final flawless = mistakes == 0;
     final fast = pocket
         ? elapsed < pocketFastThreshold
-        : elapsed < fastThreshold(difficulty);
+        : graffiti
+            ? elapsed < graffitiFastThreshold
+            : elapsed < fastThreshold(difficulty);
     final flawlessXp = flawless ? (base * flawlessModifier).floor() : 0;
     final fastXp = fast ? (base * fastModifier).floor() : 0;
     final notelessXp =
@@ -123,7 +133,11 @@ abstract final class PlayerXp {
     final streak = !pocket && daily && dailyStreak >= dailyStreakBonusMin
         ? dailyStreakBonus
         : 0;
-    final chromaticXp = !pocket && chromatic ? chromaticBonus : 0;
+    final chromaticXp = !chromatic
+        ? 0
+        : pocket
+            ? pocketChromaticBonus
+            : chromaticBonusFor(difficulty);
     final artistryXp = pocket ? 0 : achievedXp;
     final earned = base +
         flawlessXp +
@@ -148,6 +162,8 @@ abstract final class PlayerXp {
       firstWinOfDay: firstWinOfDay,
       streak: streak > 0,
       chromatic: chromaticXp > 0,
+      chromaticXp: chromaticXp,
+      chromaticLabel: pocket ? '[Chromatic]' : 'Chromatic',
       wetPaint: wetPaintXp > 0,
       noteless: notelessXp > 0,
       achievedXp: artistryXp,
@@ -171,6 +187,8 @@ class XpAward {
   final bool firstWinOfDay;
   final bool streak;
   final bool chromatic;
+  final int chromaticXp;
+  final String chromaticLabel;
   final bool wetPaint;
   final bool noteless;
   final int achievedXp;
@@ -191,6 +209,8 @@ class XpAward {
     required this.firstWinOfDay,
     required this.streak,
     required this.chromatic,
+    this.chromaticXp = 0,
+    this.chromaticLabel = 'Chromatic',
     this.wetPaint = false,
     this.noteless = false,
     this.achievedXp = 0,
@@ -214,7 +234,7 @@ class XpAward {
         if (fast) (label: 'Speedy', xp: fastXp),
         if (noteless) (label: 'Freestyle', xp: notelessXp),
         if (wetPaint) (label: 'Wet paint', xp: wetPaintXp),
-        if (chromatic) (label: 'Chromatic', xp: PlayerXp.chromaticBonus),
+        if (chromatic) (label: chromaticLabel, xp: chromaticXp),
         if (achievedXp > 0) (label: 'Artistry', xp: achievedXp),
         if (firstWinOfDay)
           (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),

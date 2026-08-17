@@ -249,17 +249,17 @@ void main() {
     );
     expect(award.wetPaint, isFalse);
     expect(award.wetPaintXp, 0);
-    expect(award.earned, 215);
+    expect(award.earned, 306);
     expect(
       award.breakdown,
       [
         (label: 'Hard finish', xp: 175),
-        (label: 'Chromatic', xp: 40),
+        (label: 'Chromatic', xp: 131),
       ],
     );
   });
 
-  test('Chromatic adds a flat 40 XP', () {
+  test('Chromatic is 75% of difficulty base, rounded down', () {
     final classic = PlayerXp.compute(
       difficulty: Difficulty.easy,
       mistakes: 1,
@@ -278,14 +278,19 @@ void main() {
     expect(classic.chromatic, isFalse);
     expect(classic.earned, 50);
     expect(chromatic.chromatic, isTrue);
-    expect(chromatic.earned, 90);
+    expect(chromatic.chromaticXp, 37);
+    expect(chromatic.earned, 87);
     expect(
       chromatic.breakdown,
       [
         (label: 'Easy finish', xp: 50),
-        (label: 'Chromatic', xp: 40),
+        (label: 'Chromatic', xp: 37),
       ],
     );
+    expect(PlayerXp.chromaticBonusFor(Difficulty.medium), 75);
+    expect(PlayerXp.chromaticBonusFor(Difficulty.hard), 131);
+    expect(PlayerXp.chromaticBonusFor(Difficulty.expert), 206);
+    expect(PlayerXp.chromaticBonusFor(Difficulty.master), 300);
   });
 
   test('completing an achievement row adds Artistry XP', () {
@@ -354,6 +359,33 @@ void main() {
     expect(onThreshold.earned, 25);
   });
 
+  test('Graffiti Speedy is under 5:00', () {
+    final under = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 4, seconds: 59),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: 'Graffiti',
+      graffiti: true,
+    );
+    final onThreshold = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 5),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: 'Graffiti',
+      graffiti: true,
+    );
+    expect(under.baseXp, 100);
+    expect(under.fast, isTrue);
+    expect(under.fastXp, 25);
+    expect(under.earned, 125);
+    expect(onThreshold.fast, isFalse);
+    expect(onThreshold.earned, 100);
+  });
+
   test('Pocket Flawless and First of day apply; extras do not', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.hard,
@@ -364,7 +396,6 @@ void main() {
       pocket: true,
       wetPaint: true,
       noteless: true,
-      chromatic: true,
       daily: true,
       dailyStreak: 5,
       achievedXp: 1000,
@@ -388,6 +419,29 @@ void main() {
         (label: 'Flawless', xp: 6),
         (label: 'Speedy', xp: 6),
         (label: 'First of day', xp: 50),
+      ],
+    );
+  });
+
+  test('Pocket Chromatic adds a flat 20 XP labeled [Chromatic]', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 3),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+      chromatic: true,
+    );
+    expect(award.baseXp, 25);
+    expect(award.chromatic, isTrue);
+    expect(award.chromaticXp, 20);
+    expect(award.earned, 45);
+    expect(
+      award.breakdown,
+      [
+        (label: 'Pocket finish', xp: 25),
+        (label: '[Chromatic]', xp: 20),
       ],
     );
   });

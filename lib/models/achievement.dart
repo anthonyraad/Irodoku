@@ -95,7 +95,7 @@ class Achievement {
     Achievement(row: 3, col: 5, title: 'Win a Master game with Neon palette'),
     Achievement(row: 3, col: 6, title: 'Win a Hard game within 12 minutes'),
     Achievement(row: 3, col: 7, title: 'Win an Expert game within 18 minutes'),
-    Achievement(row: 3, col: 8, title: 'Win a Master game within 45 minutes'),
+    Achievement(row: 3, col: 8, title: 'Win a Master game within 25 minutes'),
     // Row 5 — Kanto
     Achievement(row: 4, col: 0, title: 'Win 3 games with Kanto palette'),
     Achievement(row: 4, col: 1, title: 'Win 7 games with Kanto palette'),

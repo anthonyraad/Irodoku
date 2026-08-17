@@ -215,7 +215,7 @@ class AchievementsProvider extends ChangeNotifier {
     if (within(Difficulty.expert, const Duration(minutes: 18))) {
       ids.add('r4c8');
     }
-    if (within(Difficulty.master, const Duration(minutes: 45))) {
+    if (within(Difficulty.master, const Duration(minutes: 25))) {
       ids.add('r4c9');
     }
 
@@ -521,7 +521,7 @@ class AchievementsProvider extends ChangeNotifier {
       ids.add('r4c8');
     }
     if (difficulty == Difficulty.master &&
-        elapsed <= const Duration(minutes: 45)) {
+        elapsed <= const Duration(minutes: 25)) {
       ids.add('r4c9');
     }
 

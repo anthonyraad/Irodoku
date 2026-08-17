@@ -126,6 +126,9 @@ class GameProvider extends ChangeNotifier {
   /// Pocket puzzle parked while Classic/Chromatic/Daily is active.
   _HeldGameSession? _heldPocket;
 
+  /// 6×6 Chromatic Pocket parked while Classic / 9×9 Chromatic / Pocket / Daily is active.
+  _HeldGameSession? _heldPocketChromatic;
+
   /// After cold restore of a paused Daily, home should open Main Menu → Daily.
   bool _openDailyRoutePending = false;
 
@@ -648,9 +651,14 @@ class GameProvider extends ChangeNotifier {
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
     } else if (startingPocket) {
-      // New Pocket keeps parked Classic/Chromatic/Daily.
-      _heldPocket = null;
-      await _prefs.clearParkedPocketGame();
+      // New Pocket keeps parked Classic/Chromatic/Daily and the other Pocket flavor.
+      if (_settings.chromatic) {
+        _heldPocketChromatic = null;
+        await _prefs.clearParkedPocketChromaticGame();
+      } else {
+        _heldPocket = null;
+        await _prefs.clearParkedPocketGame();
+      }
       _sessionPalette = null;
     } else if (preserveHeldDaily) {
       // Regenerate the live Classic/Chromatic board without wiping Daily.
@@ -668,7 +676,7 @@ class GameProvider extends ChangeNotifier {
         return;
       }
       if (_isPocket) {
-        await _parkPocketFromLive();
+        await _parkLivePocket();
       }
       if (_settings.chromatic) {
         _heldChromatic = null;
@@ -685,11 +693,13 @@ class GameProvider extends ChangeNotifier {
       _heldRegular = null;
       _heldChromatic = null;
       _heldPocket = null;
+      _heldPocketChromatic = null;
       _sessionPalette = null;
       await _prefs.clearParkedDailyGame();
       await _prefs.clearParkedRegularGame();
       await _prefs.clearParkedChromaticGame();
       await _prefs.clearParkedPocketGame();
+      await _prefs.clearParkedPocketChromaticGame();
       await _prefs.clearPaletteBeforeDaily();
     }
 
@@ -1407,10 +1417,10 @@ class GameProvider extends ChangeNotifier {
 
   /// Chromatic mode: after completing any unit, hop to a different menu palette.
   ///
-  /// Hops use [_sessionPalette] only — the user's saved Config palette is left
-  /// unchanged. Wins still credit [activePalette] (the finish hop).
+  /// Includes 6×6 [Chromatic] Pocket. Hops use [_sessionPalette] only — the
+  /// user's saved Config palette is left unchanged.
   void _maybeChromaticShift() {
-    if (_isDaily || _isPocket) return;
+    if (_isDaily) return;
     if (!_settings.chromatic) return;
     final current = activePalette;
     final options = GamePalette.menuValues
@@ -1612,9 +1622,16 @@ class GameProvider extends ChangeNotifier {
     _refreshConflicts();
     if (!_lossRecorded) {
       _lossRecorded = true;
-      // Daily / Pocket losses don't touch the regular palette streak.
+      // Daily losses don't touch the regular palette streak.
+      // Pocket losses only break Pocket palette streaks (favorite palette).
       if (!_isDaily && !_isPocket) {
         _stats.resetStreakSync(palette: _settings.palette);
+        unawaited(_stats.persist());
+      } else if (_isPocket) {
+        _stats.resetPocketStreakSync(
+          palette: activePalette,
+          chromatic: _settings.chromatic,
+        );
         unawaited(_stats.persist());
       }
     }
@@ -1661,6 +1678,7 @@ class GameProvider extends ChangeNotifier {
           elapsed: _elapsed,
           mistakes: _mistakes,
           palette: winPalette,
+          chromatic: _settings.chromatic,
         );
         unawaited(_stats.persist());
       } else {
@@ -1815,14 +1833,30 @@ class GameProvider extends ChangeNotifier {
     } else if (parkedPocket != null) {
       await _prefs.clearParkedPocketGame();
     }
+
+    final parkedPocketChromatic = _prefs.loadParkedPocketChromaticGame();
+    if (parkedPocketChromatic != null && parkedPocketChromatic.isPocket) {
+      _heldPocketChromatic = _heldFromPaused(parkedPocketChromatic);
+    } else if (parkedPocketChromatic != null) {
+      await _prefs.clearParkedPocketChromaticGame();
+    }
   }
 
   /// Park Classic, Chromatic, or Pocket so Daily/mode-switch can replace live.
   Future<void> _parkHomeLive() async {
     if (_isPocket) {
-      await _parkPocketFromLive();
+      await _parkLivePocket();
     } else {
       await _parkRegularFromLive();
+    }
+  }
+
+  Future<void> _parkLivePocket() async {
+    if (!_isPocket) return;
+    if (_settings.chromatic) {
+      await _parkPocketChromaticFromLive();
+    } else {
+      await _parkPocketFromLive();
     }
   }
 
@@ -1841,11 +1875,19 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> _parkPocketFromLive() async {
-    if (!_isPocket) return;
+    if (!_isPocket || _settings.chromatic) return;
     if (!_hasActiveGame && !isGameOver && _solution == null) return;
     _timer?.cancel();
     _heldPocket = _captureHeld();
     await _persistParkedPocket();
+  }
+
+  Future<void> _parkPocketChromaticFromLive() async {
+    if (!_isPocket || !_settings.chromatic) return;
+    if (!_hasActiveGame && !isGameOver && _solution == null) return;
+    _timer?.cancel();
+    _heldPocketChromatic = _captureHeld();
+    await _persistParkedPocketChromatic();
   }
 
   Future<void> _persistParkedRegular() async {
@@ -1904,6 +1946,20 @@ class GameProvider extends ChangeNotifier {
     await _prefs.saveParkedPocketGame(paused);
   }
 
+  Future<void> _persistParkedPocketChromatic() async {
+    final held = _heldPocketChromatic;
+    if (held == null) {
+      await _prefs.clearParkedPocketChromaticGame();
+      return;
+    }
+    final paused = _pausedFromHeld(held);
+    if (paused == null) {
+      await _prefs.clearParkedPocketChromaticGame();
+      return;
+    }
+    await _prefs.saveParkedPocketChromaticGame(paused);
+  }
+
   Future<void> _parkDailyIfLive() async {
     if (!_isDaily) return;
     _timer?.cancel();
@@ -1923,7 +1979,7 @@ class GameProvider extends ChangeNotifier {
     if (_isGenerating) return;
 
     if (_isPocket) {
-      await _parkPocketFromLive();
+      await _parkLivePocket();
     } else if (_isDaily) {
       await _parkDailyIfLive();
     } else if (_settings.chromatic) {
@@ -1952,13 +2008,13 @@ class GameProvider extends ChangeNotifier {
     if (!_stats.areAllMenuPalettesUnlocked) return false;
 
     if (_isPocket) {
-      await _parkPocketFromLive();
+      await _parkLivePocket();
     } else if (_isDaily) {
       await _parkDailyIfLive();
     } else if (!_settings.chromatic) {
       await _parkRegularFromLive();
     } else {
-      // Already on Chromatic — resume as-is.
+      // Already on 9×9 Chromatic — resume as-is.
       notifyListeners();
       return true;
     }
@@ -1979,17 +2035,20 @@ class GameProvider extends ChangeNotifier {
   Future<void> openPocketGame() async {
     if (_isGenerating) return;
 
-    if (_isPocket) {
+    if (_isPocket && !_settings.chromatic) {
       notifyListeners();
       return;
     }
 
     if (_isDaily) {
       await _parkDailyIfLive();
+    } else if (_isPocket) {
+      await _parkLivePocket();
     } else {
       await _parkRegularFromLive();
     }
 
+    await _settings.setChromatic(false);
     if (_heldPocket != null) {
       _applyHeld(_heldPocket!);
       _heldPocket = null;
@@ -1998,6 +2057,37 @@ class GameProvider extends ChangeNotifier {
       await startNewGame(pocket: true, preserveHeldDaily: true);
     }
     notifyListeners();
+  }
+
+  /// Switch to 6×6 Chromatic Pocket for Main Menu → resume or start.
+  /// Returns false if Chromatic is still locked.
+  Future<bool> openPocketChromaticGame() async {
+    if (_isGenerating) return false;
+    if (!_stats.areAllMenuPalettesUnlocked) return false;
+
+    if (_isPocket && _settings.chromatic) {
+      notifyListeners();
+      return true;
+    }
+
+    if (_isDaily) {
+      await _parkDailyIfLive();
+    } else if (_isPocket) {
+      await _parkLivePocket();
+    } else {
+      await _parkRegularFromLive();
+    }
+
+    await _settings.setChromatic(true);
+    if (_heldPocketChromatic != null) {
+      _applyHeld(_heldPocketChromatic!);
+      _heldPocketChromatic = null;
+      await _prefs.clearParkedPocketChromaticGame();
+    } else {
+      await startNewGame(pocket: true, preserveHeldDaily: true);
+    }
+    notifyListeners();
+    return true;
   }
 
   PausedGame? _pausedFromHeld(_HeldGameSession held) {

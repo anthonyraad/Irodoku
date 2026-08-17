@@ -364,9 +364,13 @@ class ConfigSettingsPanel extends StatelessWidget {
   /// Sound / Dark mode toggles (Settings page only; hidden on Main Menu).
   final bool showSoundAndDarkMode;
 
+  /// Main Menu [Pocket] swipe: replace the difficulty dropdown with a grey XX.
+  final bool difficultyLocked;
+
   const ConfigSettingsPanel({
     super.key,
     this.showSoundAndDarkMode = true,
+    this.difficultyLocked = false,
   });
 
   @override
@@ -380,37 +384,11 @@ class ConfigSettingsPanel extends StatelessWidget {
           children: [
             ListTile(
               title: const Text('Difficulty'),
-              trailing: DropdownButtonHideUnderline(
-                child: DropdownButton<Difficulty>(
-                  value: settings.difficulty,
-                  alignment: AlignmentDirectional.centerEnd,
-                  items: [
-                    for (final difficulty in Difficulty.values)
-                      DropdownMenuItem(
-                        value: difficulty,
-                        child: _LockedMenuItem(
-                          label: difficulty.label,
-                          unlocked: statsProvider.isUnlocked(difficulty),
-                        ),
-                      ),
-                  ],
-                  selectedItemBuilder: (context) => [
-                    for (final difficulty in Difficulty.values)
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: Text(difficulty.label),
-                      ),
-                  ],
-                  onChanged: (difficulty) {
-                    if (difficulty == null) return;
-                    if (!statsProvider.isUnlocked(difficulty)) {
-                      _showUnlockSnackBar(context, difficulty, stats);
-                      return;
-                    }
-                    if (difficulty == settings.difficulty) return;
-                    _onDifficultyChosen(context, settings, difficulty);
-                  },
-                ),
+              trailing: _DifficultyTrailing(
+                locked: difficultyLocked,
+                settings: settings,
+                statsProvider: statsProvider,
+                stats: stats,
               ),
             ),
             if (showSoundAndDarkMode) ...[
@@ -467,6 +445,144 @@ class ConfigSettingsPanel extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Difficulty dropdown whose caret scales away when Pocket locks the control.
+class _DifficultyTrailing extends StatefulWidget {
+  final bool locked;
+  final SettingsProvider settings;
+  final StatsProvider statsProvider;
+  final GameStats stats;
+
+  const _DifficultyTrailing({
+    required this.locked,
+    required this.settings,
+    required this.statsProvider,
+    required this.stats,
+  });
+
+  @override
+  State<_DifficultyTrailing> createState() => _DifficultyTrailingState();
+}
+
+class _DifficultyTrailingState extends State<_DifficultyTrailing>
+    with SingleTickerProviderStateMixin {
+  static const _caretSize = 24.0;
+  static const _caretDuration = Duration(milliseconds: 210);
+
+  late final AnimationController _caret;
+  late final Animation<double> _caretScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _caret = AnimationController(
+      vsync: this,
+      duration: _caretDuration,
+      value: widget.locked ? 0 : 1,
+    );
+    _caretScale = CurvedAnimation(
+      parent: _caret,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _DifficultyTrailing oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.locked == widget.locked) return;
+    if (widget.locked) {
+      _caret.reverse();
+    } else {
+      _caret.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _caret.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final xxStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
+          color: Theme.of(context)
+              .colorScheme
+              .onSurface
+              .withValues(alpha: 0.35),
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1.2,
+        );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.locked)
+          Text('XX', style: xxStyle)
+        else
+          DropdownButtonHideUnderline(
+            child: DropdownButton<Difficulty>(
+              value: widget.settings.difficulty,
+              alignment: AlignmentDirectional.centerEnd,
+              iconSize: _caretSize,
+              icon: ScaleTransition(
+                scale: _caretScale,
+                child: Icon(
+                  Icons.arrow_drop_down,
+                  size: _caretSize,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              items: [
+                for (final difficulty in Difficulty.values)
+                  DropdownMenuItem(
+                    value: difficulty,
+                    child: _LockedMenuItem(
+                      label: difficulty.label,
+                      unlocked: widget.statsProvider.isUnlocked(difficulty),
+                    ),
+                  ),
+              ],
+              selectedItemBuilder: (context) => [
+                for (final difficulty in Difficulty.values)
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Text(difficulty.label),
+                  ),
+              ],
+              onChanged: (difficulty) {
+                if (difficulty == null) return;
+                if (!widget.statsProvider.isUnlocked(difficulty)) {
+                  _showUnlockSnackBar(
+                    context,
+                    difficulty,
+                    widget.stats,
+                  );
+                  return;
+                }
+                if (difficulty == widget.settings.difficulty) return;
+                _onDifficultyChosen(context, widget.settings, difficulty);
+              },
+            ),
+          ),
+        if (widget.locked)
+          SizedBox(
+            width: _caretSize,
+            height: _caretSize,
+            child: ScaleTransition(
+              scale: _caretScale,
+              child: Icon(
+                Icons.arrow_drop_down,
+                size: _caretSize,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -709,20 +825,24 @@ class _LockedMenuItem extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final muted = scheme.onSurface.withValues(alpha: 0.38);
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: unlocked
-              ? null
-              : Theme.of(context).textTheme.bodyMedium?.copyWith(color: muted),
-        ),
-        if (!unlocked) ...[
-          const SizedBox(width: 8),
-          Icon(Icons.lock_outline, size: 16, color: muted),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerStart,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: unlocked
+                ? null
+                : Theme.of(context).textTheme.bodyMedium?.copyWith(color: muted),
+          ),
+          if (!unlocked) ...[
+            const SizedBox(width: 8),
+            Icon(Icons.lock_outline, size: 16, color: muted),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

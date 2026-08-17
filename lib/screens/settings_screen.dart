@@ -38,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Timer? _titleIconTimer;
   Timer? _midnightTimer;
   bool _openingDaily = false;
+  bool _pocketMenu = false;
 
   /// Scale title icons in after a short beat (title text stays static).
   void _scheduleTitleIcons() {
@@ -167,17 +168,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     game,
                     unlocked: chromaticUnlocked,
                   ),
+                  onPocketChromatic: () => _onPocketChromaticPressed(
+                    context,
+                    game,
+                    unlocked: chromaticUnlocked,
+                  ),
                   onIroen: () => _onIroenPressed(
                     context,
                     stats,
                     unlocked: statsProvider.isIroenUnlocked,
                   ),
                   onPocket: () => _onPocketPressed(context, game),
+                  onPocketMenuChanged: (pocket) {
+                    if (_pocketMenu == pocket) return;
+                    setState(() => _pocketMenu = pocket);
+                  },
                 ),
               ),
               const Divider(height: 32),
-              const ConfigSettingsPanel(
+              ConfigSettingsPanel(
                 showSoundAndDarkMode: false,
+                difficultyLocked: _pocketMenu,
               ),
               const Divider(height: 32),
               Padding(
@@ -186,12 +197,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Expanded(
                       child: MenuActionButton(
-                        label: 'Stats',
+                        label: _pocketMenu ? '[Stats]' : 'Stats',
                         onPressed: () async {
                           _hideTitleIcons();
                           await Navigator.of(context).push(
                             IrodokuPageRoute(
-                              builder: (_) => const StatsScreen(),
+                              builder: (_) =>
+                                  StatsScreen(pocket: _pocketMenu),
                             ),
                           );
                           if (!mounted) return;
@@ -259,6 +271,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) async {
     await game.openPocketGame();
     if (!context.mounted) return;
+    await Navigator.of(context).maybePop();
+  }
+
+  Future<void> _onPocketChromaticPressed(
+    BuildContext context,
+    GameProvider game, {
+    required bool unlocked,
+  }) async {
+    if (!unlocked) {
+      _showChromaticLockedSnackBar(context);
+      return;
+    }
+    final started = await game.openPocketChromaticGame();
+    if (!context.mounted || !started) return;
     await Navigator.of(context).maybePop();
   }
 
@@ -495,7 +521,7 @@ class _MainMenuTitleIcon extends StatelessWidget {
   }
 }
 
-class _PlayModeGrid extends StatelessWidget {
+class _PlayModeGrid extends StatefulWidget {
   final bool busy;
   final bool dailyUnlocked;
   final bool dailyFinished;
@@ -507,8 +533,10 @@ class _PlayModeGrid extends StatelessWidget {
   final VoidCallback onDaily;
   final VoidCallback onGraffiti;
   final VoidCallback onChromatic;
+  final VoidCallback onPocketChromatic;
   final VoidCallback onIroen;
   final VoidCallback onPocket;
+  final ValueChanged<bool> onPocketMenuChanged;
 
   const _PlayModeGrid({
     required this.busy,
@@ -522,18 +550,56 @@ class _PlayModeGrid extends StatelessWidget {
     required this.onDaily,
     required this.onGraffiti,
     required this.onChromatic,
+    required this.onPocketChromatic,
     required this.onIroen,
     required this.onPocket,
+    required this.onPocketMenuChanged,
   });
 
   @override
+  State<_PlayModeGrid> createState() => _PlayModeGridState();
+}
+
+class _PlayModeGridState extends State<_PlayModeGrid>
+    with SingleTickerProviderStateMixin {
+  bool _pocket = false;
+  late final AnimationController _chromaticShake;
+
+  @override
+  void initState() {
+    super.initState();
+    _chromaticShake = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 210),
+    );
+  }
+
+  @override
+  void dispose() {
+    _chromaticShake.dispose();
+    super.dispose();
+  }
+
+  void _onPocketModeChanged(bool pocket) {
+    if (_pocket == pocket) return;
+    setState(() => _pocket = pocket);
+    widget.onPocketMenuChanged(pocket);
+    if (widget.chromaticUnlocked) {
+      _chromaticShake.forward(from: 0);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final chromaticLabel =
+        widget.chromaticUnlocked && _pocket ? '[Chromatic]' : 'Chromatic';
     return Column(
       children: [
         _ClassicOrPocketButton(
-          busy: busy,
-          onClassic: onClassic,
-          onPocket: onPocket,
+          busy: widget.busy,
+          onClassic: widget.onClassic,
+          onPocket: widget.onPocket,
+          onPocketModeChanged: _onPocketModeChanged,
         ),
         const SizedBox(height: 12),
         Row(
@@ -541,21 +607,22 @@ class _PlayModeGrid extends StatelessWidget {
             Expanded(
               child: MenuActionButton(
                 label: 'Graffiti',
-                enabled: !busy,
-                locked: !graffitiUnlocked,
-                onPressed: onGraffiti,
+                enabled: !widget.busy,
+                locked: !widget.graffitiUnlocked,
+                onPressed: widget.onGraffiti,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: MenuActionButton(
                 label: 'Daily Challenge',
-                badge:
-                    dailyUnlocked && dailyStreak > 0 ? 'x$dailyStreak' : null,
-                enabled: !busy,
-                muted: dailyUnlocked && dailyFinished,
-                locked: !dailyUnlocked,
-                onPressed: onDaily,
+                badge: widget.dailyUnlocked && widget.dailyStreak > 0
+                    ? 'x${widget.dailyStreak}'
+                    : null,
+                enabled: !widget.busy,
+                muted: widget.dailyUnlocked && widget.dailyFinished,
+                locked: !widget.dailyUnlocked,
+                onPressed: widget.onDaily,
               ),
             ),
           ],
@@ -565,10 +632,14 @@ class _PlayModeGrid extends StatelessWidget {
           children: [
             Expanded(
               child: MenuActionButton(
-                label: 'Chromatic',
-                enabled: !busy,
-                locked: !chromaticUnlocked,
-                onPressed: onChromatic,
+                label: chromaticLabel,
+                enabled: !widget.busy,
+                locked: !widget.chromaticUnlocked,
+                onPressed: _pocket && widget.chromaticUnlocked
+                    ? widget.onPocketChromatic
+                    : widget.onChromatic,
+                labelShake:
+                    widget.chromaticUnlocked ? _chromaticShake : null,
               ),
             ),
             const SizedBox(width: 12),
@@ -576,8 +647,8 @@ class _PlayModeGrid extends StatelessWidget {
               child: MenuActionButton(
                 label: 'Iroen',
                 enabled: true,
-                locked: !iroenUnlocked,
-                onPressed: onIroen,
+                locked: !widget.iroenUnlocked,
+                onPressed: widget.onIroen,
               ),
             ),
           ],
@@ -593,11 +664,13 @@ class _ClassicOrPocketButton extends StatefulWidget {
   final bool busy;
   final VoidCallback onClassic;
   final VoidCallback onPocket;
+  final ValueChanged<bool> onPocketModeChanged;
 
   const _ClassicOrPocketButton({
     required this.busy,
     required this.onClassic,
     required this.onPocket,
+    required this.onPocketModeChanged,
   });
 
   @override
@@ -637,6 +710,7 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
     playMenuSelectSound(context);
     setState(() => _pocket = pocket);
     _shake.forward(from: 0);
+    widget.onPocketModeChanged(pocket);
   }
 
   void _suppressTapFromSwipe() {
@@ -677,7 +751,7 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
       onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
       onHorizontalDragEnd: _onDragEnd,
       child: MenuActionButton(
-        label: _pocket ? 'Pocket' : 'Classic Game',
+        label: _pocket ? '[Pocket]' : 'Classic Game',
         enabled: !widget.busy,
         onPressed: _onPressed,
         labelShake: _shake,

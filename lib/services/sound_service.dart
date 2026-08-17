@@ -15,8 +15,24 @@ class SoundService {
   /// Concurrent voices per note so same-color fills can overlap.
   static const _noteOverlapSlots = 3;
 
-  static const _note = 'sounds/note.mp3';
-  static const _deselect = 'sounds/deselect.mp3';
+  static const _note1 = 'sounds/note1.mp3';
+  static const _note2 = 'sounds/note2.mp3';
+  static const _note3 = 'sounds/note3.mp3';
+  static const _note4 = 'sounds/note4.mp3';
+  static const _notes = [
+    _note1,
+    _note2,
+    _note3,
+    _note4,
+  ];
+  static const _deselect1 = 'sounds/deselect1.mp3';
+  static const _deselect2 = 'sounds/deselect2.mp3';
+  static const _deselect3 = 'sounds/deselect3.mp3';
+  static const _deselects = [
+    _deselect1,
+    _deselect2,
+    _deselect3,
+  ];
   static const _confirm = 'sounds/confirm.mp3';
   static const _coin = 'sounds/coin.mp3';
   static const _plink = 'sounds/plink.mp3';
@@ -63,8 +79,8 @@ class SoundService {
   static const _noteConfirmAssetSet = {..._noteConfirmsByValue};
 
   static const _assets = <String>[
-    _note,
-    _deselect,
+    ..._notes,
+    ..._deselects,
     _confirm,
     _coin,
     _plink,
@@ -85,8 +101,13 @@ class SoundService {
     _plink: 1.0,
     _mistake: 1.0,
     _gameLoss: 1.0,
-    _note: 1.0,
-    _deselect: 0.95,
+    _note1: 0.41,
+    _note2: 0.41,
+    _note3: 0.41,
+    _note4: 0.41,
+    _deselect1: 0.95,
+    _deselect2: 0.95,
+    _deselect3: 0.95,
     // Hotter source assets — attenuated to sit with confirm/note.
     _rainbowConfirm: 0.70, // ~3 dB hotter mean than confirm.mp3
     // Glass/Sky note stings.
@@ -127,6 +148,10 @@ class SoundService {
   final _random = Random();
   final List<String> _menuSelectBag = [];
   String? _lastMenuSelect;
+  final List<String> _noteBag = [];
+  String? _lastNote;
+  final List<String> _deselectBag = [];
+  String? _lastDeselect;
 
   Future<void> _init() async {
     try {
@@ -172,8 +197,8 @@ class SoundService {
     return player;
   }
 
-  Future<void> playNote() => _play(_note);
-  Future<void> playNoteDeselect() => _play(_deselect);
+  Future<void> playNote() => _play(_nextNote());
+  Future<void> playNoteDeselect() => _play(_nextDeselect());
   Future<void> playConfirm() => _play(_confirm);
   /// 1-1 palette placement sting (replaces [playConfirm]).
   Future<void> playCoin() => _play(_coin);
@@ -198,25 +223,45 @@ class SoundService {
   Future<void> playMenuSelect() => _play(_nextMenuSelect());
 
   String _nextMenuSelect() {
-    if (_menuSelectBag.isEmpty) _refillMenuSelectBag();
+    if (_menuSelectBag.isEmpty) {
+      _refillShuffleBag(_menuSelectBag, _menuSelects, _lastMenuSelect);
+    }
     final next = _menuSelectBag.removeLast();
     _lastMenuSelect = next;
     return next;
   }
 
-  void _refillMenuSelectBag() {
-    _menuSelectBag
+  String _nextNote() {
+    if (_noteBag.isEmpty) _refillShuffleBag(_noteBag, _notes, _lastNote);
+    final next = _noteBag.removeLast();
+    _lastNote = next;
+    return next;
+  }
+
+  String _nextDeselect() {
+    if (_deselectBag.isEmpty) {
+      _refillShuffleBag(_deselectBag, _deselects, _lastDeselect);
+    }
+    final next = _deselectBag.removeLast();
+    _lastDeselect = next;
+    return next;
+  }
+
+  void _refillShuffleBag(
+    List<String> bag,
+    List<String> assets,
+    String? last,
+  ) {
+    bag
       ..clear()
-      ..addAll(_menuSelects)
+      ..addAll(assets)
       ..shuffle(_random);
-    if (_lastMenuSelect != null &&
-        _menuSelectBag.isNotEmpty &&
-        _menuSelectBag.last == _lastMenuSelect) {
-      final swapAt = _menuSelectBag.lastIndexWhere((s) => s != _lastMenuSelect);
+    if (last != null && bag.isNotEmpty && bag.last == last) {
+      final swapAt = bag.lastIndexWhere((s) => s != last);
       if (swapAt >= 0) {
-        final swap = _menuSelectBag[swapAt];
-        _menuSelectBag[swapAt] = _menuSelectBag.last;
-        _menuSelectBag.last = swap;
+        final swap = bag[swapAt];
+        bag[swapAt] = bag.last;
+        bag.last = swap;
       }
     }
   }

@@ -25,6 +25,16 @@ class PreferencesService {
   static const _keyGraffitiWins = 'stats_graffiti_wins';
   static const _keyGraffitiLosses = 'stats_graffiti_losses';
   static const _keyGraffitiDraws = 'stats_graffiti_draws';
+  static const _keyPocketWins = 'stats_pocket_wins';
+  static const _keyPocketBestTime = 'stats_pocket_best_time';
+  static const _keyPocketChromaticWins = 'stats_pocket_chromatic_wins';
+  static const _keyPocketChromaticBestTime = 'stats_pocket_chromatic_best_time';
+  static const _keyPocketCurrentStreak = 'stats_pocket_current_streak';
+  static const _keyPocketBestStreak = 'stats_pocket_best_streak';
+  static const _keyPocketChromaticCurrentStreak =
+      'stats_pocket_chromatic_current_streak';
+  static const _keyPocketChromaticBestStreak =
+      'stats_pocket_chromatic_best_streak';
   static const _keyTotalXp = 'stats_total_xp';
   static const _keyXpLastAwardDay = 'stats_xp_last_award_day';
   static const _keyXpLastWinPalette = 'stats_xp_last_win_palette';
@@ -34,6 +44,7 @@ class PreferencesService {
   static const _keyParkedChromaticGame = 'parked_chromatic_game';
   static const _keyParkedDailyGame = 'parked_daily_game';
   static const _keyParkedPocketGame = 'parked_pocket_game';
+  static const _keyParkedPocketChromaticGame = 'parked_pocket_chromatic_game';
   static const _keyCompletedDailyGame = 'completed_daily_game';
   static const _keyFailedDailyGame = 'failed_daily_game';
   static const _keyIroenState = 'iroen_state';
@@ -199,11 +210,17 @@ class PreferencesService {
     _migrateLegacyHardStats(bestTimes, winsByDifficulty);
     final bestStreakByPalette = <GamePalette, int>{};
     final currentStreakByPalette = <GamePalette, int>{};
+    final pocketBestStreakByPalette = <GamePalette, int>{};
+    final pocketCurrentStreakByPalette = <GamePalette, int>{};
     for (final palette in GamePalette.values) {
       bestStreakByPalette[palette] =
           _prefs.getInt(_paletteBestStreakKey(palette)) ?? 0;
       currentStreakByPalette[palette] =
           _prefs.getInt(_paletteCurrentStreakKey(palette)) ?? 0;
+      pocketBestStreakByPalette[palette] =
+          _prefs.getInt(_pocketPaletteBestStreakKey(palette)) ?? 0;
+      pocketCurrentStreakByPalette[palette] =
+          _prefs.getInt(_pocketPaletteCurrentStreakKey(palette)) ?? 0;
     }
     return GameStats(
       currentStreak: _prefs.getInt(_keyCurrentStreak) ?? 0,
@@ -222,6 +239,19 @@ class PreferencesService {
       graffitiLosses: _prefs.getInt(_keyGraffitiLosses) ?? 0,
       graffitiDraws: _prefs.getInt(_keyGraffitiDraws) ?? 0,
       totalXp: _prefs.getInt(_keyTotalXp) ?? 0,
+      pocketWins: _prefs.getInt(_keyPocketWins) ?? 0,
+      pocketBestTime: _durationFromMs(_prefs.getInt(_keyPocketBestTime)),
+      pocketChromaticWins: _prefs.getInt(_keyPocketChromaticWins) ?? 0,
+      pocketChromaticBestTime:
+          _durationFromMs(_prefs.getInt(_keyPocketChromaticBestTime)),
+      pocketBestStreakByPalette: pocketBestStreakByPalette,
+      pocketCurrentStreakByPalette: pocketCurrentStreakByPalette,
+      pocketCurrentStreak: _prefs.getInt(_keyPocketCurrentStreak) ?? 0,
+      pocketBestStreak: _prefs.getInt(_keyPocketBestStreak) ?? 0,
+      pocketChromaticCurrentStreak:
+          _prefs.getInt(_keyPocketChromaticCurrentStreak) ?? 0,
+      pocketChromaticBestStreak:
+          _prefs.getInt(_keyPocketChromaticBestStreak) ?? 0,
     );
   }
 
@@ -235,6 +265,23 @@ class PreferencesService {
     await _prefs.setInt(_keyGraffitiLosses, stats.graffitiLosses);
     await _prefs.setInt(_keyGraffitiDraws, stats.graffitiDraws);
     await _prefs.setInt(_keyTotalXp, stats.totalXp);
+    await _prefs.setInt(_keyPocketWins, stats.pocketWins);
+    await _setOptionalDuration(_keyPocketBestTime, stats.pocketBestTime);
+    await _prefs.setInt(_keyPocketChromaticWins, stats.pocketChromaticWins);
+    await _setOptionalDuration(
+      _keyPocketChromaticBestTime,
+      stats.pocketChromaticBestTime,
+    );
+    await _prefs.setInt(_keyPocketCurrentStreak, stats.pocketCurrentStreak);
+    await _prefs.setInt(_keyPocketBestStreak, stats.pocketBestStreak);
+    await _prefs.setInt(
+      _keyPocketChromaticCurrentStreak,
+      stats.pocketChromaticCurrentStreak,
+    );
+    await _prefs.setInt(
+      _keyPocketChromaticBestStreak,
+      stats.pocketChromaticBestStreak,
+    );
     for (final d in Difficulty.values) {
       final time = stats.bestTimes[d];
       if (time == null) {
@@ -267,6 +314,25 @@ class PreferencesService {
         _paletteCurrentStreakKey(palette),
         stats.currentStreakByPalette[palette] ?? 0,
       );
+      await _prefs.setInt(
+        _pocketPaletteBestStreakKey(palette),
+        stats.pocketBestStreakByPalette[palette] ?? 0,
+      );
+      await _prefs.setInt(
+        _pocketPaletteCurrentStreakKey(palette),
+        stats.pocketCurrentStreakByPalette[palette] ?? 0,
+      );
+    }
+  }
+
+  Duration? _durationFromMs(int? ms) =>
+      ms == null ? null : Duration(milliseconds: ms);
+
+  Future<void> _setOptionalDuration(String key, Duration? time) async {
+    if (time == null) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setInt(key, time.inMilliseconds);
     }
   }
 
@@ -285,6 +351,12 @@ class PreferencesService {
 
   String _paletteCurrentStreakKey(GamePalette palette) =>
       'stats_palette_current_streak_${palette.storageKey}';
+
+  String _pocketPaletteBestStreakKey(GamePalette palette) =>
+      'stats_pocket_palette_best_streak_${palette.storageKey}';
+
+  String _pocketPaletteCurrentStreakKey(GamePalette palette) =>
+      'stats_pocket_palette_current_streak_${palette.storageKey}';
 
   Set<GamePalette> _loadUnlockedPalettes() {
     final keys = _prefs.getStringList(_keyUnlockedPalettes);
@@ -373,6 +445,20 @@ class PreferencesService {
 
   Future<void> clearParkedPocketGame() async {
     await _prefs.remove(_keyParkedPocketGame);
+  }
+
+  PausedGame? loadParkedPocketChromaticGame() =>
+      _loadPaused(_keyParkedPocketChromaticGame);
+
+  Future<void> saveParkedPocketChromaticGame(PausedGame game) async {
+    await _prefs.setString(
+      _keyParkedPocketChromaticGame,
+      jsonEncode(game.toJson()),
+    );
+  }
+
+  Future<void> clearParkedPocketChromaticGame() async {
+    await _prefs.remove(_keyParkedPocketChromaticGame);
   }
 
   PausedGame? loadCompletedDailyGame() => _loadPaused(_keyCompletedDailyGame);

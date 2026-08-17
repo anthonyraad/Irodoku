@@ -27,6 +27,16 @@ class GameStats {
   final int graffitiDraws;
   /// Lifetime prestige XP. Level is derived from this (not stored).
   final int totalXp;
+  final int pocketWins;
+  final Duration? pocketBestTime;
+  final int pocketChromaticWins;
+  final Duration? pocketChromaticBestTime;
+  final Map<GamePalette, int> pocketBestStreakByPalette;
+  final Map<GamePalette, int> pocketCurrentStreakByPalette;
+  final int pocketCurrentStreak;
+  final int pocketBestStreak;
+  final int pocketChromaticCurrentStreak;
+  final int pocketChromaticBestStreak;
 
   const GameStats({
     this.currentStreak = 0,
@@ -45,6 +55,16 @@ class GameStats {
     this.graffitiLosses = 0,
     this.graffitiDraws = 0,
     this.totalXp = 0,
+    this.pocketWins = 0,
+    this.pocketBestTime,
+    this.pocketChromaticWins = 0,
+    this.pocketChromaticBestTime,
+    this.pocketBestStreakByPalette = const {},
+    this.pocketCurrentStreakByPalette = const {},
+    this.pocketCurrentStreak = 0,
+    this.pocketBestStreak = 0,
+    this.pocketChromaticCurrentStreak = 0,
+    this.pocketChromaticBestStreak = 0,
   });
 
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
@@ -57,6 +77,8 @@ class GameStats {
   int chromaticWinsFor(Difficulty difficulty) =>
       chromaticWinsByDifficulty[difficulty] ?? 0;
 
+  int get pocketGamesWon => pocketWins + pocketChromaticWins;
+
   /// Display form e.g. `15-17 (2)`.
   String get graffitiRecordLabel =>
       '$graffitiWins-$graffitiLosses ($graffitiDraws)';
@@ -65,11 +87,18 @@ class GameStats {
       bestStreakByPalette[palette] ?? 0;
 
   /// Palette with the highest recorded win streak, if any wins exist.
-  GamePalette? get favoritePalette {
+  GamePalette? get favoritePalette =>
+      _favoriteFromBestStreaks(bestStreakByPalette);
+
+  /// Pocket-only favorite: highest Pocket / [Chromatic] palette win streak.
+  GamePalette? get favoritePocketPalette =>
+      _favoriteFromBestStreaks(pocketBestStreakByPalette);
+
+  static GamePalette? _favoriteFromBestStreaks(Map<GamePalette, int> streaks) {
     GamePalette? favorite;
     var best = 0;
     for (final palette in GamePalette.values) {
-      final streak = bestStreakForPalette(palette);
+      final streak = streaks[palette] ?? 0;
       if (streak > best) {
         best = streak;
         favorite = palette;
@@ -129,6 +158,16 @@ class GameStats {
     int? graffitiLosses,
     int? graffitiDraws,
     int? totalXp,
+    int? pocketWins,
+    Duration? pocketBestTime,
+    int? pocketChromaticWins,
+    Duration? pocketChromaticBestTime,
+    Map<GamePalette, int>? pocketBestStreakByPalette,
+    Map<GamePalette, int>? pocketCurrentStreakByPalette,
+    int? pocketCurrentStreak,
+    int? pocketBestStreak,
+    int? pocketChromaticCurrentStreak,
+    int? pocketChromaticBestStreak,
   }) {
     return GameStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -149,6 +188,21 @@ class GameStats {
       graffitiLosses: graffitiLosses ?? this.graffitiLosses,
       graffitiDraws: graffitiDraws ?? this.graffitiDraws,
       totalXp: totalXp ?? this.totalXp,
+      pocketWins: pocketWins ?? this.pocketWins,
+      pocketBestTime: pocketBestTime ?? this.pocketBestTime,
+      pocketChromaticWins: pocketChromaticWins ?? this.pocketChromaticWins,
+      pocketChromaticBestTime:
+          pocketChromaticBestTime ?? this.pocketChromaticBestTime,
+      pocketBestStreakByPalette:
+          pocketBestStreakByPalette ?? this.pocketBestStreakByPalette,
+      pocketCurrentStreakByPalette:
+          pocketCurrentStreakByPalette ?? this.pocketCurrentStreakByPalette,
+      pocketCurrentStreak: pocketCurrentStreak ?? this.pocketCurrentStreak,
+      pocketBestStreak: pocketBestStreak ?? this.pocketBestStreak,
+      pocketChromaticCurrentStreak:
+          pocketChromaticCurrentStreak ?? this.pocketChromaticCurrentStreak,
+      pocketChromaticBestStreak:
+          pocketChromaticBestStreak ?? this.pocketChromaticBestStreak,
     );
   }
 }

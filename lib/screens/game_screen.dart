@@ -150,9 +150,11 @@ class _GameScreenState extends State<GameScreen> {
               title: TypingTitle(
                 text: widget.isDailyRoute
                     ? 'Daily Challenge'
-                    : game.isPocket
-                        ? 'Pocket'
-                        : (settings.chromatic ? 'Chromatic' : 'Irodoku'),
+                    : game.isPocket && settings.chromatic
+                        ? '[Chromatic]'
+                        : game.isPocket
+                            ? 'Pocket'
+                            : (settings.chromatic ? 'Chromatic' : 'Irodoku'),
                 playToken: _titlePlayToken,
                 onTap: game.triggerColorCycle,
               ),
@@ -280,8 +282,7 @@ class _GameScreenState extends State<GameScreen> {
 
                           return ChromaticPaletteTransition(
                             palette: game.activePalette,
-                            animate: !game.isPocket &&
-                                (settings.chromatic || game.isDaily),
+                            animate: settings.chromatic || game.isDaily,
                             builder: (context, palette, swatches) {
                               return Align(
                                 alignment: Alignment.topCenter,
