@@ -793,6 +793,7 @@ class GameProvider extends ChangeNotifier {
     _timer?.cancel();
     await _savePausedGame();
     notifyListeners();
+    _playSound(_sounds.playIgMenu);
   }
 
   Future<void> resumeGame() async {
@@ -801,6 +802,7 @@ class GameProvider extends ChangeNotifier {
     await _prefs.clearPausedGame();
     _startTimer();
     notifyListeners();
+    _playSound(_sounds.playIgMenu);
   }
 
   Future<void> togglePause() async {
@@ -1632,6 +1634,7 @@ class GameProvider extends ChangeNotifier {
           palette: activePalette,
           chromatic: _settings.chromatic,
         );
+        unawaited(_achievements.onPocketLoss());
         unawaited(_stats.persist());
       }
     }
@@ -1679,6 +1682,13 @@ class GameProvider extends ChangeNotifier {
           mistakes: _mistakes,
           palette: winPalette,
           chromatic: _settings.chromatic,
+        );
+        unawaited(
+          _achievements.onPocketGamesWon(
+            pocketGamesWon: _stats.stats.pocketGamesWon,
+            elapsed: _elapsed,
+            mistakes: _mistakes,
+          ),
         );
         unawaited(_stats.persist());
       } else {

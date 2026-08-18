@@ -59,17 +59,88 @@ void main() {
     );
   });
 
-  test('sloppy Easy win is base XP only', () {
+  test('Easy win with 3 mistakes is base XP only', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.easy,
       mistakes: 3,
-      elapsed: const Duration(minutes: 20),
+      elapsed: const Duration(minutes: 15),
       firstWinOfDay: false,
       previousTotal: 40,
     );
     expect(award.earned, 50);
     expect(award.newTotal, 90);
     expect(award.leveledUp, isFalse);
+  });
+
+  test('Sloppy is minus Flawless at exactly 2 mistakes', () {
+    final easy = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 2,
+      elapsed: const Duration(minutes: 15),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    final hard = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 2,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    final oneMistake = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 15),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    expect(easy.sloppy, isTrue);
+    expect(easy.sloppyXp, -12);
+    expect(easy.earned, 38);
+    expect(
+      easy.breakdown,
+      [
+        (label: 'Easy finish', xp: 50),
+        (label: 'Sloppy', xp: -12),
+      ],
+    );
+    expect(hard.sloppyXp, -43);
+    expect(hard.earned, 132);
+    expect(oneMistake.sloppy, isFalse);
+    expect(oneMistake.earned, 50);
+  });
+
+  test('Pocket Sloppy is 1 mistake; Daily stays at 2', () {
+    final pocket = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 3),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    final pocketTwo = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 2,
+      elapsed: const Duration(minutes: 3),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    final daily = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 2,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      daily: true,
+    );
+    expect(pocket.sloppy, isTrue);
+    expect(pocket.sloppyXp, -6);
+    expect(pocket.earned, 19);
+    expect(pocketTwo.sloppy, isFalse);
+    expect(daily.sloppyXp, -37);
+    expect(daily.earned, 113);
   });
 
   test('fast bonus is strict under the threshold', () {
@@ -96,7 +167,7 @@ void main() {
   test('Daily Challenge is a flat 150 base XP', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.easy,
-      mistakes: 2,
+      mistakes: 1,
       elapsed: const Duration(minutes: 20),
       firstWinOfDay: false,
       previousTotal: 0,
@@ -104,6 +175,7 @@ void main() {
     );
     expect(award.baseXp, 150);
     expect(award.sourceLabel, 'Daily');
+    expect(award.lazy, isFalse);
     expect(award.earned, 150);
   });
 
@@ -263,14 +335,14 @@ void main() {
     final classic = PlayerXp.compute(
       difficulty: Difficulty.easy,
       mistakes: 1,
-      elapsed: const Duration(minutes: 20),
+      elapsed: const Duration(minutes: 15),
       firstWinOfDay: false,
       previousTotal: 0,
     );
     final chromatic = PlayerXp.compute(
       difficulty: Difficulty.easy,
       mistakes: 1,
-      elapsed: const Duration(minutes: 20),
+      elapsed: const Duration(minutes: 15),
       firstWinOfDay: false,
       previousTotal: 0,
       chromatic: true,
@@ -305,7 +377,7 @@ void main() {
     final award = PlayerXp.compute(
       difficulty: Difficulty.easy,
       mistakes: 1,
-      elapsed: const Duration(minutes: 20),
+      elapsed: const Duration(minutes: 15),
       firstWinOfDay: false,
       previousTotal: 0,
       achievedXp: Achievement.xpForCompletedRow(0),
@@ -323,22 +395,28 @@ void main() {
   test('Pocket is a flat 25 base XP', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.master,
-      mistakes: 2,
-      elapsed: const Duration(minutes: 5),
+      mistakes: 0,
+      elapsed: const Duration(minutes: 3),
       firstWinOfDay: false,
       previousTotal: 0,
       pocket: true,
     );
     expect(award.baseXp, 25);
     expect(award.sourceLabel, 'Pocket');
-    expect(award.earned, 25);
-    expect(award.breakdown, [(label: 'Pocket finish', xp: 25)]);
+    expect(award.earned, 31);
+    expect(
+      award.breakdown,
+      [
+        (label: 'Pocket finish', xp: 25),
+        (label: 'Flawless', xp: 6),
+      ],
+    );
   });
 
   test('Pocket Speedy is under 2:00', () {
     final under = PlayerXp.compute(
       difficulty: Difficulty.easy,
-      mistakes: 1,
+      mistakes: 0,
       elapsed: const Duration(minutes: 1, seconds: 59),
       firstWinOfDay: false,
       previousTotal: 0,
@@ -346,7 +424,7 @@ void main() {
     );
     final onThreshold = PlayerXp.compute(
       difficulty: Difficulty.easy,
-      mistakes: 1,
+      mistakes: 0,
       elapsed: const Duration(minutes: 2),
       firstWinOfDay: false,
       previousTotal: 0,
@@ -354,9 +432,9 @@ void main() {
     );
     expect(under.fast, isTrue);
     expect(under.fastXp, 6);
-    expect(under.earned, 31);
+    expect(under.earned, 37);
     expect(onThreshold.fast, isFalse);
-    expect(onThreshold.earned, 25);
+    expect(onThreshold.earned, 31);
   });
 
   test('Graffiti Speedy is under 5:00', () {
@@ -426,7 +504,7 @@ void main() {
   test('Pocket Chromatic adds a flat 20 XP labeled [Chromatic]', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.easy,
-      mistakes: 1,
+      mistakes: 0,
       elapsed: const Duration(minutes: 3),
       firstWinOfDay: false,
       previousTotal: 0,
@@ -436,12 +514,129 @@ void main() {
     expect(award.baseXp, 25);
     expect(award.chromatic, isTrue);
     expect(award.chromaticXp, 20);
+    expect(award.earned, 51);
+    expect(
+      award.breakdown,
+      [
+        (label: 'Pocket finish', xp: 25),
+        (label: 'Flawless', xp: 6),
+        (label: '[Chromatic]', xp: 20),
+      ],
+    );
+  });
+
+  test('Pocket Lazy is over 3:00 and subtracts 6 XP', () {
+    final onThreshold = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 3),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    final over = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 3, seconds: 1),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+    );
+    expect(onThreshold.lazy, isFalse);
+    expect(onThreshold.earned, 31);
+    expect(over.lazy, isTrue);
+    expect(over.lazyXp, -6);
+    expect(over.earned, 25);
+    expect(
+      over.breakdown,
+      [
+        (label: 'Pocket finish', xp: 25),
+        (label: 'Flawless', xp: 6),
+        (label: 'Lazy', xp: -6),
+      ],
+    );
+  });
+
+  test('Pocket Chromatic Lazy still subtracts 6 XP', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 4),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+      chromatic: true,
+    );
+    expect(award.lazy, isTrue);
+    expect(award.lazyXp, -6);
     expect(award.earned, 45);
     expect(
       award.breakdown,
       [
         (label: 'Pocket finish', xp: 25),
+        (label: 'Flawless', xp: 6),
+        (label: 'Lazy', xp: -6),
         (label: '[Chromatic]', xp: 20),
+      ],
+    );
+  });
+
+  test('Easy Lazy is over 15:00 and subtracts 12 XP', () {
+    final onThreshold = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 15),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    final over = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 15, seconds: 1),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    final medium = PlayerXp.compute(
+      difficulty: Difficulty.medium,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 20),
+      firstWinOfDay: false,
+      previousTotal: 0,
+    );
+    expect(onThreshold.lazy, isFalse);
+    expect(onThreshold.earned, 50);
+    expect(over.lazy, isTrue);
+    expect(over.lazyXp, -12);
+    expect(over.earned, 38);
+    expect(
+      over.breakdown,
+      [
+        (label: 'Easy finish', xp: 50),
+        (label: 'Lazy', xp: -12),
+      ],
+    );
+    expect(medium.lazy, isFalse);
+    expect(medium.earned, 100);
+  });
+
+  test('Easy Chromatic Lazy still subtracts 12 XP', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 16),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      chromatic: true,
+    );
+    expect(award.lazy, isTrue);
+    expect(award.lazyXp, -12);
+    expect(award.earned, 75);
+    expect(
+      award.breakdown,
+      [
+        (label: 'Easy finish', xp: 50),
+        (label: 'Lazy', xp: -12),
+        (label: 'Chromatic', xp: 37),
       ],
     );
   });

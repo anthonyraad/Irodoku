@@ -31,9 +31,15 @@ abstract final class PlayerXp {
   static const dailyStreakBonus = 25;
   static const dailyStreakBonusMin = 3;
 
-  /// Pocket is a flat base; Speedy is under 2:00.
+  /// Pocket is a flat base; Speedy is under 2:00. Lazy is over 3:00.
   static const pocketBaseXp = 25;
   static const pocketFastThreshold = Duration(minutes: 2);
+  static const pocketLazyThreshold = Duration(minutes: 3);
+  static const pocketLazyXp = -6;
+
+  /// Classic / 9×9 Chromatic Easy: Lazy is over 15:00.
+  static const easyLazyThreshold = Duration(minutes: 15);
+  static const easyLazyXp = -12;
 
   /// Graffiti has no ladder tier — treated as Medium for base; Speedy is under 5:00.
   static const graffitiDifficulty = Difficulty.medium;
@@ -117,12 +123,24 @@ abstract final class PlayerXp {
             ? dailyBaseXp
             : baseXp(difficulty);
     final flawless = mistakes == 0;
+    final sloppy = pocket ? mistakes == 1 : mistakes == 2;
     final fast = pocket
         ? elapsed < pocketFastThreshold
         : graffiti
             ? elapsed < graffitiFastThreshold
             : elapsed < fastThreshold(difficulty);
+    final lazyXp = pocket && elapsed > pocketLazyThreshold
+        ? pocketLazyXp
+        : !pocket &&
+                !daily &&
+                !graffiti &&
+                difficulty == Difficulty.easy &&
+                elapsed > easyLazyThreshold
+            ? easyLazyXp
+            : 0;
+    final lazy = lazyXp != 0;
     final flawlessXp = flawless ? (base * flawlessModifier).floor() : 0;
+    final sloppyXp = sloppy ? -(base * flawlessModifier).floor() : 0;
     final fastXp = fast ? (base * fastModifier).floor() : 0;
     final notelessXp =
         !pocket && noteless ? (base * notelessModifier).floor() : 0;
@@ -141,7 +159,9 @@ abstract final class PlayerXp {
     final artistryXp = pocket ? 0 : achievedXp;
     final earned = base +
         flawlessXp +
+        sloppyXp +
         fastXp +
+        lazyXp +
         notelessXp +
         wetPaintXp +
         firstOfDay +
@@ -158,7 +178,9 @@ abstract final class PlayerXp {
                   ? 'Daily'
                   : difficulty.label),
       flawless: flawless,
+      sloppy: sloppy,
       fast: fast,
+      lazy: lazy,
       firstWinOfDay: firstWinOfDay,
       streak: streak > 0,
       chromatic: chromaticXp > 0,
@@ -168,7 +190,9 @@ abstract final class PlayerXp {
       noteless: notelessXp > 0,
       achievedXp: artistryXp,
       flawlessXp: flawlessXp,
+      sloppyXp: sloppyXp,
       fastXp: fastXp,
+      lazyXp: lazyXp,
       wetPaintXp: wetPaintXp,
       notelessXp: notelessXp,
       earned: earned,
@@ -183,7 +207,9 @@ class XpAward {
   final Difficulty difficulty;
   final String sourceLabel;
   final bool flawless;
+  final bool sloppy;
   final bool fast;
+  final bool lazy;
   final bool firstWinOfDay;
   final bool streak;
   final bool chromatic;
@@ -193,7 +219,9 @@ class XpAward {
   final bool noteless;
   final int achievedXp;
   final int flawlessXp;
+  final int sloppyXp;
   final int fastXp;
+  final int lazyXp;
   final int wetPaintXp;
   final int notelessXp;
   final int earned;
@@ -205,7 +233,9 @@ class XpAward {
     required this.difficulty,
     required this.sourceLabel,
     required this.flawless,
+    this.sloppy = false,
     required this.fast,
+    this.lazy = false,
     required this.firstWinOfDay,
     required this.streak,
     required this.chromatic,
@@ -215,7 +245,9 @@ class XpAward {
     this.noteless = false,
     this.achievedXp = 0,
     required this.flawlessXp,
+    this.sloppyXp = 0,
     required this.fastXp,
+    this.lazyXp = 0,
     this.wetPaintXp = 0,
     this.notelessXp = 0,
     required this.earned,
@@ -231,7 +263,9 @@ class XpAward {
   List<({String label, int xp})> get breakdown => [
         (label: '$sourceLabel finish', xp: baseXp),
         if (flawless) (label: 'Flawless', xp: flawlessXp),
+        if (sloppy) (label: 'Sloppy', xp: sloppyXp),
         if (fast) (label: 'Speedy', xp: fastXp),
+        if (lazy) (label: 'Lazy', xp: lazyXp),
         if (noteless) (label: 'Freestyle', xp: notelessXp),
         if (wetPaint) (label: 'Wet paint', xp: wetPaintXp),
         if (chromatic) (label: chromaticLabel, xp: chromaticXp),

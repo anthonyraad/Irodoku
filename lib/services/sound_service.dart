@@ -52,6 +52,7 @@ class SoundService {
   static const _complete = 'sounds/complete.mp3';
   static const _gameWin = 'sounds/gamewin.mp3';
   static const _achievement = 'sounds/achievement.mp3';
+  static const _igMenu = 'sounds/igmenu.mp3';
   static const _menuSelect1 = 'sounds/menuselect1.mp3';
   static const _menuSelect2 = 'sounds/menuselect2.mp3';
   static const _menuSelect3 = 'sounds/menuselect3.mp3';
@@ -92,6 +93,7 @@ class SoundService {
     _complete,
     _gameWin,
     _achievement,
+    _igMenu,
     ..._menuSelects,
   ];
 
@@ -125,6 +127,7 @@ class SoundService {
     _complete: 0.57,
     _gameWin: 0.72,
     _achievement: 0.79,
+    _igMenu: 0.35,
     _menuSelect1: 0.3,
     _menuSelect2: 0.3,
     _menuSelect3: 0.3,
@@ -220,6 +223,7 @@ class SoundService {
   Future<void> playComplete() => _play(_complete);
   Future<void> playGameWin() => _play(_gameWin);
   Future<void> playAchievement() => _play(_achievement);
+  Future<void> playIgMenu() => _play(_igMenu);
   Future<void> playMenuSelect() => _play(_nextMenuSelect());
 
   String _nextMenuSelect() {

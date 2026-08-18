@@ -79,7 +79,7 @@ class Achievement {
     Achievement(row: 2, col: 3, title: 'Win after making 2 mistakes'),
     Achievement(row: 2, col: 4, title: 'Win a Hard game without pausing'),
     Achievement(row: 2, col: 5, title: 'Win a Master game with 1-1 palette'),
-    Achievement(row: 2, col: 6, title: 'Undo 100 times'),
+    Achievement(row: 2, col: 6, title: 'Win 30 Pocket games'),
     Achievement(row: 2, col: 7, title: 'Win an Expert game without pausing'),
     Achievement(
       row: 2,
@@ -92,10 +92,14 @@ class Achievement {
     Achievement(row: 3, col: 2, title: 'Win 10 games with Neon palette'),
     Achievement(row: 3, col: 3, title: 'Win an Easy game within 4 minutes'),
     Achievement(row: 3, col: 4, title: 'Win a Medium game within 8 minutes'),
-    Achievement(row: 3, col: 5, title: 'Win a Master game with Neon palette'),
-    Achievement(row: 3, col: 6, title: 'Win a Hard game within 12 minutes'),
-    Achievement(row: 3, col: 7, title: 'Win an Expert game within 18 minutes'),
-    Achievement(row: 3, col: 8, title: 'Win a Master game within 25 minutes'),
+    Achievement(row: 3, col: 5, title: 'Win a Hard game within 12 minutes'),
+    Achievement(row: 3, col: 6, title: 'Win an Expert game within 18 minutes'),
+    Achievement(row: 3, col: 7, title: 'Win a Master game within 25 minutes'),
+    Achievement(
+      row: 3,
+      col: 8,
+      title: 'Win 3 consecutive Pocket games within 1:30',
+    ),
     // Row 5 — Kanto
     Achievement(row: 4, col: 0, title: 'Win 3 games with Kanto palette'),
     Achievement(row: 4, col: 1, title: 'Win 7 games with Kanto palette'),
@@ -158,7 +162,7 @@ class Achievement {
     Achievement(
       row: 6,
       col: 6,
-      title: 'Win an Expert or Master game in exactly 44:44',
+      title: 'Win 100 Pocket games with no mistakes',
     ),
     Achievement(
       row: 6,

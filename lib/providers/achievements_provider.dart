@@ -99,7 +99,9 @@ class AchievementsProvider extends ChangeNotifier {
       'r2c7' => (p.cellsErased, 100),
       'r2c8' => (_calendarStreak(p.winDayKeys), 3),
       'r2c9' => (p.consecutiveHardNoMistake, 3),
-      'r3c7' => (p.undoCount, 100),
+      'r3c7' => (_prefs.loadStats().pocketGamesWon, 30),
+      'r4c9' => (p.consecutivePocketFastWins, 3),
+      'r7c7' => (p.pocketNoMistakeWins, 100),
       'r5c4' => (
           math.min(_prefs.getDailyBestStreak(), 5),
           5,
@@ -144,10 +146,14 @@ class AchievementsProvider extends ChangeNotifier {
       winsByPalette: winsByPalette,
       chromaticGamesWon: chromaticGamesWon,
     );
+    final needsR4Persist = !_progress.r4TimeShiftV1;
+    final needsR7c7Persist = !_progress.r7c7PocketV1;
+    _migrateR4TimeShift();
+    _migrateR7c7Pocket();
 
     final ids = <String>{};
     _addPaletteWinAchievements(ids, winsByPalette);
-    _addCounterAchievements(ids);
+    _addCounterAchievements(ids, stats);
     _addStreakAchievements(ids);
     _addBestTimeAchievements(ids, stats);
 
@@ -156,10 +162,15 @@ class AchievementsProvider extends ChangeNotifier {
 
     final unlockedChanged = !setEquals(_progress.unlockedIds, beforeUnlocked);
     final winsChanged = !_intMapEquals(winsByPalette, priorWins);
-    if (!unlockedChanged && !winsChanged) return;
+    if (!unlockedChanged && !winsChanged && !needsR4Persist && !needsR7c7Persist) {
+      return;
+    }
 
     notifyListeners();
     await persist();
+    if (needsR4Persist || needsR7c7Persist) {
+      await _prefs.saveSeenAchievementIds(_seenIds);
+    }
   }
 
   void _addPaletteWinAchievements(
@@ -183,14 +194,16 @@ class AchievementsProvider extends ChangeNotifier {
     add(GamePalette.sky, 'r8c1', 'r8c2', 'r8c3');
   }
 
-  void _addCounterAchievements(Set<String> ids) {
+  void _addCounterAchievements(Set<String> ids, GameStats stats) {
     if (_progress.cellsErased >= 100) ids.add('r2c7');
-    if (_progress.undoCount >= 100) ids.add('r3c7');
+    if (stats.pocketGamesWon >= 30) ids.add('r3c7');
     if (_progress.notesTaken >= 1000) ids.add('r5c7');
     if (_progress.consecutiveHardNoMistake >= 3) ids.add('r2c9');
     if (_progress.consecutiveExpertNoMistake >= 3) ids.add('r7c5');
     if (_progress.chromaticGamesWon >= 30) ids.add('r8c8');
     if (_progress.masterNoMistakeWins >= 30) ids.add('r8c9');
+    if (_progress.consecutivePocketFastWins >= 3) ids.add('r4c9');
+    if (_progress.pocketNoMistakeWins >= 100) ids.add('r7c7');
   }
 
   void _addStreakAchievements(Set<String> ids) {
@@ -211,12 +224,12 @@ class AchievementsProvider extends ChangeNotifier {
     if (within(Difficulty.medium, const Duration(minutes: 8))) {
       ids.add('r4c5');
     }
-    if (within(Difficulty.hard, const Duration(minutes: 12))) ids.add('r4c7');
+    if (within(Difficulty.hard, const Duration(minutes: 12))) ids.add('r4c6');
     if (within(Difficulty.expert, const Duration(minutes: 18))) {
-      ids.add('r4c8');
+      ids.add('r4c7');
     }
     if (within(Difficulty.master, const Duration(minutes: 25))) {
-      ids.add('r4c9');
+      ids.add('r4c8');
     }
 
     // Exact timer achievements — only if a stored best time is exactly that.
@@ -228,12 +241,39 @@ class AchievementsProvider extends ChangeNotifier {
         break;
       }
     }
-    final expertBest = stats.bestTimeFor(Difficulty.expert);
-    final masterBest = stats.bestTimeFor(Difficulty.master);
-    if (expertBest?.inSeconds == 44 * 60 + 44 ||
-        masterBest?.inSeconds == 44 * 60 + 44) {
-      ids.add('r7c7');
-    }
+  }
+
+  /// Old r4c6 Neon-Master / r4c7–c9 time goals → Hard 12 / Expert 18 / Master 25 / Pocket streak.
+  void _migrateR4TimeShift() {
+    if (_progress.r4TimeShiftV1) return;
+    final ids = Set<String>.from(_progress.unlockedIds);
+    final hadHard12 = ids.contains('r4c7');
+    final hadExpert18 = ids.contains('r4c8');
+    final hadMaster25 = ids.contains('r4c9');
+    ids
+      ..remove('r4c6')
+      ..remove('r4c7')
+      ..remove('r4c8')
+      ..remove('r4c9');
+    if (hadHard12) ids.add('r4c6');
+    if (hadExpert18) ids.add('r4c7');
+    if (hadMaster25) ids.add('r4c8');
+    _seenIds = {..._seenIds}..remove('r4c9');
+    _progress = _progress.copyWith(
+      unlockedIds: ids,
+      r4TimeShiftV1: true,
+    );
+  }
+
+  /// Old r7c7 44:44 timer → Pocket no-mistake wins.
+  void _migrateR7c7Pocket() {
+    if (_progress.r7c7PocketV1) return;
+    final ids = Set<String>.from(_progress.unlockedIds)..remove('r7c7');
+    _seenIds = {..._seenIds}..remove('r7c7');
+    _progress = _progress.copyWith(
+      unlockedIds: ids,
+      r7c7PocketV1: true,
+    );
   }
 
   bool _unlock(
@@ -321,7 +361,6 @@ class AchievementsProvider extends ChangeNotifier {
   Future<void> recordUndo() async {
     final next = _progress.undoCount + 1;
     _progress = _progress.copyWith(undoCount: next);
-    if (next >= 100) _unlock('r3c7');
     notifyListeners();
     await persist();
   }
@@ -375,6 +414,41 @@ class AchievementsProvider extends ChangeNotifier {
     if (!_unlockMany(ids, announceDelay: _winAchievementSoundDelay)) {
       return;
     }
+    notifyListeners();
+    await persist();
+  }
+
+  /// Pocket and Pocket [Chromatic] wins both count toward r3c7 / r4c9 / r7c7.
+  static const _pocketFastLimit = Duration(minutes: 1, seconds: 30);
+
+  Future<void> onPocketGamesWon({
+    required int pocketGamesWon,
+    required Duration elapsed,
+    required int mistakes,
+  }) async {
+    final fast = elapsed <= _pocketFastLimit;
+    final consecutive = fast ? _progress.consecutivePocketFastWins + 1 : 0;
+    final pocketNoMistakeWins = mistakes == 0
+        ? _progress.pocketNoMistakeWins + 1
+        : _progress.pocketNoMistakeWins;
+    _progress = _progress.copyWith(
+      consecutivePocketFastWins: consecutive,
+      pocketNoMistakeWins: pocketNoMistakeWins,
+    );
+
+    final ids = <String>{
+      if (pocketGamesWon >= 30) 'r3c7',
+      if (consecutive >= 3) 'r4c9',
+      if (pocketNoMistakeWins >= 100) 'r7c7',
+    };
+    _unlockMany(ids, announceDelay: _winAchievementSoundDelay);
+    notifyListeners();
+    await persist();
+  }
+
+  Future<void> onPocketLoss() async {
+    if (_progress.consecutivePocketFastWins == 0) return;
+    _progress = _progress.copyWith(consecutivePocketFastWins: 0);
     notifyListeners();
     await persist();
   }
@@ -494,7 +568,6 @@ class AchievementsProvider extends ChangeNotifier {
     if (difficulty == Difficulty.master && palette == GamePalette.world11) {
       ids.add('r3c6');
     }
-    if (_progress.undoCount >= 100) ids.add('r3c7');
     if (difficulty == Difficulty.expert && !ctx.paused) ids.add('r3c8');
     if (elapsed.inSeconds == 4 * 60 + 54) {
       ids.add('r3c9');
@@ -509,20 +582,17 @@ class AchievementsProvider extends ChangeNotifier {
         elapsed <= const Duration(minutes: 8)) {
       ids.add('r4c5');
     }
-    if (difficulty == Difficulty.master && palette == GamePalette.neon) {
-      ids.add('r4c6');
-    }
     if (difficulty == Difficulty.hard &&
         elapsed <= const Duration(minutes: 12)) {
-      ids.add('r4c7');
+      ids.add('r4c6');
     }
     if (difficulty == Difficulty.expert &&
         elapsed <= const Duration(minutes: 18)) {
-      ids.add('r4c8');
+      ids.add('r4c7');
     }
     if (difficulty == Difficulty.master &&
         elapsed <= const Duration(minutes: 25)) {
-      ids.add('r4c9');
+      ids.add('r4c8');
     }
 
     // Kanto row (r5c4 Daily streak is checked in [onDailyChallengeWon])
@@ -556,11 +626,6 @@ class AchievementsProvider extends ChangeNotifier {
     if (consecutiveExpertNoMistake >= 3) ids.add('r7c5');
     if (difficulty == Difficulty.master && palette == GamePalette.glass) {
       ids.add('r7c6');
-    }
-    if ((difficulty == Difficulty.expert ||
-            difficulty == Difficulty.master) &&
-        elapsed.inSeconds == 44 * 60 + 44) {
-      ids.add('r7c7');
     }
     if (ctx.completedNineUnitsInNineSeconds) ids.add('r7c8');
     if (ctx.filledNineDistinctColorsConsecutively) ids.add('r7c9');

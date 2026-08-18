@@ -11,10 +11,16 @@ class AchievementsProgress {
   final List<String> hardWinDayKeys;
   final int consecutiveHardNoMistake;
   final int consecutiveExpertNoMistake;
+  final int consecutivePocketFastWins;
+  final int pocketNoMistakeWins;
   final int masterNoMistakeWins;
   final int chromaticGamesWon;
   final String? lastExpertWinPaletteKey;
   final String? lastMasterWinPaletteKey;
+  /// One-time remap of Neon row time-challenge IDs (r4c6–r4c9).
+  final bool r4TimeShiftV1;
+  /// One-time remap of r7c7 from 44:44 to Pocket no-mistake wins.
+  final bool r7c7PocketV1;
 
   const AchievementsProgress({
     this.unlockedIds = const {},
@@ -26,10 +32,14 @@ class AchievementsProgress {
     this.hardWinDayKeys = const [],
     this.consecutiveHardNoMistake = 0,
     this.consecutiveExpertNoMistake = 0,
+    this.consecutivePocketFastWins = 0,
+    this.pocketNoMistakeWins = 0,
     this.masterNoMistakeWins = 0,
     this.chromaticGamesWon = 0,
     this.lastExpertWinPaletteKey,
     this.lastMasterWinPaletteKey,
+    this.r4TimeShiftV1 = false,
+    this.r7c7PocketV1 = false,
   });
 
   bool isUnlocked(String id) => unlockedIds.contains(id);
@@ -46,10 +56,14 @@ class AchievementsProgress {
     List<String>? hardWinDayKeys,
     int? consecutiveHardNoMistake,
     int? consecutiveExpertNoMistake,
+    int? consecutivePocketFastWins,
+    int? pocketNoMistakeWins,
     int? masterNoMistakeWins,
     int? chromaticGamesWon,
     String? lastExpertWinPaletteKey,
     String? lastMasterWinPaletteKey,
+    bool? r4TimeShiftV1,
+    bool? r7c7PocketV1,
     bool clearLastExpertWinPaletteKey = false,
     bool clearLastMasterWinPaletteKey = false,
   }) {
@@ -65,6 +79,9 @@ class AchievementsProgress {
           consecutiveHardNoMistake ?? this.consecutiveHardNoMistake,
       consecutiveExpertNoMistake:
           consecutiveExpertNoMistake ?? this.consecutiveExpertNoMistake,
+      consecutivePocketFastWins:
+          consecutivePocketFastWins ?? this.consecutivePocketFastWins,
+      pocketNoMistakeWins: pocketNoMistakeWins ?? this.pocketNoMistakeWins,
       masterNoMistakeWins: masterNoMistakeWins ?? this.masterNoMistakeWins,
       chromaticGamesWon: chromaticGamesWon ?? this.chromaticGamesWon,
       lastExpertWinPaletteKey: clearLastExpertWinPaletteKey
@@ -73,6 +90,8 @@ class AchievementsProgress {
       lastMasterWinPaletteKey: clearLastMasterWinPaletteKey
           ? null
           : (lastMasterWinPaletteKey ?? this.lastMasterWinPaletteKey),
+      r4TimeShiftV1: r4TimeShiftV1 ?? this.r4TimeShiftV1,
+      r7c7PocketV1: r7c7PocketV1 ?? this.r7c7PocketV1,
     );
   }
 
@@ -88,10 +107,14 @@ class AchievementsProgress {
         'hardWinDayKeys': hardWinDayKeys,
         'consecutiveHardNoMistake': consecutiveHardNoMistake,
         'consecutiveExpertNoMistake': consecutiveExpertNoMistake,
+        'consecutivePocketFastWins': consecutivePocketFastWins,
+        'pocketNoMistakeWins': pocketNoMistakeWins,
         'masterNoMistakeWins': masterNoMistakeWins,
         'chromaticGamesWon': chromaticGamesWon,
         'lastExpertWinPaletteKey': lastExpertWinPaletteKey,
         'lastMasterWinPaletteKey': lastMasterWinPaletteKey,
+        'r4TimeShiftV1': r4TimeShiftV1,
+        'r7c7PocketV1': r7c7PocketV1,
       };
 
   factory AchievementsProgress.fromJson(Map<String, dynamic> json) {
@@ -133,10 +156,15 @@ class AchievementsProgress {
           (json['consecutiveHardNoMistake'] as int?) ?? 0,
       consecutiveExpertNoMistake:
           (json['consecutiveExpertNoMistake'] as int?) ?? 0,
+      consecutivePocketFastWins:
+          (json['consecutivePocketFastWins'] as int?) ?? 0,
+      pocketNoMistakeWins: (json['pocketNoMistakeWins'] as int?) ?? 0,
       masterNoMistakeWins: (json['masterNoMistakeWins'] as int?) ?? 0,
       chromaticGamesWon: (json['chromaticGamesWon'] as int?) ?? 0,
       lastExpertWinPaletteKey: json['lastExpertWinPaletteKey'] as String?,
       lastMasterWinPaletteKey: json['lastMasterWinPaletteKey'] as String?,
+      r4TimeShiftV1: json['r4TimeShiftV1'] as bool? ?? false,
+      r7c7PocketV1: json['r7c7PocketV1'] as bool? ?? false,
     );
   }
 }

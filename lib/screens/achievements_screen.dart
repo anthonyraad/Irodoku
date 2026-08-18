@@ -38,14 +38,13 @@ class _AchievementsScreenState extends State<AchievementsScreen>
   @override
   void initState() {
     super.initState();
-    _colorCycleController = AnimationController(
-      vsync: this,
-      duration: _colorCycleDuration,
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _colorCycleController.value = 0;
-        }
-      });
+    _colorCycleController =
+        AnimationController(vsync: this, duration: _colorCycleDuration)
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) {
+              _colorCycleController.value = 0;
+            }
+          });
     _revealController = AnimationController(
       vsync: this,
       duration: _revealDuration,
@@ -93,122 +92,125 @@ class _AchievementsScreenState extends State<AchievementsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: const MenuBackButton(),
-        title: TypingTitle(
-          text: 'Achievements',
-          onTap: _triggerColorCycle,
+    return ScaffoldMessenger(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: const MenuBackButton(),
+          title: TypingTitle(text: 'Achievements', onTap: _triggerColorCycle),
         ),
-      ),
-      body: Consumer<AchievementsProvider>(
-        builder: (context, achievements, _) {
-          return AnimatedBuilder(
-            animation: Listenable.merge([
-              _colorCycleController,
-              _revealController,
-            ]),
-            builder: (context, _) {
-              return LayoutBuilder(
-                builder: (context, constraints) {
-                  const cols = 9;
-                  const rows = 8;
-                  const pad = 16.0;
-                  const lineWidth = 1.0;
-                  final maxWidth = constraints.maxWidth - pad * 2;
-                  final maxHeight = constraints.maxHeight - pad * 2;
-                  final cellFromWidth =
-                      (maxWidth - lineWidth * (cols + 1)) / cols;
-                  final cellFromHeight =
-                      (maxHeight - lineWidth * (rows + 1)) / rows;
-                  final cellSize = cellFromWidth < cellFromHeight
-                      ? cellFromWidth
-                      : cellFromHeight;
-                  final gridHeight =
-                      rows * cellSize + lineWidth * (rows + 1);
-                  final topGap =
-                      ((constraints.maxHeight - gridHeight) / 2)
-                          .clamp(0.0, double.infinity) *
-                      0.65;
-                  final lineColor = Theme.of(context).dividerColor;
-                  final revealT =
-                      Curves.easeOutCubic.transform(_revealController.value);
+        body: Consumer<AchievementsProvider>(
+          builder: (context, achievements, _) {
+            return AnimatedBuilder(
+              animation: Listenable.merge([
+                _colorCycleController,
+                _revealController,
+              ]),
+              builder: (context, _) {
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    const cols = 9;
+                    const rows = 8;
+                    const pad = 16.0;
+                    const lineWidth = 1.0;
+                    final maxWidth = constraints.maxWidth - pad * 2;
+                    final maxHeight = constraints.maxHeight - pad * 2;
+                    final cellFromWidth =
+                        (maxWidth - lineWidth * (cols + 1)) / cols;
+                    final cellFromHeight =
+                        (maxHeight - lineWidth * (rows + 1)) / rows;
+                    final cellSize = cellFromWidth < cellFromHeight
+                        ? cellFromWidth
+                        : cellFromHeight;
+                    final gridHeight = rows * cellSize + lineWidth * (rows + 1);
+                    final topGap =
+                        ((constraints.maxHeight - gridHeight) / 2).clamp(
+                          0.0,
+                          double.infinity,
+                        ) *
+                        0.65;
+                    final lineColor = Theme.of(context).dividerColor;
+                    final revealT = Curves.easeOutCubic.transform(
+                      _revealController.value,
+                    );
 
-                  return Align(
-                    alignment: Alignment.topCenter,
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(pad, topGap, pad, pad),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: lineColor,
-                            width: lineWidth,
+                    return Align(
+                      alignment: Alignment.topCenter,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(pad, topGap, pad, pad),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: lineColor,
+                              width: lineWidth,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (var r = 0; r < rows; r++) ...[
+                                if (r > 0)
+                                  Container(
+                                    height: lineWidth,
+                                    color: lineColor,
+                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (var c = 0; c < cols; c++) ...[
+                                      if (c > 0)
+                                        Container(
+                                          width: lineWidth,
+                                          height: cellSize,
+                                          color: lineColor,
+                                        ),
+                                      Builder(
+                                        builder: (context) {
+                                          final achievement =
+                                              Achievement.all[r * cols + c];
+                                          final unlocked = achievements
+                                              .isUnlocked(achievement.id);
+                                          final isNewReveal =
+                                              _revealArmed &&
+                                              _revealIds.contains(
+                                                achievement.id,
+                                              );
+                                          // Hold as locked until the delayed reveal runs.
+                                          final showUnlocked =
+                                              unlocked &&
+                                              (!isNewReveal || _revealPlaying);
+                                          final fillReveal = isNewReveal
+                                              ? (_revealPlaying ? revealT : 0.0)
+                                              : (showUnlocked ? 1.0 : 0.0);
+
+                                          return _AchievementCell(
+                                            achievement: achievement,
+                                            size: cellSize,
+                                            unlocked: showUnlocked,
+                                            fillReveal: fillReveal,
+                                            toastLabel: achievements.toastLabel(
+                                              achievement,
+                                            ),
+                                            colorCyclePhase:
+                                                _cellColorCyclePhase(r, c),
+                                            colorCycleSteps: _colorCycleSteps,
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            for (var r = 0; r < rows; r++) ...[
-                              if (r > 0)
-                                Container(
-                                  height: lineWidth,
-                                  color: lineColor,
-                                ),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (var c = 0; c < cols; c++) ...[
-                                    if (c > 0)
-                                      Container(
-                                        width: lineWidth,
-                                        height: cellSize,
-                                        color: lineColor,
-                                      ),
-                                    Builder(
-                                      builder: (context) {
-                                        final achievement =
-                                            Achievement.all[r * cols + c];
-                                        final unlocked = achievements
-                                            .isUnlocked(achievement.id);
-                                        final isNewReveal = _revealArmed &&
-                                            _revealIds
-                                                .contains(achievement.id);
-                                        // Hold as locked until the delayed reveal runs.
-                                        final showUnlocked = unlocked &&
-                                            (!isNewReveal || _revealPlaying);
-                                        final fillReveal = isNewReveal
-                                            ? (_revealPlaying ? revealT : 0.0)
-                                            : (showUnlocked ? 1.0 : 0.0);
-
-                                        return _AchievementCell(
-                                          achievement: achievement,
-                                          size: cellSize,
-                                          unlocked: showUnlocked,
-                                          fillReveal: fillReveal,
-                                          toastLabel:
-                                              achievements.toastLabel(
-                                            achievement,
-                                          ),
-                                          colorCyclePhase:
-                                              _cellColorCyclePhase(r, c),
-                                          colorCycleSteps: _colorCycleSteps,
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
                       ),
-                    ),
-                  );
-                },
-              );
-            },
-          );
-        },
+                    );
+                  },
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

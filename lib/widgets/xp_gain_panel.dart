@@ -91,7 +91,7 @@ class XpGainPanel extends StatelessWidget {
         Expanded(
           child: Text(line.label, style: lineStyle),
         ),
-        Text('+${line.xp}', style: amountStyle),
+        Text(line.xp >= 0 ? '+${line.xp}' : '${line.xp}', style: amountStyle),
       ],
     );
   }

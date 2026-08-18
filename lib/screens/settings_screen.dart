@@ -130,6 +130,14 @@ class _SettingsScreenState extends State<SettingsScreen>
         },
         child: Scaffold(
         appBar: AppBar(
+          leading: IconButton(
+            icon: const BackButtonIcon(),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            onPressed: () {
+              playIgMenuSound(context);
+              Navigator.maybePop(context);
+            },
+          ),
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

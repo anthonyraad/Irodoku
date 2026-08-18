@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import 'menu_select_sound.dart';
+
 /// App-bar New Game control matching Redraw's dice face + shake animation.
 class DiceNewGameButton extends StatefulWidget {
   final VoidCallback? onPressed;
@@ -51,6 +53,7 @@ class _DiceNewGameButtonState extends State<DiceNewGameButton>
 
   void _handleTap() {
     if (widget.onPressed == null) return;
+    playIgMenuSound(context);
     _shakeController.forward(from: 0);
     setState(() => _diceNumber = _random.nextInt(6) + 1);
     widget.onPressed!();
