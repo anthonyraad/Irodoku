@@ -31,7 +31,7 @@ void main() {
     final award = PlayerXp.compute(
       difficulty: Difficulty.hard,
       mistakes: 0,
-      elapsed: const Duration(minutes: 12, seconds: 59),
+      elapsed: const Duration(minutes: 11, seconds: 59),
       firstWinOfDay: true,
       previousTotal: 0,
     );

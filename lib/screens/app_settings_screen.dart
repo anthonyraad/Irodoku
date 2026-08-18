@@ -13,6 +13,7 @@ import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
+import '../widgets/palette_sweep_mask.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/typing_title.dart';
 
@@ -106,7 +107,6 @@ Future<void> showHowToPlayDialog(BuildContext context) {
 /// Bold label that sweeps the active palette colors after a short delay.
 class _PaletteSweepLabel extends StatefulWidget {
   static const _delay = Duration(milliseconds: 400);
-  static const _duration = Duration(milliseconds: 1035); // prior 828ms + 25%
 
   final String text;
   final TextStyle? style;
@@ -132,7 +132,7 @@ class _PaletteSweepLabelState extends State<_PaletteSweepLabel>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: _PaletteSweepLabel._duration,
+      duration: PaletteSweepMask.duration,
     );
     _delayTimer = Timer(_PaletteSweepLabel._delay, () {
       if (!mounted) return;
@@ -159,35 +159,11 @@ class _PaletteSweepLabelState extends State<_PaletteSweepLabel>
       return Text(widget.text, style: style);
     }
 
-    // Lead + trail ink so the sweep eases out of / into black.
-    final sweepColors = <Color>[ink, ink, ink, ...colors, ink, ink, ink];
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final raw = _controller.value;
-        final t = Curves.easeInOutCubic.transform(raw);
-
-        return ShaderMask(
-          blendMode: BlendMode.srcIn,
-          shaderCallback: (bounds) {
-            if (raw <= 0 || raw >= 1) {
-              return LinearGradient(
-                colors: [ink, ink],
-              ).createShader(bounds);
-            }
-
-            // Slide far enough that both leading and trailing ink fully cover
-            // the word (including the leftmost "I").
-            return LinearGradient(
-              begin: Alignment(2.0 - 5.8 * t, 0),
-              end: Alignment(4.6 - 5.8 * t, 0),
-              colors: sweepColors,
-            ).createShader(bounds);
-          },
-          child: Text(widget.text, style: maskedStyle),
-        );
-      },
+    return PaletteSweepMask(
+      colors: colors,
+      ink: ink,
+      progress: _controller,
+      child: Text(widget.text, style: maskedStyle),
     );
   }
 }
@@ -367,10 +343,14 @@ class ConfigSettingsPanel extends StatelessWidget {
   /// Main Menu [Pocket] swipe: replace the difficulty dropdown with a grey XX.
   final bool difficultyLocked;
 
+  /// Fired after a difficulty change is committed (Main Menu pulse).
+  final VoidCallback? onDifficultyApplied;
+
   const ConfigSettingsPanel({
     super.key,
     this.showSoundAndDarkMode = true,
     this.difficultyLocked = false,
+    this.onDifficultyApplied,
   });
 
   @override
@@ -389,6 +369,7 @@ class ConfigSettingsPanel extends StatelessWidget {
                 settings: settings,
                 statsProvider: statsProvider,
                 stats: stats,
+                onDifficultyApplied: onDifficultyApplied,
               ),
             ),
             if (showSoundAndDarkMode) ...[
@@ -455,12 +436,14 @@ class _DifficultyTrailing extends StatefulWidget {
   final SettingsProvider settings;
   final StatsProvider statsProvider;
   final GameStats stats;
+  final VoidCallback? onDifficultyApplied;
 
   const _DifficultyTrailing({
     required this.locked,
     required this.settings,
     required this.statsProvider,
     required this.stats,
+    this.onDifficultyApplied,
   });
 
   @override
@@ -565,7 +548,12 @@ class _DifficultyTrailingState extends State<_DifficultyTrailing>
                   return;
                 }
                 if (difficulty == widget.settings.difficulty) return;
-                _onDifficultyChosen(context, widget.settings, difficulty);
+                _onDifficultyChosen(
+                  context,
+                  widget.settings,
+                  difficulty,
+                  onApplied: widget.onDifficultyApplied,
+                );
               },
             ),
           ),
@@ -590,31 +578,37 @@ class _DifficultyTrailingState extends State<_DifficultyTrailing>
 Future<void> _onDifficultyChosen(
   BuildContext context,
   SettingsProvider settings,
-  Difficulty difficulty,
-) async {
+  Difficulty difficulty, {
+  VoidCallback? onApplied,
+}) async {
   final game = context.read<GameProvider>();
-  await settings.setDifficulty(difficulty);
-  if (!context.mounted) return;
   if (game.isGenerating) return;
 
-  // Daily still live under Main Menu — only update the setting so parked
-  // Classic/Chromatic progress is not wiped.
-  if (game.isDaily || game.isPocket) return;
-
   final preserveDaily = game.hasResumableDaily;
+  final liveClassicOrChromatic =
+      !game.isDaily && !game.isPocket;
 
-  // Mid-game: ask before discarding progress.
-  if (game.hasInteracted && !game.isGameOver) {
+  // Mid-game Classic/Chromatic: keep the old difficulty unless they start over.
+  if (liveClassicOrChromatic &&
+      game.hasInteracted &&
+      !game.isGameOver) {
     final startNew = await showStartNewGameDialog(context);
+    if (!context.mounted || startNew != true) return;
+    await settings.setDifficulty(difficulty);
+    onApplied?.call();
     if (!context.mounted) return;
-    if (startNew == true) {
-      await game.startNewGame(preserveHeldDaily: preserveDaily);
-    }
+    await game.startNewGame(preserveHeldDaily: preserveDaily);
     return;
   }
 
-  // Untouched board (or finished game): apply immediately.
-  if (game.hasActiveGame || game.isGameOver) {
+  await settings.setDifficulty(difficulty);
+  onApplied?.call();
+  if (!context.mounted) return;
+
+  // Daily / Pocket: only the setting changes so parked Classic/Chromatic
+  // progress is not wiped. Untouched or finished Classic/Chromatic regenerate.
+  if (liveClassicOrChromatic &&
+      (game.hasActiveGame || game.isGameOver)) {
     await game.startNewGame(preserveHeldDaily: preserveDaily);
   }
 }

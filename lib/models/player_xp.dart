@@ -42,7 +42,7 @@ abstract final class PlayerXp {
   static Duration fastThreshold(Difficulty difficulty) => switch (difficulty) {
         Difficulty.easy => const Duration(minutes: 5),
         Difficulty.medium => const Duration(minutes: 8),
-        Difficulty.hard => const Duration(minutes: 13),
+        Difficulty.hard => const Duration(minutes: 12),
         Difficulty.expert => const Duration(minutes: 20),
         Difficulty.master => const Duration(minutes: 30),
       };

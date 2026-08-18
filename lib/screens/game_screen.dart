@@ -65,6 +65,8 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   bool _resultDialogShown = false;
+  /// XP/unlocks only on the first Victory for this finished board.
+  bool _offerResultXp = true;
   int _titlePlayToken = 0;
 
   @override
@@ -98,6 +100,7 @@ class _GameScreenState extends State<GameScreen> {
     }
 
     _resultDialogShown = false;
+    _offerResultXp = true;
     await game.startNewGame();
   }
 
@@ -105,30 +108,30 @@ class _GameScreenState extends State<GameScreen> {
     // Home and Daily routes share one provider — only the matching route
     // should present win/loss dialogs.
     if (widget.isDailyRoute != game.isDaily) return;
-    // Reopening a finished Daily — show the frozen board only.
-    if (game.isDailyReview) {
-      _resultDialogShown = true;
-      return;
-    }
 
     if (game.isWon && !_resultDialogShown) {
       _resultDialogShown = true;
+      final includeXp = _offerResultXp && !game.isDailyReview;
+      _offerResultXp = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final unlocks = game.consumePendingPaletteUnlocks();
-        for (final palette in unlocks) {
-          _showPaletteUnlockedSnackBar(context, palette);
+        if (includeXp) {
+          final unlocks = game.consumePendingPaletteUnlocks();
+          for (final palette in unlocks) {
+            _showPaletteUnlockedSnackBar(context, palette);
+          }
         }
         showWinDialog(
           context,
           time: game.formatElapsed(),
           showNewGame: !widget.isDailyRoute,
           onNewGame: _onNewGame,
-          xp: context.read<StatsProvider>().lastXpAward,
+          xp: includeXp ? context.read<StatsProvider>().lastXpAward : null,
         );
       });
     } else if (game.isLost && !_resultDialogShown) {
       _resultDialogShown = true;
+      _offerResultXp = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         showLoseDialog(
@@ -140,6 +143,7 @@ class _GameScreenState extends State<GameScreen> {
       });
     } else if (!game.isGameOver) {
       _resultDialogShown = false;
+      _offerResultXp = true;
     }
   }
 
@@ -149,12 +153,12 @@ class _GameScreenState extends State<GameScreen> {
       builder: (context, game, settings, _) {
         _maybeShowResult(game);
         final hasSelection = game.hasCellSelection;
-        // Keep control-slot layout after win/loss so the board doesn't resize
-        // under the result dialog; only the widgets themselves are removed.
+        // Keep control-slot layout while paused / after win-loss so the board
+        // doesn't resize; only the widgets themselves are removed.
         final reserveControlsLayout = !game.isGenerating &&
-            !game.isPaused &&
             (game.hasActiveGame || game.isGameOver);
-        final showControls = reserveControlsLayout && !game.isGameOver;
+        final showControls =
+            reserveControlsLayout && !game.isGameOver && !game.isPaused;
         final controlsEnabled = showControls;
         final canErase = game.canEraseSelection;
         final canPause = game.hasActiveGame &&
@@ -231,6 +235,8 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       );
                       if (!mounted) return;
+                      // Returning to a finished board should show Victory/Defeat again.
+                      _resultDialogShown = false;
                       setState(() => _titlePlayToken++);
                     }),
                   ),
@@ -338,6 +344,7 @@ class _GameScreenState extends State<GameScreen> {
                                         height: boardSize,
                                         child: Stack(
                                           alignment: Alignment.center,
+                                          clipBehavior: Clip.hardEdge,
                                           children: [
                                             // Keep the grid mounted while paused so
                                             // resume doesn't remount and replay the
@@ -351,9 +358,10 @@ class _GameScreenState extends State<GameScreen> {
                                               ),
                                             ),
                                             if (game.isPaused)
-                                              _PausedBoard(
-                                                size: boardSize,
-                                                onResume: game.resumeGame,
+                                              Positioned.fill(
+                                                child: _PausedBoard(
+                                                  onResume: game.resumeGame,
+                                                ),
                                               ),
                                             if (game.isGenerating)
                                               Container(
@@ -492,13 +500,12 @@ class _GameScreenState extends State<GameScreen> {
 }
 
 class _PausedBoard extends StatelessWidget {
-  final double size;
+  /// Cropped glyph at the same on-screen size as the old 365px padded asset.
+  static const _iconHeight = 127.0;
+
   final VoidCallback onResume;
 
-  const _PausedBoard({
-    required this.size,
-    required this.onResume,
-  });
+  const _PausedBoard({required this.onResume});
 
   @override
   Widget build(BuildContext context) {
@@ -507,32 +514,20 @@ class _PausedBoard extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onResume,
-      child: Container(
-        width: size,
-        height: size,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           color: IrodokuTheme.emptyCellFill(brightness),
           border: Border.all(color: thick, width: 2.5),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.pause_circle_outline,
-              size: 56,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.45),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Paused',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontFamily: 'Balatro',
-                  ),
-            ),
-          ],
+        child: ClipRect(
+          child: Center(
+              child: Image.asset(
+                'assets/icons/pause_cropped.png',
+                height: _iconHeight,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.medium,
+              ),
+          ),
         ),
       ),
     );

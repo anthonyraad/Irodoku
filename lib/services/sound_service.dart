@@ -105,9 +105,9 @@ class SoundService {
     _note2: 0.5,
     _note3: 0.5,
     _note4: 0.5,
-    _deselect1: 1.0,
-    _deselect2: 1.0,
-    _deselect3: 1.0,
+    _deselect1: 1.10,
+    _deselect2: 1.10,
+    _deselect3: 1.10,
     // Hotter source assets — attenuated to sit with confirm/note.
     _rainbowConfirm: 0.70, // ~3 dB hotter mean than confirm.mp3
     // Glass/Sky note stings.

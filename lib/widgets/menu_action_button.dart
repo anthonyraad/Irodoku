@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'menu_select_sound.dart';
+import 'palette_sweep_mask.dart';
 
 /// Bordered Main Menu-style action button (Classic, Stats, Settings, etc.).
 class MenuActionButton extends StatelessWidget {
@@ -16,6 +17,8 @@ class MenuActionButton extends StatelessWidget {
   final VoidCallback onPressed;
   /// 0–1 progress; when set, the label shakes horizontally as it runs.
   final Animation<double>? labelShake;
+  /// 0–1 progress; when set, the label sweeps the selected Config palette.
+  final Animation<double>? labelSweep;
 
   const MenuActionButton({
     super.key,
@@ -26,6 +29,7 @@ class MenuActionButton extends StatelessWidget {
     this.muted = false,
     this.locked = false,
     this.labelShake,
+    this.labelSweep,
   });
 
   @override
@@ -91,14 +95,7 @@ class MenuActionButton extends StatelessWidget {
                           width: double.infinity,
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
-                            child: _shakingLabel(
-                              _MenuActionLabel(
-                                label: label,
-                                color: ink,
-                                struckThrough: muted,
-                                style: labelStyle,
-                              ),
-                            ),
+                            child: _sweepingLabel(ink, labelStyle),
                           ),
                         ),
                       ),
@@ -121,6 +118,34 @@ class MenuActionButton extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _sweepingLabel(Color ink, TextStyle? labelStyle) {
+    Widget painted() {
+      return _shakingLabel(
+        _MenuActionLabel(
+          label: label,
+          color: ink,
+          struckThrough: muted,
+          style: labelStyle,
+        ),
+      );
+    }
+
+    final sweep = labelSweep;
+    if (sweep == null) {
+      return painted();
+    }
+
+    return _shakingLabel(
+      PaletteSweepFillText(
+        text: label,
+        style: labelStyle,
+        ink: ink,
+        progress: sweep,
+        startT: PaletteSweepMask.menuStartT,
       ),
     );
   }

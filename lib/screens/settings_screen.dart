@@ -13,6 +13,7 @@ import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
+import '../widgets/palette_sweep_mask.dart';
 import 'achievements_screen.dart';
 import 'app_settings_screen.dart';
 import 'game_screen.dart';
@@ -30,7 +31,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with TickerProviderStateMixin {
   static const _titleIconRevealDelay = Duration(milliseconds: 160);
 
   bool _titleIconsVisible = false;
@@ -39,6 +41,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Timer? _midnightTimer;
   bool _openingDaily = false;
   bool _pocketMenu = false;
+  late final AnimationController _statsShake;
+  late final AnimationController _difficultySweep;
 
   /// Scale title icons in after a short beat (title text stays static).
   void _scheduleTitleIcons() {
@@ -64,6 +68,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _statsShake = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 210),
+    );
+    _difficultySweep = AnimationController(
+      vsync: this,
+      duration: PaletteSweepMask.duration,
+    );
     _scheduleMidnightRefresh();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -85,6 +97,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
+    _statsShake.dispose();
+    _difficultySweep.dispose();
     _titleIconTimer?.cancel();
     _midnightTimer?.cancel();
     super.dispose();
@@ -182,13 +196,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onPocketMenuChanged: (pocket) {
                     if (_pocketMenu == pocket) return;
                     setState(() => _pocketMenu = pocket);
+                    _statsShake.forward(from: 0);
                   },
+                  difficultySweep: _difficultySweep,
                 ),
               ),
               const Divider(height: 32),
               ConfigSettingsPanel(
                 showSoundAndDarkMode: false,
                 difficultyLocked: _pocketMenu,
+                onDifficultyApplied: () {
+                  _difficultySweep.forward(from: 0);
+                },
               ),
               const Divider(height: 32),
               Padding(
@@ -198,6 +217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Expanded(
                       child: MenuActionButton(
                         label: _pocketMenu ? '[Stats]' : 'Stats',
+                        labelShake: _statsShake,
                         onPressed: () async {
                           _hideTitleIcons();
                           await Navigator.of(context).push(
@@ -537,6 +557,7 @@ class _PlayModeGrid extends StatefulWidget {
   final VoidCallback onIroen;
   final VoidCallback onPocket;
   final ValueChanged<bool> onPocketMenuChanged;
+  final Animation<double> difficultySweep;
 
   const _PlayModeGrid({
     required this.busy,
@@ -554,6 +575,7 @@ class _PlayModeGrid extends StatefulWidget {
     required this.onIroen,
     required this.onPocket,
     required this.onPocketMenuChanged,
+    required this.difficultySweep,
   });
 
   @override
@@ -600,6 +622,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
           onClassic: widget.onClassic,
           onPocket: widget.onPocket,
           onPocketModeChanged: _onPocketModeChanged,
+          difficultySweep: widget.difficultySweep,
         ),
         const SizedBox(height: 12),
         Row(
@@ -640,6 +663,8 @@ class _PlayModeGridState extends State<_PlayModeGrid>
                     : widget.onChromatic,
                 labelShake:
                     widget.chromaticUnlocked ? _chromaticShake : null,
+                labelSweep:
+                    widget.chromaticUnlocked ? widget.difficultySweep : null,
               ),
             ),
             const SizedBox(width: 12),
@@ -665,12 +690,14 @@ class _ClassicOrPocketButton extends StatefulWidget {
   final VoidCallback onClassic;
   final VoidCallback onPocket;
   final ValueChanged<bool> onPocketModeChanged;
+  final Animation<double> difficultySweep;
 
   const _ClassicOrPocketButton({
     required this.busy,
     required this.onClassic,
     required this.onPocket,
     required this.onPocketModeChanged,
+    required this.difficultySweep,
   });
 
   @override
@@ -755,6 +782,7 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
         enabled: !widget.busy,
         onPressed: _onPressed,
         labelShake: _shake,
+        labelSweep: widget.difficultySweep,
       ),
     );
   }

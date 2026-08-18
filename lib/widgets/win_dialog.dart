@@ -85,7 +85,7 @@ Future<void> showWinDialog(
                 Navigator.of(context).pop();
                 onNewGame();
               }),
-              child: const Text('New Game'),
+              child: const Text('Next game'),
             ),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: ink),
