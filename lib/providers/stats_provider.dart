@@ -142,6 +142,7 @@ class StatsProvider extends ChangeNotifier {
         !pocket &&
         lastPalette != null &&
         lastPalette != palette.storageKey;
+    final careerBefore = graffiti ? _careerWins : _careerWins - 1;
     final award = PlayerXp.compute(
       difficulty: difficulty,
       mistakes: mistakes,
@@ -157,6 +158,7 @@ class StatsProvider extends ChangeNotifier {
       achievedXp: achievedXp,
       pocket: pocket,
       graffiti: graffiti,
+      lucky: PlayerXp.rollLucky(careerBefore),
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
@@ -166,6 +168,9 @@ class StatsProvider extends ChangeNotifier {
     }
     return award;
   }
+
+  int get _careerWins =>
+      _stats.gamesWon + _stats.pocketWins + _stats.pocketChromaticWins;
 
   /// Pocket wins grant XP plus Pocket/[Chromatic] win counts and best times.
   /// Does not touch Classic streaks, unlocks, or last-win palette.

@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../core/palette.dart';
+import '../providers/settings_provider.dart';
 import 'menu_select_sound.dart';
 import 'palette_sweep_mask.dart';
 
@@ -19,6 +22,8 @@ class MenuActionButton extends StatelessWidget {
   final Animation<double>? labelShake;
   /// 0–1 progress; when set, the label sweeps the selected Config palette.
   final Animation<double>? labelSweep;
+  /// 0–1 progress; when set, the badge pill sweeps the selected Config palette.
+  final Animation<double>? badgeSweep;
 
   const MenuActionButton({
     super.key,
@@ -30,6 +35,7 @@ class MenuActionButton extends StatelessWidget {
     this.locked = false,
     this.labelShake,
     this.labelSweep,
+    this.badgeSweep,
   });
 
   @override
@@ -114,7 +120,10 @@ class MenuActionButton extends StatelessWidget {
               top: -8,
               right: -6,
               child: IgnorePointer(
-                child: _MenuActionBadge(label: badge!),
+                child: _MenuActionBadge(
+                  label: badge!,
+                  sweep: badgeSweep,
+                ),
               ),
             ),
         ],
@@ -213,15 +222,69 @@ class _MenuActionLabel extends StatelessWidget {
 
 class _MenuActionBadge extends StatelessWidget {
   final String label;
+  final Animation<double>? sweep;
 
-  const _MenuActionBadge({required this.label});
+  const _MenuActionBadge({required this.label, this.sweep});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final fill = scheme.onSurface;
+    final text = Padding(
+      padding: const EdgeInsets.fromLTRB(7, 2, 7, 3),
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: scheme.surface,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+              height: 1.1,
+            ),
+      ),
+    );
+    final progress = sweep;
+    if (progress == null) {
+      return _badgeShell(scheme: scheme, color: fill, child: text);
+    }
+
+    final colors = IrodokuPalette.colorsFor(
+      context.watch<SettingsProvider>().palette,
+    );
+    return AnimatedBuilder(
+      animation: progress,
+      builder: (context, child) {
+        final raw = progress.value;
+        final sweeping = raw > 0 && raw < 1 && colors.length >= 2;
+        return _badgeShell(
+          scheme: scheme,
+          color: fill,
+          gradient: sweeping
+              ? PaletteSweepMask.diagonalGradient(
+                  colors: colors,
+                  ink: fill,
+                  raw: raw,
+                  startT: PaletteSweepMask.menuStartT,
+                )
+              : null,
+          child: child!,
+        );
+      },
+      child: text,
+    );
+  }
+
+  Widget _badgeShell({
+    required ColorScheme scheme,
+    required Color color,
+    required Widget child,
+    Gradient? gradient,
+  }) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.onSurface,
+        color: gradient == null ? color : null,
+        gradient: gradient,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: scheme.surface, width: 1.5),
         boxShadow: [
@@ -232,20 +295,7 @@ class _MenuActionBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(7, 2, 7, 3),
-        child: Text(
-          label,
-          maxLines: 1,
-          softWrap: false,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: scheme.surface,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.2,
-                height: 1.1,
-              ),
-        ),
-      ),
+      child: child,
     );
   }
 }

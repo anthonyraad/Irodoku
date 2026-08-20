@@ -34,25 +34,42 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen>
     with TickerProviderStateMixin {
   static const _titleIconRevealDelay = Duration(milliseconds: 160);
+  static const _streakSweepDelay = Duration(milliseconds: 440);
 
   bool _titleIconsVisible = false;
   int _titleIconGeneration = 0;
+  int _streakSweepGeneration = 0;
   Timer? _titleIconTimer;
+  Timer? _streakSweepTimer;
   Timer? _midnightTimer;
   bool _openingDaily = false;
   bool _pocketMenu = false;
   late final AnimationController _statsShake;
   late final AnimationController _difficultySweep;
+  late final AnimationController _streakSweep;
 
   /// Scale title icons in after a short beat (title text stays static).
   void _scheduleTitleIcons() {
     _titleIconTimer?.cancel();
+    _streakSweepTimer?.cancel();
     final gen = ++_titleIconGeneration;
+    final streakGen = ++_streakSweepGeneration;
+    _streakSweep.value = 0;
     setState(() => _titleIconsVisible = false);
     _titleIconTimer = Timer(_titleIconRevealDelay, () {
       if (!mounted || gen != _titleIconGeneration) return;
       if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
       setState(() => _titleIconsVisible = true);
+    });
+    _streakSweepTimer = Timer(_streakSweepDelay, () {
+      if (!mounted || streakGen != _streakSweepGeneration) return;
+      if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      final game = context.read<GameProvider>();
+      final unlocked =
+          context.read<StatsProvider>().isDailyChallengeUnlocked ||
+              GameProvider.debugDailyStreakOverride != null;
+      if (!unlocked || game.dailyStreakDisplay <= 0) return;
+      _streakSweep.forward(from: 0);
     });
   }
 
@@ -60,7 +77,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// still visible when the user pops back.
   void _hideTitleIcons() {
     _titleIconTimer?.cancel();
+    _streakSweepTimer?.cancel();
     _titleIconGeneration++;
+    _streakSweepGeneration++;
+    _streakSweep.value = 0;
     if (!_titleIconsVisible) return;
     setState(() => _titleIconsVisible = false);
   }
@@ -73,6 +93,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       duration: const Duration(milliseconds: 210),
     );
     _difficultySweep = AnimationController(
+      vsync: this,
+      duration: PaletteSweepMask.duration,
+    );
+    _streakSweep = AnimationController(
       vsync: this,
       duration: PaletteSweepMask.duration,
     );
@@ -99,7 +123,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   void dispose() {
     _statsShake.dispose();
     _difficultySweep.dispose();
+    _streakSweep.dispose();
     _titleIconTimer?.cancel();
+    _streakSweepTimer?.cancel();
     _midnightTimer?.cancel();
     super.dispose();
   }
@@ -156,7 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         builder: (context, settings, statsProvider, game, _) {
           final stats = statsProvider.stats;
           final chromaticUnlocked = statsProvider.areAllMenuPalettesUnlocked;
-          final dailyUnlocked = statsProvider.isDailyChallengeUnlocked;
+          final dailyUnlocked = statsProvider.isDailyChallengeUnlocked ||
+              GameProvider.debugDailyStreakOverride != null;
           final graffitiUnlocked = statsProvider.isGraffitiUnlocked;
           final dailyFinished = game.isDailyFinishedToday;
           final dailyStreak = game.dailyStreakDisplay;
@@ -207,6 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     _statsShake.forward(from: 0);
                   },
                   difficultySweep: _difficultySweep,
+                  streakSweep: _streakSweep,
                 ),
               ),
               const Divider(height: 32),
@@ -566,6 +594,7 @@ class _PlayModeGrid extends StatefulWidget {
   final VoidCallback onPocket;
   final ValueChanged<bool> onPocketMenuChanged;
   final Animation<double> difficultySweep;
+  final Animation<double> streakSweep;
 
   const _PlayModeGrid({
     required this.busy,
@@ -584,6 +613,7 @@ class _PlayModeGrid extends StatefulWidget {
     required this.onPocket,
     required this.onPocketMenuChanged,
     required this.difficultySweep,
+    required this.streakSweep,
   });
 
   @override
@@ -650,6 +680,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
                 badge: widget.dailyUnlocked && widget.dailyStreak > 0
                     ? 'x${widget.dailyStreak}'
                     : null,
+                badgeSweep: widget.streakSweep,
                 enabled: !widget.busy,
                 muted: widget.dailyUnlocked && widget.dailyFinished,
                 locked: !widget.dailyUnlocked,
@@ -786,7 +817,7 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
       onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
       onHorizontalDragEnd: _onDragEnd,
       child: MenuActionButton(
-        label: _pocket ? '[Pocket]' : 'Classic Game',
+        label: _pocket ? '[Pocket]' : 'Irodoku',
         enabled: !widget.busy,
         onPressed: _onPressed,
         labelShake: _shake,

@@ -654,4 +654,34 @@ void main() {
     );
     expect(PlayerXp.backfillFrom(stats), 2 * 50 + 100 + 3 * 100);
   });
+
+  test('Lucky adds 400 as the last receipt line', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 3,
+      elapsed: const Duration(minutes: 15),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      lucky: true,
+    );
+    expect(award.lucky, isTrue);
+    expect(award.earned, 50 + PlayerXp.luckyXp);
+    expect(award.breakdown.last, (label: 'Lucky', xp: 400));
+    expect(
+      award.breakdown.fold<int>(0, (sum, line) => sum + line.xp),
+      award.earned,
+    );
+  });
+
+  test('Lucky does not roll on the first 3 career wins', () {
+    expect(PlayerXp.rollLucky(0, roll: 0), isFalse);
+    expect(PlayerXp.rollLucky(2, roll: 0), isFalse);
+    expect(PlayerXp.rollLucky(3, roll: 0), isTrue);
+  });
+
+  test('Lucky is 4% after the career lockout', () {
+    expect(PlayerXp.rollLucky(3, roll: 0.039999), isTrue);
+    expect(PlayerXp.rollLucky(3, roll: 0.04), isFalse);
+    expect(PlayerXp.rollLucky(10, roll: 0.5), isFalse);
+  });
 }

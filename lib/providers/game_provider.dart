@@ -47,6 +47,10 @@ class GameProvider extends ChangeNotifier {
   static const int maxMistakes = 3;
   static const int pocketMaxMistakes = 2;
 
+  /// TEMP: fake Main Menu Daily streak for pill-sweep testing.
+  /// Does not write to prefs. Set to `null` when done.
+  static const int? debugDailyStreakOverride = null;
+
   final SettingsProvider _settings;
   final StatsProvider _stats;
   final AchievementsProvider _achievements;
@@ -241,6 +245,7 @@ class GameProvider extends ChangeNotifier {
 
   /// Streak shown on the Daily button; 0 if broken by a missed day.
   int get dailyStreakDisplay {
+    if (debugDailyStreakOverride != null) return debugDailyStreakOverride!;
     final today = DailyIrodoku.forDate().dayKey;
     final last = _prefs.getDailyLastCompletedDay();
     if (last == null) return 0;

@@ -31,6 +31,13 @@ abstract final class PlayerXp {
   static const dailyStreakBonus = 25;
   static const dailyStreakBonusMin = 3;
 
+  /// Flat jackpot; rolled independently on each eligible victory.
+  static const luckyXp = 400;
+  static const luckyChance = 0.04;
+  /// Career wins that must already be finished before Lucky can roll.
+  /// Graffiti is excluded from this count.
+  static const luckyMinPriorWins = 3;
+
   /// Pocket is a flat base; Speedy is under 2:00. Lazy is over 3:00.
   static const pocketBaseXp = 25;
   static const pocketFastThreshold = Duration(minutes: 2);
@@ -116,6 +123,7 @@ abstract final class PlayerXp {
     int achievedXp = 0,
     bool pocket = false,
     bool graffiti = false,
+    bool lucky = false,
   }) {
     final base = pocket
         ? pocketBaseXp
@@ -157,6 +165,7 @@ abstract final class PlayerXp {
             ? pocketChromaticBonus
             : chromaticBonusFor(difficulty);
     final artistryXp = pocket ? 0 : achievedXp;
+    final luckyBonus = lucky ? luckyXp : 0;
     final earned = base +
         flawlessXp +
         sloppyXp +
@@ -167,7 +176,8 @@ abstract final class PlayerXp {
         firstOfDay +
         streak +
         chromaticXp +
-        artistryXp;
+        artistryXp +
+        luckyBonus;
     return XpAward(
       baseXp: base,
       difficulty: difficulty,
@@ -198,7 +208,14 @@ abstract final class PlayerXp {
       earned: earned,
       previousTotal: previousTotal,
       newTotal: previousTotal + earned,
+      lucky: luckyBonus > 0,
     );
+  }
+
+  /// True [luckyChance] of the time after [luckyMinPriorWins] non-Graffiti wins.
+  static bool rollLucky(int careerWinsBefore, {double? roll}) {
+    if (careerWinsBefore < luckyMinPriorWins) return false;
+    return (roll ?? math.Random().nextDouble()) < luckyChance;
   }
 }
 
@@ -227,6 +244,7 @@ class XpAward {
   final int earned;
   final int previousTotal;
   final int newTotal;
+  final bool lucky;
 
   const XpAward({
     required this.baseXp,
@@ -253,6 +271,7 @@ class XpAward {
     required this.earned,
     required this.previousTotal,
     required this.newTotal,
+    this.lucky = false,
   });
 
   int get previousLevel => PlayerXp.levelFor(previousTotal);
@@ -273,5 +292,6 @@ class XpAward {
         if (firstWinOfDay)
           (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
         if (streak) (label: 'Streak', xp: PlayerXp.dailyStreakBonus),
+        if (lucky) (label: 'Lucky', xp: PlayerXp.luckyXp),
       ];
 }

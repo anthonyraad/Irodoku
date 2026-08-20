@@ -38,8 +38,7 @@ class PaletteSweepMask extends StatelessWidget {
   static List<Color> _stops(List<Color> colors, Color ink) =>
       <Color>[ink, ink, ink, ...colors, ink, ink, ink];
 
-  static Shader createShader({
-    required Rect bounds,
+  static LinearGradient gradient({
     required List<Color> colors,
     required Color ink,
     required double raw,
@@ -50,6 +49,36 @@ class PaletteSweepMask extends StatelessWidget {
       begin: Alignment(2.0 - 5.8 * t, 0),
       end: Alignment(4.6 - 5.8 * t, 0),
       colors: _stops(colors, ink),
+    );
+  }
+
+  /// Same bookended palette band as [gradient], traveling top-left → bottom-right.
+  static LinearGradient diagonalGradient({
+    required List<Color> colors,
+    required Color ink,
+    required double raw,
+    double startT = 0,
+  }) {
+    final t = _sweepT(raw, startT);
+    return LinearGradient(
+      begin: Alignment(-4.6 + 5.8 * t, -4.6 + 5.8 * t),
+      end: Alignment(-2.0 + 5.8 * t, -2.0 + 5.8 * t),
+      colors: _stops(colors, ink),
+    );
+  }
+
+  static Shader createShader({
+    required Rect bounds,
+    required List<Color> colors,
+    required Color ink,
+    required double raw,
+    double startT = 0,
+  }) {
+    return gradient(
+      colors: colors,
+      ink: ink,
+      raw: raw,
+      startT: startT,
     ).createShader(bounds);
   }
 

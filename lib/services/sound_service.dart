@@ -127,7 +127,7 @@ class SoundService {
     _complete: 0.57,
     _gameWin: 0.72,
     _achievement: 0.79,
-    _igMenu: 0.35,
+    _igMenu: 0.4,
     _menuSelect1: 0.3,
     _menuSelect2: 0.3,
     _menuSelect3: 0.3,
