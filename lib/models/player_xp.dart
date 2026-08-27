@@ -63,7 +63,7 @@ abstract final class PlayerXp {
   /// XP to go from [level] to [level]+1 (not cumulative).
   static int xpToReach(int level) {
     if (level < 1) return 100;
-    return (100 * math.pow(level, 1.3)).round();
+    return (100 * math.pow(level, 1.1)).round();
   }
 
   static int levelFor(int totalXp) {
@@ -124,19 +124,22 @@ abstract final class PlayerXp {
     bool pocket = false,
     bool graffiti = false,
     bool lucky = false,
+    bool suppressSpeedAndFlawless = false,
   }) {
     final base = pocket
         ? pocketBaseXp
         : daily
             ? dailyBaseXp
             : baseXp(difficulty);
-    final flawless = mistakes == 0;
+    final flawless = mistakes == 0 && !suppressSpeedAndFlawless;
     final sloppy = pocket ? mistakes == 1 : mistakes == 2;
-    final fast = pocket
-        ? elapsed < pocketFastThreshold
-        : graffiti
-            ? elapsed < graffitiFastThreshold
-            : elapsed < fastThreshold(difficulty);
+    final fast = suppressSpeedAndFlawless
+        ? false
+        : pocket
+            ? elapsed < pocketFastThreshold
+            : graffiti
+                ? elapsed < graffitiFastThreshold
+                : elapsed < fastThreshold(difficulty);
     final lazyXp = pocket && elapsed > pocketLazyThreshold
         ? pocketLazyXp
         : !pocket &&

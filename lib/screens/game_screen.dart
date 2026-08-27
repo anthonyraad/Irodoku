@@ -104,6 +104,14 @@ class _GameScreenState extends State<GameScreen> {
     await game.startNewGame();
   }
 
+  Future<void> _onTryAgain() async {
+    final game = context.read<GameProvider>();
+    if (game.isGenerating) return;
+    _resultDialogShown = false;
+    _offerResultXp = true;
+    await game.retryFromDefeat();
+  }
+
   void _maybeShowResult(GameProvider game) {
     // Home and Daily routes share one provider — only the matching route
     // should present win/loss dialogs.
@@ -136,7 +144,8 @@ class _GameScreenState extends State<GameScreen> {
         if (!mounted) return;
         showLoseDialog(
           context,
-          showNewGame: !widget.isDailyRoute,
+          showNewGame: false,
+          onTryAgain: _onTryAgain,
           onNewGame: _onNewGame,
           maxMistakes: game.mistakeLimit,
         );

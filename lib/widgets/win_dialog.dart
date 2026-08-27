@@ -128,6 +128,7 @@ Future<void> showLoseDialog(
   BuildContext context, {
   required VoidCallback onNewGame,
   bool showNewGame = true,
+  VoidCallback? onTryAgain,
   int maxMistakes = 3,
 }) {
   return showGeneralDialog(
@@ -165,7 +166,19 @@ Future<void> showLoseDialog(
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
-          if (showNewGame)
+          if (onTryAgain != null)
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: ink,
+                foregroundColor: onInk,
+              ),
+              onPressed: withMenuSelect(context, () {
+                Navigator.of(context).pop();
+                onTryAgain();
+              }),
+              child: const Text('Try again'),
+            )
+          else if (showNewGame)
             FilledButton(
               style: FilledButton.styleFrom(
                 backgroundColor: ink,

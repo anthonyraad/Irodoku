@@ -5,13 +5,13 @@ import 'package:irodoku/models/game_stats.dart';
 import 'package:irodoku/models/player_xp.dart';
 
 void main() {
-  test('xpToReach follows 100 * level^1.3', () {
+  test('xpToReach follows 100 * level^1.1', () {
     expect(PlayerXp.xpToReach(1), 100);
-    expect(PlayerXp.xpToReach(2), 246);
-    expect(PlayerXp.xpToReach(5), 810);
-    expect(PlayerXp.xpToReach(10), 1995);
-    expect(PlayerXp.xpToReach(20), 4913);
-    expect(PlayerXp.xpToReach(50), 16168);
+    expect(PlayerXp.xpToReach(2), 214);
+    expect(PlayerXp.xpToReach(5), 587);
+    expect(PlayerXp.xpToReach(10), 1259);
+    expect(PlayerXp.xpToReach(20), 2699);
+    expect(PlayerXp.xpToReach(50), 7394);
   });
 
   test('level and progress are derived from total XP', () {
@@ -20,11 +20,11 @@ void main() {
 
     expect(PlayerXp.levelFor(99), 1);
     expect(PlayerXp.levelFor(100), 2);
-    expect(PlayerXp.progress(100), (intoLevel: 0, toNext: 246));
+    expect(PlayerXp.progress(100), (intoLevel: 0, toNext: 214));
 
-    expect(PlayerXp.levelFor(345), 2);
-    expect(PlayerXp.levelFor(346), 3);
-    expect(PlayerXp.progress(150), (intoLevel: 50, toNext: 246));
+    expect(PlayerXp.levelFor(313), 2);
+    expect(PlayerXp.levelFor(314), 3);
+    expect(PlayerXp.progress(150), (intoLevel: 50, toNext: 214));
   });
 
   test('flawless fast Hard first-of-day floors each 25% bonus', () {
@@ -683,5 +683,22 @@ void main() {
     expect(PlayerXp.rollLucky(3, roll: 0.039999), isTrue);
     expect(PlayerXp.rollLucky(3, roll: 0.04), isFalse);
     expect(PlayerXp.rollLucky(10, roll: 0.5), isFalse);
+  });
+
+  test('retry wins omit Speedy and Flawless XP', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 11, seconds: 59),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      suppressSpeedAndFlawless: true,
+    );
+    expect(award.flawless, isFalse);
+    expect(award.fast, isFalse);
+    expect(award.flawlessXp, 0);
+    expect(award.fastXp, 0);
+    expect(award.earned, 175);
+    expect(award.breakdown, [(label: 'Hard finish', xp: 175)]);
   });
 }

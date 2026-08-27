@@ -70,6 +70,8 @@ class GameProvider extends ChangeNotifier {
   bool _hasActiveGame = false;
   bool _winRecorded = false;
   bool _lossRecorded = false;
+  /// Classic / Chromatic / Pocket: this board was restarted after a defeat.
+  bool _retriedAfterLoss = false;
   /// True after the player taps/edits any cell this game.
   bool _hasInteracted = false;
   int _generationToken = 0;
@@ -224,9 +226,8 @@ class GameProvider extends ChangeNotifier {
     return _prefs.getDailyLastFailedDay() == today;
   }
 
-  /// Won or lost today's Daily — no fresh attempt allowed.
-  bool get isDailyFinishedToday =>
-      isDailyCompletedToday || isDailyFailedToday;
+  /// Won today's Daily — review only; losses can still be retried.
+  bool get isDailyFinishedToday => isDailyCompletedToday;
 
   /// True when today's daily is live or parked for resume from Main Menu.
   bool get hasResumableDaily {
@@ -264,7 +265,7 @@ class GameProvider extends ChangeNotifier {
     return last == yesterday ? _prefs.getDailyStreak() + 1 : 1;
   }
 
-  /// All-time highest Daily Iro win streak (survives losses / missed days).
+  /// All-time highest Daily Iro win streak (survives missed days).
   int get dailyBestStreak => _prefs.getDailyBestStreak();
 
   List<GamePalette> consumePendingPaletteUnlocks() {
@@ -461,7 +462,7 @@ class GameProvider extends ChangeNotifier {
   /// Starts or resumes today's seeded Daily Irodoku.
   ///
   /// Parks the regular puzzle first so Main Menu back can restore it.
-  /// If today's Daily is already finished, opens the frozen board (no retry).
+  /// If today's Daily is already won, opens the frozen board.
   Future<bool> startDailyGame() async {
     final challenge = DailyIrodoku.forDate();
     if (_isGenerating) return false;
@@ -483,18 +484,10 @@ class GameProvider extends ChangeNotifier {
       return true;
     }
 
-    // Reopen today's failed Daily — no fresh retry for the PST day.
+    // Older builds locked the day after a loss. Retries are allowed now.
     if (_prefs.getDailyLastFailedDay() == challenge.dayKey) {
-      final failed = _prefs.loadFailedDailyGame();
-      if (failed == null || failed.dailyDayKey != challenge.dayKey) {
-        return false;
-      }
-      if (!_isDaily) {
-        await _parkHomeLive();
-      }
-      _applyFinishedDailyReview(failed, won: false);
-      notifyListeners();
-      return true;
+      await _prefs.clearDailyFailedDay();
+      await _prefs.clearFailedDailyGame();
     }
 
     _dailyReviewMode = false;
@@ -522,19 +515,6 @@ class GameProvider extends ChangeNotifier {
       return true;
     }
 
-    // Live board already lost today — persist failure and freeze (no retry).
-    if (_isDaily && _dailyDayKey == challenge.dayKey && isLost) {
-      final failed = _snapshotLiveGame();
-      await _recordDailyFailure(failedBoard: failed);
-      if (failed != null) {
-        _applyFinishedDailyReview(failed, won: false);
-      } else {
-        _dailyReviewMode = true;
-      }
-      notifyListeners();
-      return failed != null;
-    }
-
     // Park the regular puzzle before replacing the live board with daily.
     if (!_isDaily) {
       await _parkHomeLive();
@@ -551,6 +531,67 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: challenge.dayKey,
     );
     return true;
+  }
+
+  /// Restart today's Daily from the given cells after a defeat.
+  Future<void> retryDailyGame() async {
+    if (!_isDaily || _isGenerating || isDailyCompletedToday) return;
+    final challenge = DailyIrodoku.forDate();
+    await _prefs.clearDailyFailedDay();
+    await _prefs.clearFailedDailyGame();
+    _sessionPalette = challenge.palette;
+    await startNewGame(
+      difficulty: challenge.difficulty,
+      seed: challenge.seed,
+      dailyDayKey: challenge.dayKey,
+    );
+  }
+
+  /// Restart the current Classic / Chromatic / Pocket board after a defeat.
+  Future<void> retryFromDefeat() async {
+    if (_isGenerating || !isLost) return;
+    if (_isDaily) {
+      await retryDailyGame();
+      return;
+    }
+    _retryCurrentPuzzle();
+  }
+
+  void _retryCurrentPuzzle() {
+    if (_solution == null) return;
+    _timer?.cancel();
+    _retriedAfterLoss = true;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = false;
+    _hasActiveGame = true;
+    _winRecorded = false;
+    _lossRecorded = false;
+    _hasInteracted = false;
+    _mistakes = 0;
+    _pendingPaletteUnlocks = [];
+    _selected = null;
+    _exitBulkNoteSelect();
+    _elapsed = Duration.zero;
+    _sessionPalette = null;
+    _celebration = null;
+    _noteClearWave = null;
+    _noteMode = false;
+    _undoStack.clear();
+    _colorCycleFilterValue = null;
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
+        final cell = _cells[r][c];
+        _cells[r][c] = cell.isGiven
+            ? Cell(value: cell.value, isGiven: true)
+            : const Cell();
+      }
+    }
+    _completedUnits = _successfullyCompletedUnits();
+    _resetAchievementSession();
+    unawaited(_prefs.clearPausedGame());
+    _startTimer();
+    notifyListeners();
   }
 
   /// Park the live Daily when leaving its screen for Main Menu.
@@ -717,6 +758,7 @@ class GameProvider extends ChangeNotifier {
     _hasActiveGame = false;
     _winRecorded = false;
     _lossRecorded = false;
+    _retriedAfterLoss = false;
     _hasInteracted = false;
     _mistakes = 0;
     _pendingPaletteUnlocks = [];
@@ -846,6 +888,7 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
       usedNotes: _usedNotes,
+      retriedAfterLoss: _retriedAfterLoss,
     );
   }
 
@@ -1646,8 +1689,8 @@ class GameProvider extends ChangeNotifier {
     if (_isDaily) {
       _heldDaily = null;
       unawaited(_prefs.clearParkedDailyGame());
-      final failed = _snapshotLiveGame();
-      unawaited(_recordDailyFailure(failedBoard: failed));
+      unawaited(_prefs.clearDailyFailedDay());
+      unawaited(_prefs.clearFailedDailyGame());
     }
   }
 
@@ -1687,12 +1730,14 @@ class GameProvider extends ChangeNotifier {
           mistakes: _mistakes,
           palette: winPalette,
           chromatic: _settings.chromatic,
+          suppressSpeedAndFlawless: _retriedAfterLoss,
         );
         unawaited(
           _achievements.onPocketGamesWon(
             pocketGamesWon: _stats.stats.pocketGamesWon,
             elapsed: _elapsed,
             mistakes: _mistakes,
+            suppressSpeedAndFlawless: _retriedAfterLoss,
           ),
         );
         unawaited(_stats.persist());
@@ -1704,6 +1749,7 @@ class GameProvider extends ChangeNotifier {
             mistakes: _mistakes,
             palette: winPalette,
             ctx: _achievementGameContext(),
+            suppressSpeedAndFlawless: _retriedAfterLoss && !_isDaily,
           ),
         );
         if (_isDaily) {
@@ -1723,6 +1769,7 @@ class GameProvider extends ChangeNotifier {
           dailyStreak: _isDaily ? _dailyStreakAfterThisWin() : 0,
           achievedXp: _achievements.consumeAchievedXp(),
           noteless: !_usedNotes,
+          suppressSpeedAndFlawless: _retriedAfterLoss && !_isDaily,
         );
         _settings.ensurePaletteUnlocked(_stats.stats);
         unawaited(_stats.persist());
@@ -1761,19 +1808,6 @@ class GameProvider extends ChangeNotifier {
     await _prefs.clearFailedDailyGame();
     await _prefs.clearDailyFailedDay();
     unawaited(_achievements.onDailyChallengeWon(streak: streak));
-    notifyListeners();
-  }
-
-  Future<void> _recordDailyFailure({PausedGame? failedBoard}) async {
-    final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
-    await _prefs.setDailyFailedDay(dayKey);
-    if (failedBoard != null) {
-      await _prefs.saveFailedDailyGame(failedBoard);
-    }
-    // A loss for today supersedes any stray win snapshot.
-    await _prefs.clearCompletedDailyGame();
-    // Losing ends the Daily streak immediately (not deferred to the next day).
-    await _prefs.resetDailyStreak();
     notifyListeners();
   }
 
@@ -2123,6 +2157,7 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: held.dailyDayKey,
       sessionPalette: held.sessionPalette,
       usedNotes: held.usedNotes,
+      retriedAfterLoss: held.retriedAfterLoss,
     );
   }
 
@@ -2174,6 +2209,7 @@ class GameProvider extends ChangeNotifier {
       boxesCompletedInFirst90Seconds: 0,
       consecutiveDistinctFillColors: const [],
       unitCompletionTimes: const [],
+      retriedAfterLoss: paused.retriedAfterLoss,
     );
   }
 
@@ -2212,6 +2248,7 @@ class GameProvider extends ChangeNotifier {
     _celebration = null;
     _resetAchievementSession();
     _usedNotes = paused.usedNotes;
+    _retriedAfterLoss = paused.retriedAfterLoss;
   }
 
   _HeldGameSession _captureHeld() {
@@ -2267,6 +2304,7 @@ class GameProvider extends ChangeNotifier {
       boxesCompletedInFirst90Seconds: _boxesCompletedInFirst90Seconds,
       consecutiveDistinctFillColors: [..._consecutiveDistinctFillColors],
       unitCompletionTimes: [..._unitCompletionTimes],
+      retriedAfterLoss: _retriedAfterLoss,
     );
   }
 
@@ -2327,6 +2365,7 @@ class GameProvider extends ChangeNotifier {
     _unitCompletionTimes
       ..clear()
       ..addAll(held.unitCompletionTimes);
+    _retriedAfterLoss = held.retriedAfterLoss;
     _completedUnits = _successfullyCompletedUnits();
     if (_hasActiveGame && !isGameOver && !_isPaused) {
       _startTimer();
@@ -2426,6 +2465,7 @@ class _HeldGameSession {
   final int boxesCompletedInFirst90Seconds;
   final List<int> consecutiveDistinctFillColors;
   final List<DateTime> unitCompletionTimes;
+  final bool retriedAfterLoss;
 
   const _HeldGameSession({
     required this.cells,
@@ -2465,5 +2505,6 @@ class _HeldGameSession {
     required this.boxesCompletedInFirst90Seconds,
     required this.consecutiveDistinctFillColors,
     required this.unitCompletionTimes,
+    this.retriedAfterLoss = false,
   });
 }

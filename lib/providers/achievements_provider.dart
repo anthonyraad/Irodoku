@@ -425,12 +425,15 @@ class AchievementsProvider extends ChangeNotifier {
     required int pocketGamesWon,
     required Duration elapsed,
     required int mistakes,
+    bool suppressSpeedAndFlawless = false,
   }) async {
-    final fast = elapsed <= _pocketFastLimit;
+    final fast =
+        !suppressSpeedAndFlawless && elapsed <= _pocketFastLimit;
     final consecutive = fast ? _progress.consecutivePocketFastWins + 1 : 0;
-    final pocketNoMistakeWins = mistakes == 0
-        ? _progress.pocketNoMistakeWins + 1
-        : _progress.pocketNoMistakeWins;
+    final pocketNoMistakeWins =
+        !suppressSpeedAndFlawless && mistakes == 0
+            ? _progress.pocketNoMistakeWins + 1
+            : _progress.pocketNoMistakeWins;
     _progress = _progress.copyWith(
       consecutivePocketFastWins: consecutive,
       pocketNoMistakeWins: pocketNoMistakeWins,
@@ -459,6 +462,7 @@ class AchievementsProvider extends ChangeNotifier {
     required int mistakes,
     required GamePalette palette,
     required AchievementGameContext ctx,
+    bool suppressSpeedAndFlawless = false,
   }) async {
     final winsByPalette = Map<GamePalette, int>.from(_progress.winsByPalette);
     final paletteWins = (winsByPalette[palette] ?? 0) + 1;
@@ -471,21 +475,23 @@ class AchievementsProvider extends ChangeNotifier {
         : _progress.hardWinDayKeys;
 
     var consecutiveHardNoMistake = _progress.consecutiveHardNoMistake;
-    if (difficulty == Difficulty.hard && mistakes == 0) {
+    final flawlessOk = mistakes == 0 && !suppressSpeedAndFlawless;
+    final speedOk = !suppressSpeedAndFlawless;
+    if (difficulty == Difficulty.hard && flawlessOk) {
       consecutiveHardNoMistake += 1;
     } else {
       consecutiveHardNoMistake = 0;
     }
 
     var consecutiveExpertNoMistake = _progress.consecutiveExpertNoMistake;
-    if (difficulty == Difficulty.expert && mistakes == 0) {
+    if (difficulty == Difficulty.expert && flawlessOk) {
       consecutiveExpertNoMistake += 1;
     } else {
       consecutiveExpertNoMistake = 0;
     }
 
     var masterNoMistakeWins = _progress.masterNoMistakeWins;
-    if (difficulty == Difficulty.master && mistakes == 0) {
+    if (difficulty == Difficulty.master && flawlessOk) {
       masterNoMistakeWins += 1;
     }
 
@@ -554,7 +560,7 @@ class AchievementsProvider extends ChangeNotifier {
 
     // Rainbow row
     if (!ctx.usedUndo) ids.add('r2c4');
-    if (mistakes == 0) ids.add('r2c5');
+    if (flawlessOk) ids.add('r2c5');
     if (difficulty == Difficulty.master && palette == GamePalette.rainbow) {
       ids.add('r2c6');
     }
@@ -569,28 +575,33 @@ class AchievementsProvider extends ChangeNotifier {
       ids.add('r3c6');
     }
     if (difficulty == Difficulty.expert && !ctx.paused) ids.add('r3c8');
-    if (elapsed.inSeconds == 4 * 60 + 54) {
+    if (speedOk && elapsed.inSeconds == 4 * 60 + 54) {
       ids.add('r3c9');
     }
 
     // Neon row
-    if (difficulty == Difficulty.easy &&
+    if (speedOk &&
+        difficulty == Difficulty.easy &&
         elapsed <= const Duration(minutes: 4)) {
       ids.add('r4c4');
     }
-    if (difficulty == Difficulty.medium &&
+    if (speedOk &&
+        difficulty == Difficulty.medium &&
         elapsed <= const Duration(minutes: 8)) {
       ids.add('r4c5');
     }
-    if (difficulty == Difficulty.hard &&
+    if (speedOk &&
+        difficulty == Difficulty.hard &&
         elapsed <= const Duration(minutes: 12)) {
       ids.add('r4c6');
     }
-    if (difficulty == Difficulty.expert &&
+    if (speedOk &&
+        difficulty == Difficulty.expert &&
         elapsed <= const Duration(minutes: 18)) {
       ids.add('r4c7');
     }
-    if (difficulty == Difficulty.master &&
+    if (speedOk &&
+        difficulty == Difficulty.master &&
         elapsed <= const Duration(minutes: 25)) {
       ids.add('r4c8');
     }
@@ -608,12 +619,12 @@ class AchievementsProvider extends ChangeNotifier {
     }
 
     // Johto row
-    if (ctx.rowsCompletedInFirst90Seconds >= 3) ids.add('r6c4');
-    if (ctx.colsCompletedInFirst90Seconds >= 3) ids.add('r6c5');
+    if (speedOk && ctx.rowsCompletedInFirst90Seconds >= 3) ids.add('r6c4');
+    if (speedOk && ctx.colsCompletedInFirst90Seconds >= 3) ids.add('r6c5');
     if (difficulty == Difficulty.master && palette == GamePalette.pkmn2) {
       ids.add('r6c6');
     }
-    if (ctx.boxesCompletedInFirst90Seconds >= 3) ids.add('r6c7');
+    if (speedOk && ctx.boxesCompletedInFirst90Seconds >= 3) ids.add('r6c7');
     if (unlockKantoJohtoExpert) ids.add('r6c8');
     if (difficulty == Difficulty.expert &&
         palette == GamePalette.pkmn2 &&
@@ -627,7 +638,7 @@ class AchievementsProvider extends ChangeNotifier {
     if (difficulty == Difficulty.master && palette == GamePalette.glass) {
       ids.add('r7c6');
     }
-    if (ctx.completedNineUnitsInNineSeconds) ids.add('r7c8');
+    if (speedOk && ctx.completedNineUnitsInNineSeconds) ids.add('r7c8');
     if (ctx.filledNineDistinctColorsConsecutively) ids.add('r7c9');
 
     // Sky row (r8c7 Daily streak is checked in [onDailyChallengeWon])
@@ -636,7 +647,7 @@ class AchievementsProvider extends ChangeNotifier {
         ctx.lastFillColor == 3) {
       ids.add('r8c4');
     }
-    if (ctx.chromatic && !ctx.usedNotes && mistakes == 0) {
+    if (ctx.chromatic && !ctx.usedNotes && flawlessOk) {
       ids.add('r8c5');
     }
     if (unlockGlassSkyMaster) ids.add('r8c6');

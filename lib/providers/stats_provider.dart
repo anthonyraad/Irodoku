@@ -62,6 +62,7 @@ class StatsProvider extends ChangeNotifier {
     int dailyStreak = 0,
     int achievedXp = 0,
     bool noteless = false,
+    bool suppressSpeedAndFlawless = false,
   }) async {
     final newlyUnlocked = recordWinSync(
       difficulty: difficulty,
@@ -73,6 +74,7 @@ class StatsProvider extends ChangeNotifier {
       dailyStreak: dailyStreak,
       achievedXp: achievedXp,
       noteless: noteless,
+      suppressSpeedAndFlawless: suppressSpeedAndFlawless,
     );
     await persist();
     return newlyUnlocked;
@@ -88,6 +90,7 @@ class StatsProvider extends ChangeNotifier {
     int dailyStreak = 0,
     int achievedXp = 0,
     bool noteless = false,
+    bool suppressSpeedAndFlawless = false,
   }) {
     final newlyUnlocked = _applyWin(
       difficulty: difficulty,
@@ -99,6 +102,7 @@ class StatsProvider extends ChangeNotifier {
       dailyStreak: dailyStreak,
       achievedXp: achievedXp,
       noteless: noteless,
+      suppressSpeedAndFlawless: suppressSpeedAndFlawless,
     );
     notifyListeners();
     return newlyUnlocked;
@@ -134,6 +138,7 @@ class StatsProvider extends ChangeNotifier {
     bool noteless = false,
     bool pocket = false,
     bool graffiti = false,
+    bool suppressSpeedAndFlawless = false,
   }) {
     final first = isFirstWinOfDay;
     final lastPalette = _prefs.getXpLastWinPalette();
@@ -159,6 +164,7 @@ class StatsProvider extends ChangeNotifier {
       pocket: pocket,
       graffiti: graffiti,
       lucky: PlayerXp.rollLucky(careerBefore),
+      suppressSpeedAndFlawless: suppressSpeedAndFlawless,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
@@ -179,6 +185,7 @@ class StatsProvider extends ChangeNotifier {
     required int mistakes,
     required GamePalette palette,
     bool chromatic = false,
+    bool suppressSpeedAndFlawless = false,
   }) {
     final pocketCurrent =
         Map<GamePalette, int>.from(_stats.pocketCurrentStreakByPalette);
@@ -196,10 +203,12 @@ class StatsProvider extends ChangeNotifier {
     if (chromatic) {
       final previous = _stats.pocketChromaticBestTime;
       final chromaticStreak = _stats.pocketChromaticCurrentStreak + 1;
+      final bestTime = suppressSpeedAndFlawless
+          ? previous
+          : (previous == null || elapsed < previous ? elapsed : previous);
       _stats = _stats.copyWith(
         pocketChromaticWins: _stats.pocketChromaticWins + 1,
-        pocketChromaticBestTime:
-            previous == null || elapsed < previous ? elapsed : previous,
+        pocketChromaticBestTime: bestTime,
         pocketCurrentStreakByPalette: pocketCurrent,
         pocketBestStreakByPalette: pocketBest,
         pocketChromaticCurrentStreak: chromaticStreak,
@@ -211,10 +220,12 @@ class StatsProvider extends ChangeNotifier {
     } else {
       final previous = _stats.pocketBestTime;
       final streak = _stats.pocketCurrentStreak + 1;
+      final bestTime = suppressSpeedAndFlawless
+          ? previous
+          : (previous == null || elapsed < previous ? elapsed : previous);
       _stats = _stats.copyWith(
         pocketWins: _stats.pocketWins + 1,
-        pocketBestTime:
-            previous == null || elapsed < previous ? elapsed : previous,
+        pocketBestTime: bestTime,
         pocketCurrentStreakByPalette: pocketCurrent,
         pocketBestStreakByPalette: pocketBest,
         pocketCurrentStreak: streak,
@@ -231,6 +242,7 @@ class StatsProvider extends ChangeNotifier {
       sourceLabel: 'Pocket',
       pocket: true,
       chromatic: chromatic,
+      suppressSpeedAndFlawless: suppressSpeedAndFlawless,
     );
     notifyListeners();
   }
@@ -278,6 +290,7 @@ class StatsProvider extends ChangeNotifier {
     required int dailyStreak,
     required int achievedXp,
     required bool noteless,
+    bool suppressSpeedAndFlawless = false,
   }) {
     final newStreak = _stats.currentStreak + 1;
     final bestStreak =
@@ -285,7 +298,8 @@ class StatsProvider extends ChangeNotifier {
 
     final bestTimes = Map<Difficulty, Duration?>.from(_stats.bestTimes);
     final previous = bestTimes[difficulty];
-    if (previous == null || elapsed < previous) {
+    if (!suppressSpeedAndFlawless &&
+        (previous == null || elapsed < previous)) {
       bestTimes[difficulty] = elapsed;
     }
 
@@ -300,7 +314,8 @@ class StatsProvider extends ChangeNotifier {
     if (chromatic) {
       chromaticGamesWon += 1;
       final chromaticPrevious = chromaticBestTimes[difficulty];
-      if (chromaticPrevious == null || elapsed < chromaticPrevious) {
+      if (!suppressSpeedAndFlawless &&
+          (chromaticPrevious == null || elapsed < chromaticPrevious)) {
         chromaticBestTimes[difficulty] = elapsed;
       }
       chromaticWinsByDifficulty[difficulty] =
@@ -330,6 +345,7 @@ class StatsProvider extends ChangeNotifier {
     }
 
     if (!unlockedPalettes.contains(GamePalette.neon) &&
+        !suppressSpeedAndFlawless &&
         difficulty == Difficulty.easy &&
         elapsed < const Duration(minutes: 8)) {
       unlockedPalettes.add(GamePalette.neon);
@@ -342,6 +358,7 @@ class StatsProvider extends ChangeNotifier {
     }
 
     if (!unlockedPalettes.contains(GamePalette.pkmn2) &&
+        !suppressSpeedAndFlawless &&
         difficulty == Difficulty.hard &&
         mistakes == 0) {
       unlockedPalettes.add(GamePalette.pkmn2);
@@ -349,6 +366,7 @@ class StatsProvider extends ChangeNotifier {
     }
 
     if (!unlockedPalettes.contains(GamePalette.glass) &&
+        !suppressSpeedAndFlawless &&
         difficulty == Difficulty.expert &&
         mistakes == 0) {
       unlockedPalettes.add(GamePalette.glass);
@@ -384,6 +402,7 @@ class StatsProvider extends ChangeNotifier {
       chromatic: chromatic,
       achievedXp: achievedXp,
       noteless: noteless,
+      suppressSpeedAndFlawless: suppressSpeedAndFlawless,
     );
     return newlyUnlocked;
   }

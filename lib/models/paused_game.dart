@@ -16,6 +16,8 @@ class PausedGame {
   /// Live session palette (Chromatic hop / Daily), not the saved Config choice.
   final GamePalette? sessionPalette;
   final bool usedNotes;
+  /// True when this board was restarted after a defeat (Classic / Chromatic / Pocket).
+  final bool retriedAfterLoss;
 
   const PausedGame({
     required this.difficulty,
@@ -28,6 +30,7 @@ class PausedGame {
     this.dailyDayKey,
     this.sessionPalette,
     this.usedNotes = false,
+    this.retriedAfterLoss = false,
   });
 
   Map<String, Object?> toJson() {
@@ -41,6 +44,7 @@ class PausedGame {
       'dailyDayKey': dailyDayKey,
       'sessionPalette': sessionPalette?.storageKey,
       'usedNotes': usedNotes,
+      'retriedAfterLoss': retriedAfterLoss,
       'cells': [
         for (final cell in cells)
           {
@@ -108,6 +112,7 @@ class PausedGame {
       sessionPalette:
           sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),
       usedNotes: json['usedNotes'] as bool? ?? notesOnBoard,
+      retriedAfterLoss: json['retriedAfterLoss'] as bool? ?? false,
     );
   }
 
