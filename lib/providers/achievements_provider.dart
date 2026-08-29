@@ -402,7 +402,10 @@ class AchievementsProvider extends ChangeNotifier {
 
   /// Call after a Daily Challenge win updates the persisted streak.
   Future<void> onDailyChallengeWon({required int streak}) async {
-    final best = math.max(streak, _prefs.getDailyBestStreak());
+    final best = math.max(
+      streak,
+      math.max(_prefs.getDailyBestStreak(), _prefs.getPocketDailyBestStreak()),
+    );
     final ids = <String>{
       if (best >= 5) 'r5c4',
       if (best >= 30) 'r8c7',

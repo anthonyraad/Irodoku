@@ -175,7 +175,7 @@ class _GameScreenState extends State<GameScreen> {
             !game.isGameOver;
 
         final titleText = widget.isDailyRoute
-            ? 'Daily Challenge'
+            ? (game.isPocket ? '[Daily Challenge]' : 'Daily Challenge')
             : game.isPocket && settings.chromatic
                 ? '[Chromatic]'
                 : game.isPocket
@@ -271,7 +271,7 @@ class _GameScreenState extends State<GameScreen> {
                         Expanded(
                           child: Align(
                             alignment: Alignment.centerRight,
-                            child: game.isPocket
+                            child: game.isPocket && !widget.isDailyRoute
                                 ? const SizedBox.shrink()
                                 : Text(
                                     widget.isDailyRoute

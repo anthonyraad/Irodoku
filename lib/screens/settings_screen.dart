@@ -65,10 +65,15 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (!mounted || streakGen != _streakSweepGeneration) return;
       if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
       final game = context.read<GameProvider>();
-      final unlocked =
-          context.read<StatsProvider>().isDailyChallengeUnlocked ||
-              GameProvider.debugDailyStreakOverride != null;
-      if (!unlocked || game.dailyStreakDisplay <= 0) return;
+      final stats = context.read<StatsProvider>();
+      final unlocked = _pocketMenu
+          ? stats.isPocketDailyUnlocked
+          : (stats.isDailyChallengeUnlocked ||
+              GameProvider.debugDailyStreakOverride != null);
+      final streak = _pocketMenu
+          ? game.pocketDailyStreakDisplay
+          : game.dailyStreakDisplay;
+      if (!unlocked || streak <= 0) return;
       _streakSweep.forward(from: 0);
     });
   }
@@ -151,7 +156,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         canPop: false,
         onPopInvokedWithResult: (didPop, result) async {
           if (didPop) return;
-          await context.read<GameProvider>().leaveMenuToRegular();
+          await context.read<GameProvider>().leaveMenuToRegular(
+            pocket: _pocketMenu,
+          );
           if (context.mounted) Navigator.of(context).pop();
         },
         child: Scaffold(
@@ -185,8 +192,12 @@ class _SettingsScreenState extends State<SettingsScreen>
           final dailyUnlocked = statsProvider.isDailyChallengeUnlocked ||
               GameProvider.debugDailyStreakOverride != null;
           final graffitiUnlocked = statsProvider.isGraffitiUnlocked;
+          final pocketGraffitiUnlocked = statsProvider.isPocketGraffitiUnlocked;
+          final pocketDailyUnlocked = statsProvider.isPocketDailyUnlocked;
           final dailyFinished = game.isDailyFinishedToday;
+          final pocketDailyFinished = game.isPocketDailyFinishedToday;
           final dailyStreak = game.dailyStreakDisplay;
+          final pocketDailyStreak = game.pocketDailyStreakDisplay;
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
@@ -197,8 +208,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                   dailyUnlocked: dailyUnlocked,
                   dailyFinished: dailyFinished,
                   dailyStreak: dailyStreak,
+                  pocketDailyUnlocked: pocketDailyUnlocked,
+                  pocketDailyFinished: pocketDailyFinished,
+                  pocketDailyStreak: pocketDailyStreak,
                   chromaticUnlocked: chromaticUnlocked,
                   graffitiUnlocked: graffitiUnlocked,
+                  pocketGraffitiUnlocked: pocketGraffitiUnlocked,
                   iroenUnlocked: statsProvider.isIroenUnlocked,
                   onClassic: () => _onClassicPressed(context, game),
                   onDaily: () => _onDailyPressed(
@@ -207,9 +222,21 @@ class _SettingsScreenState extends State<SettingsScreen>
                     unlocked: dailyUnlocked,
                     stats: stats,
                   ),
+                  onPocketDaily: () => _onDailyPressed(
+                    context,
+                    game,
+                    unlocked: pocketDailyUnlocked,
+                    stats: stats,
+                    pocket: true,
+                  ),
                   onGraffiti: () => _onGraffitiPressed(
                     context,
                     unlocked: graffitiUnlocked,
+                    stats: stats,
+                  ),
+                  onPocketGraffiti: () => _onPocketGraffitiPressed(
+                    context,
+                    unlocked: pocketGraffitiUnlocked,
                     stats: stats,
                   ),
                   onChromatic: () => _onChromaticPressed(
@@ -232,6 +259,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                     if (_pocketMenu == pocket) return;
                     setState(() => _pocketMenu = pocket);
                     _statsShake.forward(from: 0);
+                    _streakSweep.value = 0;
+                    final unlocked = pocket
+                        ? statsProvider.isPocketDailyUnlocked
+                        : (statsProvider.isDailyChallengeUnlocked ||
+                            GameProvider.debugDailyStreakOverride != null);
+                    final streak = pocket
+                        ? game.pocketDailyStreakDisplay
+                        : game.dailyStreakDisplay;
+                    if (unlocked && streak > 0) {
+                      _streakSweep.forward(from: 0);
+                    }
                   },
                   difficultySweep: _difficultySweep,
                   streakSweep: _streakSweep,
@@ -380,15 +418,22 @@ class _SettingsScreenState extends State<SettingsScreen>
     GameProvider game, {
     required bool unlocked,
     required GameStats stats,
+    bool pocket = false,
   }) async {
     if (_openingDaily || game.isGenerating) return;
     if (!unlocked) {
-      _showDailyLockedSnackBar(context, stats);
+      if (pocket) {
+        _showPocketGraffitiLockedSnackBar(context, stats);
+      } else {
+        _showDailyLockedSnackBar(context, stats);
+      }
       return;
     }
     _openingDaily = true;
     try {
-      final started = await game.startDailyGame();
+      final started = pocket
+          ? await game.startPocketDailyGame()
+          : await game.startDailyGame();
       if (!context.mounted || !started) return;
       _hideTitleIcons();
       await Navigator.of(context).push(
@@ -418,6 +463,23 @@ class _SettingsScreenState extends State<SettingsScreen>
     _scheduleTitleIcons();
   }
 
+  Future<void> _onPocketGraffitiPressed(
+    BuildContext context, {
+    required bool unlocked,
+    required GameStats stats,
+  }) async {
+    if (!unlocked) {
+      _showPocketGraffitiLockedSnackBar(context, stats);
+      return;
+    }
+    _hideTitleIcons();
+    await Navigator.of(context).push(
+      IrodokuPageRoute(builder: (_) => const GraffitiScreen(pocket: true)),
+    );
+    if (!mounted) return;
+    _scheduleTitleIcons();
+  }
+
   void _showGraffitiLockedSnackBar(BuildContext context, GameStats stats) {
     const need = GameStats.graffitiUnlockEasyWins;
     final have = stats.winsFor(Difficulty.easy);
@@ -438,6 +500,44 @@ class _SettingsScreenState extends State<SettingsScreen>
                   TextSpan(text: 'Win $need '),
                   const TextSpan(
                     text: 'Easy',
+                    style: TextStyle(
+                      color: Colors.lightBlueAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(text: ' game ($have/$need)'),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+  }
+
+  void _showPocketGraffitiLockedSnackBar(
+    BuildContext context,
+    GameStats stats,
+  ) {
+    const need = GameStats.graffitiUnlockPocketWins;
+    final have = stats.pocketWins;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: SizedBox(
+            width: double.infinity,
+            child: Text.rich(
+              TextSpan(
+                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                    TextStyle(
+                      color: Theme.of(context).colorScheme.onInverseSurface,
+                    ),
+                children: [
+                  TextSpan(text: 'Win $need '),
+                  const TextSpan(
+                    text: 'Pocket',
                     style: TextStyle(
                       color: Colors.lightBlueAccent,
                       fontWeight: FontWeight.w600,
@@ -582,12 +682,18 @@ class _PlayModeGrid extends StatefulWidget {
   final bool dailyUnlocked;
   final bool dailyFinished;
   final int dailyStreak;
+  final bool pocketDailyUnlocked;
+  final bool pocketDailyFinished;
+  final int pocketDailyStreak;
   final bool chromaticUnlocked;
   final bool graffitiUnlocked;
+  final bool pocketGraffitiUnlocked;
   final bool iroenUnlocked;
   final VoidCallback onClassic;
   final VoidCallback onDaily;
+  final VoidCallback onPocketDaily;
   final VoidCallback onGraffiti;
+  final VoidCallback onPocketGraffiti;
   final VoidCallback onChromatic;
   final VoidCallback onPocketChromatic;
   final VoidCallback onIroen;
@@ -601,12 +707,18 @@ class _PlayModeGrid extends StatefulWidget {
     required this.dailyUnlocked,
     required this.dailyFinished,
     required this.dailyStreak,
+    required this.pocketDailyUnlocked,
+    required this.pocketDailyFinished,
+    required this.pocketDailyStreak,
     required this.chromaticUnlocked,
     required this.graffitiUnlocked,
+    required this.pocketGraffitiUnlocked,
     required this.iroenUnlocked,
     required this.onClassic,
     required this.onDaily,
+    required this.onPocketDaily,
     required this.onGraffiti,
+    required this.onPocketGraffiti,
     required this.onChromatic,
     required this.onPocketChromatic,
     required this.onIroen,
@@ -644,15 +756,26 @@ class _PlayModeGridState extends State<_PlayModeGrid>
     if (_pocket == pocket) return;
     setState(() => _pocket = pocket);
     widget.onPocketMenuChanged(pocket);
-    if (widget.chromaticUnlocked) {
-      _chromaticShake.forward(from: 0);
-    }
+    _chromaticShake.forward(from: 0);
   }
 
   @override
   Widget build(BuildContext context) {
     final chromaticLabel =
         widget.chromaticUnlocked && _pocket ? '[Chromatic]' : 'Chromatic';
+    final graffitiLabel =
+        widget.pocketGraffitiUnlocked && _pocket ? '[Graffiti]' : 'Graffiti';
+    final dailyLabel = widget.pocketDailyUnlocked && _pocket
+        ? '[Daily Challenge]'
+        : 'Daily Challenge';
+    final graffitiUnlocked =
+        _pocket ? widget.pocketGraffitiUnlocked : widget.graffitiUnlocked;
+    final dailyUnlocked =
+        _pocket ? widget.pocketDailyUnlocked : widget.dailyUnlocked;
+    final dailyFinished =
+        _pocket ? widget.pocketDailyFinished : widget.dailyFinished;
+    final dailyStreak =
+        _pocket ? widget.pocketDailyStreak : widget.dailyStreak;
     return Column(
       children: [
         _ClassicOrPocketButton(
@@ -667,24 +790,32 @@ class _PlayModeGridState extends State<_PlayModeGrid>
           children: [
             Expanded(
               child: MenuActionButton(
-                label: 'Graffiti',
+                label: graffitiLabel,
                 enabled: !widget.busy,
-                locked: !widget.graffitiUnlocked,
-                onPressed: widget.onGraffiti,
+                locked: !graffitiUnlocked,
+                onPressed: _pocket
+                    ? widget.onPocketGraffiti
+                    : widget.onGraffiti,
+                labelShake: widget.pocketGraffitiUnlocked
+                    ? _chromaticShake
+                    : null,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: MenuActionButton(
-                label: 'Daily Challenge',
-                badge: widget.dailyUnlocked && widget.dailyStreak > 0
-                    ? 'x${widget.dailyStreak}'
+                label: dailyLabel,
+                badge: dailyUnlocked && dailyStreak > 0
+                    ? 'x$dailyStreak'
                     : null,
                 badgeSweep: widget.streakSweep,
                 enabled: !widget.busy,
-                muted: widget.dailyUnlocked && widget.dailyFinished,
-                locked: !widget.dailyUnlocked,
-                onPressed: widget.onDaily,
+                muted: dailyUnlocked && dailyFinished,
+                locked: !dailyUnlocked,
+                onPressed: _pocket ? widget.onPocketDaily : widget.onDaily,
+                labelShake: widget.pocketDailyUnlocked
+                    ? _chromaticShake
+                    : null,
               ),
             ),
           ],

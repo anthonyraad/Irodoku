@@ -44,6 +44,12 @@ class StatsProvider extends ChangeNotifier {
 
   bool get isGraffitiUnlocked => devMode || _stats.isGraffitiUnlocked;
 
+  bool get isPocketGraffitiUnlocked =>
+      devMode || _stats.isPocketGraffitiUnlocked;
+
+  bool get isPocketDailyUnlocked =>
+      devMode || _stats.isPocketDailyUnlocked;
+
   void notifyDevModeChanged() => notifyListeners();
 
   Future<void> recordGameStarted() async {
@@ -176,7 +182,10 @@ class StatsProvider extends ChangeNotifier {
   }
 
   int get _careerWins =>
-      _stats.gamesWon + _stats.pocketWins + _stats.pocketChromaticWins;
+      _stats.gamesWon +
+      _stats.pocketWins +
+      _stats.pocketChromaticWins +
+      _stats.pocketDailyWins;
 
   /// Pocket wins grant XP plus Pocket/[Chromatic] win counts and best times.
   /// Does not touch Classic streaks, unlocks, or last-win palette.
@@ -247,21 +256,64 @@ class StatsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Pocket [Daily] win: [Stats] line + Pocket XP rules with a 50 base.
+  void awardPocketDailyWin({
+    required Duration elapsed,
+    required int mistakes,
+    required GamePalette palette,
+    required int dailyStreak,
+    bool suppressSpeedAndFlawless = false,
+  }) {
+    final previous = _stats.pocketDailyBestTime;
+    final bestTime = suppressSpeedAndFlawless
+        ? previous
+        : (previous == null || elapsed < previous ? elapsed : previous);
+    _stats = _stats.copyWith(
+      pocketDailyWins: _stats.pocketDailyWins + 1,
+      pocketDailyBestTime: bestTime,
+    );
+    _awardWinXp(
+      difficulty: Difficulty.easy,
+      mistakes: mistakes,
+      elapsed: elapsed,
+      palette: palette,
+      sourceLabel: '[Daily]',
+      pocket: true,
+      daily: true,
+      dailyStreak: dailyStreak,
+      suppressSpeedAndFlawless: suppressSpeedAndFlawless,
+    );
+    notifyListeners();
+  }
+
   /// Persists a finished Graffiti match. Mutual defeat counts as a loss.
+  ///
+  /// [pocket] writes W-L-D to the Pocket [Stats] record only — never the
+  /// main Stats Graffiti line. XP still uses Graffiti (Medium) rules.
   Future<void> recordGraffitiResult(
     GraffitiMatchResult result, {
     int mistakes = 0,
     Duration elapsed = Duration.zero,
     required GamePalette palette,
     bool noteless = false,
+    bool pocket = false,
   }) async {
     _stats = switch (result) {
-      GraffitiMatchResult.win =>
-        _stats.copyWith(graffitiWins: _stats.graffitiWins + 1),
-      GraffitiMatchResult.loss =>
-        _stats.copyWith(graffitiLosses: _stats.graffitiLosses + 1),
-      GraffitiMatchResult.draw =>
-        _stats.copyWith(graffitiDraws: _stats.graffitiDraws + 1),
+      GraffitiMatchResult.win => pocket
+          ? _stats.copyWith(
+              pocketGraffitiWins: _stats.pocketGraffitiWins + 1,
+            )
+          : _stats.copyWith(graffitiWins: _stats.graffitiWins + 1),
+      GraffitiMatchResult.loss => pocket
+          ? _stats.copyWith(
+              pocketGraffitiLosses: _stats.pocketGraffitiLosses + 1,
+            )
+          : _stats.copyWith(graffitiLosses: _stats.graffitiLosses + 1),
+      GraffitiMatchResult.draw => pocket
+          ? _stats.copyWith(
+              pocketGraffitiDraws: _stats.pocketGraffitiDraws + 1,
+            )
+          : _stats.copyWith(graffitiDraws: _stats.graffitiDraws + 1),
     };
     if (result == GraffitiMatchResult.win) {
       _awardWinXp(
@@ -269,7 +321,7 @@ class StatsProvider extends ChangeNotifier {
         mistakes: mistakes,
         elapsed: elapsed,
         palette: palette,
-        sourceLabel: 'Graffiti',
+        sourceLabel: pocket ? '[Graffiti]' : 'Graffiti',
         noteless: noteless,
         graffiti: true,
       );

@@ -75,6 +75,15 @@ class _StatsScreenState extends State<StatsScreen> {
                           value: '${stats.pocketChromaticBestStreak}',
                           indent: true,
                         ),
+                        _StatRow(
+                          label: '[Daily] streak',
+                          value: '${game.pocketDailyBestStreak}',
+                          indent: true,
+                        ),
+                        _StatRow(
+                          label: '[Graffiti] record',
+                          value: stats.pocketGraffitiRecordLabel,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -91,6 +100,11 @@ class _StatsScreenState extends State<StatsScreen> {
                           difficulty: '[Chromatic]',
                           bestTime: _formatBest(stats.pocketChromaticBestTime),
                           wins: '${stats.pocketChromaticWins}',
+                        ),
+                        _DifficultyStatsRow(
+                          difficulty: '[Daily]',
+                          bestTime: _formatBest(stats.pocketDailyBestTime),
+                          wins: '${stats.pocketDailyWins}',
                         ),
                       ],
                     ),

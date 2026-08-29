@@ -32,13 +32,10 @@ class SudokuGrid extends StatefulWidget {
 class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
-  static const _borderPulseDuration = Duration(milliseconds: 1400);
-  static const _rainbowBorderDuration = BulkNoteRainbowBorder.duration;
   static const _colorCycleDuration = Duration(milliseconds: 1050);
 
   late final AnimationController _controller;
-  late final AnimationController _borderPulseController;
-  late final AnimationController _rainbowBorderController;
+  late final BulkNoteBorderAnimation _unitBorders;
   late final AnimationController _colorCycleController;
   int _lastCelebrationId = 0;
   int _lastColorCycleSeq = 0;
@@ -57,14 +54,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
         widget.game.clearCelebration();
       }
     });
-    _borderPulseController = AnimationController(
-      vsync: this,
-      duration: _borderPulseDuration,
-    );
-    _rainbowBorderController = AnimationController(
-      vsync: this,
-      duration: _rainbowBorderDuration,
-    );
+    _unitBorders = BulkNoteBorderAnimation(this);
     _colorCycleController = AnimationController(
       vsync: this,
       duration: _colorCycleDuration,
@@ -74,7 +64,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
         }
       });
     widget.game.addListener(_onGameChanged);
-    _syncBorderPulse();
+    _syncUnitBorders();
   }
 
   @override
@@ -86,8 +76,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     }
     _maybeStartCelebration();
     _maybeStartColorCycle();
-    _syncBorderPulse();
-    _syncRainbowBorder();
+    _syncUnitBorders();
     _syncGlassMotion();
   }
 
@@ -96,8 +85,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     widget.game.removeListener(_onGameChanged);
     _syncGlassMotion(forceOff: true);
     _controller.dispose();
-    _borderPulseController.dispose();
-    _rainbowBorderController.dispose();
+    _unitBorders.dispose();
     _colorCycleController.dispose();
     super.dispose();
   }
@@ -119,37 +107,15 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     // GameScreen's Consumer rebuilds this widget; only drive local animations here.
     _maybeStartCelebration();
     _maybeStartColorCycle();
-    _syncBorderPulse();
-    _syncRainbowBorder();
+    _syncUnitBorders();
   }
 
-  void _syncBorderPulse() {
-    if (widget.game.bulkNoteSelect) {
-      if (_borderPulseController.isAnimating) {
-        _borderPulseController.stop();
-        _borderPulseController.value = 0;
-      }
-      return;
-    }
-    if (widget.game.selected != null) {
-      if (!_borderPulseController.isAnimating) {
-        _borderPulseController.repeat(reverse: true);
-      }
-    } else {
-      _borderPulseController.stop();
-      _borderPulseController.value = 0;
-    }
-  }
-
-  void _syncRainbowBorder() {
-    if (widget.game.bulkNoteSelect && widget.game.selected != null) {
-      if (!_rainbowBorderController.isAnimating) {
-        _rainbowBorderController.repeat(reverse: true);
-      }
-    } else {
-      _rainbowBorderController.stop();
-      _rainbowBorderController.value = 0;
-    }
+  void _syncUnitBorders() {
+    final selected = widget.game.selected != null;
+    _unitBorders.sync(
+      showPulse: selected && !widget.game.bulkNoteSelect,
+      showRainbow: selected && widget.game.bulkNoteSelect,
+    );
   }
 
   void _maybeStartCelebration() {
@@ -198,7 +164,6 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     final thick = IrodokuTheme.thickGridLine(brightness);
     final celebration = game.celebration;
     final selected = game.selected;
-    final bulkNoteSelect = game.bulkNoteSelect;
 
     return AspectRatio(
       aspectRatio: 1,
@@ -225,33 +190,27 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
             ),
             if (selected != null)
               AnimatedBuilder(
-                animation: bulkNoteSelect
-                    ? _rainbowBorderController
-                    : _borderPulseController,
-                builder: (context, _) => IgnorePointer(
-                  child: CustomPaint(
-                    painter: _PeerUnitBorderPainter(
-                      row: selected.$1,
-                      col: selected.$2,
-                      n: game.gridSize,
-                      boxW: game.boxW,
-                      boxH: game.boxH,
-                      color: bulkNoteSelect
-                          ? null
-                          : IrodokuTheme.relatedUnitBorderPulse(
-                              brightness,
-                              Curves.easeInOut.transform(
-                                _borderPulseController.value,
-                              ),
-                            ),
-                      rainbowPhase: bulkNoteSelect
-                          ? _rainbowBorderController.value
-                          : null,
-                      rainbowBrightness:
-                          bulkNoteSelect ? brightness : null,
+                animation: _unitBorders.listenable,
+                builder: (context, _) {
+                  final morph = _unitBorders.morphValue.value;
+                  final rainbow = morph > 0;
+                  return IgnorePointer(
+                    child: CustomPaint(
+                      painter: _PeerUnitBorderPainter(
+                        row: selected.$1,
+                        col: selected.$2,
+                        n: game.gridSize,
+                        boxW: game.boxW,
+                        boxH: game.boxH,
+                        color: _unitBorders.pulseColor(brightness),
+                        rainbowPhase:
+                            rainbow ? _unitBorders.rainbow.value : null,
+                        rainbowBrightness: rainbow ? brightness : null,
+                        rainbowMorph: morph,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
           ],
         ),
@@ -415,6 +374,7 @@ class _PeerUnitBorderPainter extends CustomPainter {
   final Color? color;
   final double? rainbowPhase;
   final Brightness? rainbowBrightness;
+  final double rainbowMorph;
 
   const _PeerUnitBorderPainter({
     required this.row,
@@ -425,6 +385,7 @@ class _PeerUnitBorderPainter extends CustomPainter {
     required this.color,
     this.rainbowPhase,
     this.rainbowBrightness,
+    this.rainbowMorph = 1,
   });
 
   Paint _strokePaint(Size size) {
@@ -433,6 +394,8 @@ class _PeerUnitBorderPainter extends CustomPainter {
         size: size,
         phase: rainbowPhase!,
         brightness: rainbowBrightness!,
+        fromColor: color,
+        morph: rainbowMorph,
       );
     }
 
@@ -581,6 +544,7 @@ class _PeerUnitBorderPainter extends CustomPainter {
         oldDelegate.boxH != boxH ||
         oldDelegate.color != color ||
         oldDelegate.rainbowPhase != rainbowPhase ||
-        oldDelegate.rainbowBrightness != rainbowBrightness;
+        oldDelegate.rainbowBrightness != rainbowBrightness ||
+        oldDelegate.rainbowMorph != rainbowMorph;
   }
 }

@@ -28,8 +28,23 @@ abstract final class PlayerXp {
 
   /// Daily Challenge is a flat base (that day's difficulty still gates Fast).
   static const dailyBaseXp = 150;
-  static const dailyStreakBonus = 25;
   static const dailyStreakBonusMin = 3;
+  static const dailyStreakBonus = 25;
+  static const dailyStreakBonus7Min = 7;
+  static const dailyStreakBonus7 = 50;
+  static const dailyStreakBonus10Min = 10;
+  static const dailyStreakBonus10 = 75;
+  static const dailyStreakBonus14Min = 14;
+  static const dailyStreakBonus14 = 100;
+
+  /// Highest flat Daily streak bonus for [dailyStreak] (0 if under 3 days).
+  static int streakBonusFor(int dailyStreak) {
+    if (dailyStreak >= dailyStreakBonus14Min) return dailyStreakBonus14;
+    if (dailyStreak >= dailyStreakBonus10Min) return dailyStreakBonus10;
+    if (dailyStreak >= dailyStreakBonus7Min) return dailyStreakBonus7;
+    if (dailyStreak >= dailyStreakBonusMin) return dailyStreakBonus;
+    return 0;
+  }
 
   /// Flat jackpot; rolled independently on each eligible victory.
   static const luckyXp = 400;
@@ -40,9 +55,36 @@ abstract final class PlayerXp {
 
   /// Pocket is a flat base; Speedy is under 2:00. Lazy is over 3:00.
   static const pocketBaseXp = 25;
+  static const pocketDailyBaseXp = 50;
   static const pocketFastThreshold = Duration(minutes: 2);
   static const pocketLazyThreshold = Duration(minutes: 3);
   static const pocketLazyXp = -6;
+
+  /// [Daily] streak XP (Pocket Daily only).
+  static const pocketDailyStreakBonusMin = 3;
+  static const pocketDailyStreakBonus = 5;
+  static const pocketDailyStreakBonus7Min = 7;
+  static const pocketDailyStreakBonus7 = 10;
+  static const pocketDailyStreakBonus10Min = 10;
+  static const pocketDailyStreakBonus10 = 15;
+  static const pocketDailyStreakBonus14Min = 14;
+  static const pocketDailyStreakBonus14 = 20;
+
+  static int pocketDailyStreakBonusFor(int dailyStreak) {
+    if (dailyStreak >= pocketDailyStreakBonus14Min) {
+      return pocketDailyStreakBonus14;
+    }
+    if (dailyStreak >= pocketDailyStreakBonus10Min) {
+      return pocketDailyStreakBonus10;
+    }
+    if (dailyStreak >= pocketDailyStreakBonus7Min) {
+      return pocketDailyStreakBonus7;
+    }
+    if (dailyStreak >= pocketDailyStreakBonusMin) {
+      return pocketDailyStreakBonus;
+    }
+    return 0;
+  }
 
   /// Classic / 9×9 Chromatic Easy: Lazy is over 15:00.
   static const easyLazyThreshold = Duration(minutes: 15);
@@ -126,11 +168,14 @@ abstract final class PlayerXp {
     bool lucky = false,
     bool suppressSpeedAndFlawless = false,
   }) {
-    final base = pocket
-        ? pocketBaseXp
-        : daily
-            ? dailyBaseXp
-            : baseXp(difficulty);
+    final pocketDaily = pocket && daily;
+    final base = pocketDaily
+        ? pocketDailyBaseXp
+        : pocket
+            ? pocketBaseXp
+            : daily
+                ? dailyBaseXp
+                : baseXp(difficulty);
     final flawless = mistakes == 0 && !suppressSpeedAndFlawless;
     final sloppy = pocket ? mistakes == 1 : mistakes == 2;
     final fast = suppressSpeedAndFlawless
@@ -140,7 +185,7 @@ abstract final class PlayerXp {
             : graffiti
                 ? elapsed < graffitiFastThreshold
                 : elapsed < fastThreshold(difficulty);
-    final lazyXp = pocket && elapsed > pocketLazyThreshold
+    final lazyXp = pocket && !daily && elapsed > pocketLazyThreshold
         ? pocketLazyXp
         : !pocket &&
                 !daily &&
@@ -159,8 +204,10 @@ abstract final class PlayerXp {
         ? (base * wetPaintModifier).floor()
         : 0;
     final firstOfDay = firstWinOfDay ? firstWinOfDayBonus : 0;
-    final streak = !pocket && daily && dailyStreak >= dailyStreakBonusMin
-        ? dailyStreakBonus
+    final streak = daily
+        ? (pocket
+            ? pocketDailyStreakBonusFor(dailyStreak)
+            : streakBonusFor(dailyStreak))
         : 0;
     final chromaticXp = !chromatic
         ? 0
@@ -185,17 +232,21 @@ abstract final class PlayerXp {
       baseXp: base,
       difficulty: difficulty,
       sourceLabel: sourceLabel ??
-          (pocket
-              ? 'Pocket'
-              : daily
-                  ? 'Daily'
-                  : difficulty.label),
+          (pocket && daily
+              ? '[Daily]'
+              : pocket
+                  ? 'Pocket'
+                  : daily
+                      ? 'Daily'
+                      : difficulty.label),
       flawless: flawless,
       sloppy: sloppy,
       fast: fast,
       lazy: lazy,
       firstWinOfDay: firstWinOfDay,
       streak: streak > 0,
+      streakXp: streak,
+      streakLabel: pocket && daily ? '[Streak]' : 'Streak',
       chromatic: chromaticXp > 0,
       chromaticXp: chromaticXp,
       chromaticLabel: pocket ? '[Chromatic]' : 'Chromatic',
@@ -232,6 +283,8 @@ class XpAward {
   final bool lazy;
   final bool firstWinOfDay;
   final bool streak;
+  final int streakXp;
+  final String streakLabel;
   final bool chromatic;
   final int chromaticXp;
   final String chromaticLabel;
@@ -259,6 +312,8 @@ class XpAward {
     this.lazy = false,
     required this.firstWinOfDay,
     required this.streak,
+    this.streakXp = 0,
+    this.streakLabel = 'Streak',
     required this.chromatic,
     this.chromaticXp = 0,
     this.chromaticLabel = 'Chromatic',
@@ -294,7 +349,7 @@ class XpAward {
         if (achievedXp > 0) (label: 'Artistry', xp: achievedXp),
         if (firstWinOfDay)
           (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
-        if (streak) (label: 'Streak', xp: PlayerXp.dailyStreakBonus),
+        if (streak) (label: streakLabel, xp: streakXp),
         if (lucky) (label: 'Lucky', xp: PlayerXp.luckyXp),
       ];
 }

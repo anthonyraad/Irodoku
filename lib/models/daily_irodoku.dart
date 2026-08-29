@@ -31,6 +31,9 @@ class DailyIrodoku {
   /// Completed rows+cols+boxes required before the mid-game palette switch.
   static const paletteSwitchUnitThreshold = 11; // ~40% of 27 units
 
+  /// 6×6 [Daily]: ~40% of 18 units.
+  static const pocketPaletteSwitchUnitThreshold = 7;
+
   final String dayKey;
   final int seed;
   final Difficulty difficulty;
@@ -50,17 +53,32 @@ class DailyIrodoku {
   });
 
   /// PST-calendar challenge for [date] (defaults to now).
-  factory DailyIrodoku.forDate([DateTime? date]) {
+  factory DailyIrodoku.forDate([DateTime? date]) =>
+      DailyIrodoku._forDate(date, pocket: false);
+
+  /// 6×6 [Daily Challenge] for the PST calendar day.
+  ///
+  /// Independent seed and palettes so everyone shares the same 6×6 puzzle
+  /// that day without using the 9×9 Daily grid.
+  factory DailyIrodoku.pocketForDate([DateTime? date]) =>
+      DailyIrodoku._forDate(date, pocket: true);
+
+  factory DailyIrodoku._forDate(DateTime? date, {required bool pocket}) {
     final key = dayKeyFor(date ?? DateTime.now());
     final dayIndex = _utcDayIndex(key);
-    // Stable across devices/isolates — do not use [Object.hash] / [hashCode].
-    final seed = _stableHash('$key:seed');
-    final difficultyIndex =
-        _stableHash('$key:difficulty') % scheduleDifficulties.length;
-    final firstIndex = dayIndex.abs() % schedulePalettes.length;
-    // Offset 1..(n-1) so second is never the same as first.
+    final seedTag = pocket ? '$key:pocket:seed' : '$key:seed';
+    final seed = _stableHash(seedTag);
+    final difficultyIndex = _stableHash(
+          pocket ? '$key:pocket:difficulty' : '$key:difficulty',
+        ) %
+        scheduleDifficulties.length;
+    final firstIndex = pocket
+        ? _stableHash('$key:pocket:palette') % schedulePalettes.length
+        : dayIndex.abs() % schedulePalettes.length;
+    final secondTag =
+        pocket ? '$key:pocket:secondPalette' : '$key:secondPalette';
     final secondOffset =
-        1 + (_stableHash('$key:secondPalette') % (schedulePalettes.length - 1));
+        1 + (_stableHash(secondTag) % (schedulePalettes.length - 1));
     final secondIndex = (firstIndex + secondOffset) % schedulePalettes.length;
     return DailyIrodoku(
       dayKey: key,

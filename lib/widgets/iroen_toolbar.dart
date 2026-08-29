@@ -152,7 +152,7 @@ class _BulkToolButton extends StatefulWidget {
 }
 
 class _BulkToolButtonState extends State<_BulkToolButton> {
-  static const _longPressDuration = Duration(milliseconds: 500);
+  static const _longPressDuration = Duration(milliseconds: 425);
 
   Timer? _longPressTimer;
   bool _longPressTriggered = false;

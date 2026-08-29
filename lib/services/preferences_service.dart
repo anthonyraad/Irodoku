@@ -25,6 +25,11 @@ class PreferencesService {
   static const _keyGraffitiWins = 'stats_graffiti_wins';
   static const _keyGraffitiLosses = 'stats_graffiti_losses';
   static const _keyGraffitiDraws = 'stats_graffiti_draws';
+  static const _keyPocketGraffitiWins = 'stats_pocket_graffiti_wins';
+  static const _keyPocketGraffitiLosses = 'stats_pocket_graffiti_losses';
+  static const _keyPocketGraffitiDraws = 'stats_pocket_graffiti_draws';
+  static const _keyPocketDailyWins = 'stats_pocket_daily_wins';
+  static const _keyPocketDailyBestTime = 'stats_pocket_daily_best_time';
   static const _keyPocketWins = 'stats_pocket_wins';
   static const _keyPocketBestTime = 'stats_pocket_best_time';
   static const _keyPocketChromaticWins = 'stats_pocket_chromatic_wins';
@@ -45,7 +50,9 @@ class PreferencesService {
   static const _keyParkedDailyGame = 'parked_daily_game';
   static const _keyParkedPocketGame = 'parked_pocket_game';
   static const _keyParkedPocketChromaticGame = 'parked_pocket_chromatic_game';
+  static const _keyParkedPocketDailyGame = 'parked_pocket_daily_game';
   static const _keyCompletedDailyGame = 'completed_daily_game';
+  static const _keyCompletedPocketDailyGame = 'completed_pocket_daily_game';
   static const _keyFailedDailyGame = 'failed_daily_game';
   static const _keyIroenState = 'iroen_state';
   static const _keyIroenGallery = 'iroen_gallery';
@@ -57,6 +64,9 @@ class PreferencesService {
   static const _keyDailyLastFailed = 'daily_last_failed_day';
   static const _keyDailyStreak = 'daily_streak';
   static const _keyDailyBestStreak = 'daily_best_streak';
+  static const _keyPocketDailyLastCompleted = 'pocket_daily_last_completed_day';
+  static const _keyPocketDailyStreak = 'pocket_daily_streak';
+  static const _keyPocketDailyBestStreak = 'pocket_daily_best_streak';
   static const _keyPaletteBeforeDaily = 'palette_before_daily';
 
   final SharedPreferences _prefs;
@@ -158,6 +168,29 @@ class PreferencesService {
     }
   }
 
+  String? getPocketDailyLastCompletedDay() =>
+      _prefs.getString(_keyPocketDailyLastCompleted);
+
+  int getPocketDailyStreak() => _prefs.getInt(_keyPocketDailyStreak) ?? 0;
+
+  int getPocketDailyBestStreak() {
+    final best = _prefs.getInt(_keyPocketDailyBestStreak) ?? 0;
+    final current = getPocketDailyStreak();
+    return best > current ? best : current;
+  }
+
+  Future<void> setPocketDailyProgress({
+    required String lastCompletedDay,
+    required int streak,
+  }) async {
+    await _prefs.setString(_keyPocketDailyLastCompleted, lastCompletedDay);
+    await _prefs.setInt(_keyPocketDailyStreak, streak);
+    final best = _prefs.getInt(_keyPocketDailyBestStreak) ?? 0;
+    if (streak > best) {
+      await _prefs.setInt(_keyPocketDailyBestStreak, streak);
+    }
+  }
+
   Future<void> resetDailyStreak() async {
     await _prefs.setInt(_keyDailyStreak, 0);
   }
@@ -252,6 +285,12 @@ class PreferencesService {
           _prefs.getInt(_keyPocketChromaticCurrentStreak) ?? 0,
       pocketChromaticBestStreak:
           _prefs.getInt(_keyPocketChromaticBestStreak) ?? 0,
+      pocketGraffitiWins: _prefs.getInt(_keyPocketGraffitiWins) ?? 0,
+      pocketGraffitiLosses: _prefs.getInt(_keyPocketGraffitiLosses) ?? 0,
+      pocketGraffitiDraws: _prefs.getInt(_keyPocketGraffitiDraws) ?? 0,
+      pocketDailyWins: _prefs.getInt(_keyPocketDailyWins) ?? 0,
+      pocketDailyBestTime:
+          _durationFromMs(_prefs.getInt(_keyPocketDailyBestTime)),
     );
   }
 
@@ -264,6 +303,14 @@ class PreferencesService {
     await _prefs.setInt(_keyGraffitiWins, stats.graffitiWins);
     await _prefs.setInt(_keyGraffitiLosses, stats.graffitiLosses);
     await _prefs.setInt(_keyGraffitiDraws, stats.graffitiDraws);
+    await _prefs.setInt(_keyPocketGraffitiWins, stats.pocketGraffitiWins);
+    await _prefs.setInt(_keyPocketGraffitiLosses, stats.pocketGraffitiLosses);
+    await _prefs.setInt(_keyPocketGraffitiDraws, stats.pocketGraffitiDraws);
+    await _prefs.setInt(_keyPocketDailyWins, stats.pocketDailyWins);
+    await _setOptionalDuration(
+      _keyPocketDailyBestTime,
+      stats.pocketDailyBestTime,
+    );
     await _prefs.setInt(_keyTotalXp, stats.totalXp);
     await _prefs.setInt(_keyPocketWins, stats.pocketWins);
     await _setOptionalDuration(_keyPocketBestTime, stats.pocketBestTime);
@@ -461,6 +508,20 @@ class PreferencesService {
     await _prefs.remove(_keyParkedPocketChromaticGame);
   }
 
+  PausedGame? loadParkedPocketDailyGame() =>
+      _loadPaused(_keyParkedPocketDailyGame);
+
+  Future<void> saveParkedPocketDailyGame(PausedGame game) async {
+    await _prefs.setString(
+      _keyParkedPocketDailyGame,
+      jsonEncode(game.toJson()),
+    );
+  }
+
+  Future<void> clearParkedPocketDailyGame() async {
+    await _prefs.remove(_keyParkedPocketDailyGame);
+  }
+
   PausedGame? loadCompletedDailyGame() => _loadPaused(_keyCompletedDailyGame);
 
   Future<void> saveCompletedDailyGame(PausedGame game) async {
@@ -469,6 +530,20 @@ class PreferencesService {
 
   Future<void> clearCompletedDailyGame() async {
     await _prefs.remove(_keyCompletedDailyGame);
+  }
+
+  PausedGame? loadCompletedPocketDailyGame() =>
+      _loadPaused(_keyCompletedPocketDailyGame);
+
+  Future<void> saveCompletedPocketDailyGame(PausedGame game) async {
+    await _prefs.setString(
+      _keyCompletedPocketDailyGame,
+      jsonEncode(game.toJson()),
+    );
+  }
+
+  Future<void> clearCompletedPocketDailyGame() async {
+    await _prefs.remove(_keyCompletedPocketDailyGame);
   }
 
   PausedGame? loadFailedDailyGame() => _loadPaused(_keyFailedDailyGame);

@@ -126,4 +126,44 @@ void main() {
     // Not a pure Easy→Medium→Hard cycle (~299 sequential steps).
     expect(sequentialSteps, lessThan(150));
   });
+
+  test('Pocket Daily shares the PST day and uses an independent seed', () {
+    final nine = DailyIrodoku.forDate(DateTime.utc(2026, 8, 9, 12));
+    final pocket = DailyIrodoku.pocketForDate(DateTime.utc(2026, 8, 9, 12));
+    final pocketSameDay =
+        DailyIrodoku.pocketForDate(DateTime.utc(2026, 8, 10, 7, 59));
+    expect(pocket.dayKey, nine.dayKey);
+    expect(pocket.dayKey, '2026-08-09');
+    expect(pocket.dayKey, pocketSameDay.dayKey);
+    expect(pocket.seed, pocketSameDay.seed);
+    expect(pocket.seed, isNot(nine.seed));
+    expect(pocket.secondPalette, isNot(pocket.palette));
+  });
+
+  test('Pocket Daily palettes are independent of 9x9 Daily', () {
+    var foundDifference = false;
+    final start = DateTime.utc(2026, 1, 1, 12);
+    for (var i = 0; i < 40; i++) {
+      final day = start.add(Duration(days: i));
+      final nine = DailyIrodoku.forDate(day);
+      final pocket = DailyIrodoku.pocketForDate(day);
+      if (nine.palette != pocket.palette ||
+          nine.secondPalette != pocket.secondPalette) {
+        foundDifference = true;
+        break;
+      }
+    }
+    expect(foundDifference, isTrue);
+  });
+
+  test('seeded Pocket generator is deterministic with 11-13 givens', () {
+    final challenge = DailyIrodoku.pocketForDate(DateTime.utc(2026, 8, 9, 12));
+    final a = SudokuGenerator(random: Random(challenge.seed)).generatePocket();
+    final b = SudokuGenerator(random: Random(challenge.seed)).generatePocket();
+    expect(a.puzzle.toFlat(), b.puzzle.toFlat());
+    expect(a.solution.toFlat(), b.solution.toFlat());
+    final givens =
+        a.puzzle.toFlat().where((value) => value != 0).length;
+    expect(givens, inInclusiveRange(11, 13));
+  });
 }

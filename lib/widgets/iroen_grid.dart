@@ -27,28 +27,16 @@ class IroenGrid extends StatefulWidget {
 }
 
 class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
-  static const _borderPulseDuration = Duration(milliseconds: 1400);
-  static const _rainbowBorderDuration = BulkNoteRainbowBorder.duration;
-
-  late final AnimationController _borderPulseController;
-  late final AnimationController _rainbowBorderController;
+  late final BulkNoteBorderAnimation _unitBorders;
   bool _holdingGlassMotion = false;
 
   @override
   void initState() {
     super.initState();
     _syncGlassMotion();
-    _borderPulseController = AnimationController(
-      vsync: this,
-      duration: _borderPulseDuration,
-    );
-    _rainbowBorderController = AnimationController(
-      vsync: this,
-      duration: _rainbowBorderDuration,
-    );
+    _unitBorders = BulkNoteBorderAnimation(this);
     widget.iroen.addListener(_onIroenChanged);
-    _syncBorderPulse();
-    _syncRainbowBorder();
+    _syncUnitBorders();
   }
 
   @override
@@ -58,8 +46,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
       oldWidget.iroen.removeListener(_onIroenChanged);
       widget.iroen.addListener(_onIroenChanged);
     }
-    _syncBorderPulse();
-    _syncRainbowBorder();
+    _syncUnitBorders();
     _syncGlassMotion();
   }
 
@@ -67,8 +54,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   void dispose() {
     widget.iroen.removeListener(_onIroenChanged);
     _syncGlassMotion(forceOff: true);
-    _borderPulseController.dispose();
-    _rainbowBorderController.dispose();
+    _unitBorders.dispose();
     super.dispose();
   }
 
@@ -86,39 +72,16 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   }
 
   void _onIroenChanged() {
-    if (mounted) {
-      _syncBorderPulse();
-      _syncRainbowBorder();
-    }
+    if (mounted) _syncUnitBorders();
   }
 
-  void _syncBorderPulse() {
-    if (widget.iroen.bulkNoteSelect || widget.iroen.isPickingQuadrant) {
-      if (_borderPulseController.isAnimating) {
-        _borderPulseController.stop();
-        _borderPulseController.value = 0;
-      }
-      return;
-    }
-    if (widget.iroen.selected != null) {
-      if (!_borderPulseController.isAnimating) {
-        _borderPulseController.repeat(reverse: true);
-      }
-    } else {
-      _borderPulseController.stop();
-      _borderPulseController.value = 0;
-    }
-  }
-
-  void _syncRainbowBorder() {
-    if (widget.iroen.bulkNoteSelect && widget.iroen.selected != null) {
-      if (!_rainbowBorderController.isAnimating) {
-        _rainbowBorderController.repeat(reverse: true);
-      }
-    } else {
-      _rainbowBorderController.stop();
-      _rainbowBorderController.value = 0;
-    }
+  void _syncUnitBorders() {
+    final selected = widget.iroen.selected != null &&
+        !widget.iroen.isPickingQuadrant;
+    _unitBorders.sync(
+      showPulse: selected && !widget.iroen.bulkNoteSelect,
+      showRainbow: selected && widget.iroen.bulkNoteSelect,
+    );
   }
 
   @override
@@ -128,7 +91,6 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
     final thick = IrodokuTheme.thickGridLine(brightness);
     final iroen = widget.iroen;
     final selected = iroen.isPickingQuadrant ? null : iroen.selected;
-    final bulkNoteSelect = iroen.bulkNoteSelect;
 
     return AspectRatio(
       aspectRatio: 1,
@@ -156,30 +118,24 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
               ),
             if (selected != null)
               AnimatedBuilder(
-                animation: bulkNoteSelect
-                    ? _rainbowBorderController
-                    : _borderPulseController,
-                builder: (context, _) => IgnorePointer(
-                  child: CustomPaint(
-                    painter: _IroenPeerBorderPainter(
-                      row: selected.$1,
-                      col: selected.$2,
-                      color: bulkNoteSelect
-                          ? null
-                          : IrodokuTheme.relatedUnitBorderPulse(
-                              brightness,
-                              Curves.easeInOut.transform(
-                                _borderPulseController.value,
-                              ),
-                            ),
-                      rainbowPhase: bulkNoteSelect
-                          ? _rainbowBorderController.value
-                          : null,
-                      rainbowBrightness:
-                          bulkNoteSelect ? brightness : null,
+                animation: _unitBorders.listenable,
+                builder: (context, _) {
+                  final morph = _unitBorders.morphValue.value;
+                  final rainbow = morph > 0;
+                  return IgnorePointer(
+                    child: CustomPaint(
+                      painter: _IroenPeerBorderPainter(
+                        row: selected.$1,
+                        col: selected.$2,
+                        color: _unitBorders.pulseColor(brightness),
+                        rainbowPhase:
+                            rainbow ? _unitBorders.rainbow.value : null,
+                        rainbowBrightness: rainbow ? brightness : null,
+                        rainbowMorph: morph,
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
           ],
         ),
@@ -313,7 +269,7 @@ class _IroenMosaicCell extends StatefulWidget {
 
 class _IroenMosaicCellState extends State<_IroenMosaicCell> {
   /// Match [ColorCell]: select on pointer-down so onDoubleTap doesn't delay taps.
-  static const _longPressDuration = Duration(milliseconds: 500);
+  static const _longPressDuration = Duration(milliseconds: 425);
 
   Timer? _longPressTimer;
   bool _longPressTriggered = false;
@@ -534,6 +490,7 @@ class _IroenPeerBorderPainter extends CustomPainter {
   final Color? color;
   final double? rainbowPhase;
   final Brightness? rainbowBrightness;
+  final double rainbowMorph;
 
   const _IroenPeerBorderPainter({
     required this.row,
@@ -541,6 +498,7 @@ class _IroenPeerBorderPainter extends CustomPainter {
     required this.color,
     this.rainbowPhase,
     this.rainbowBrightness,
+    this.rainbowMorph = 1,
   });
 
   Paint _strokePaint(Size size) {
@@ -549,6 +507,8 @@ class _IroenPeerBorderPainter extends CustomPainter {
         size: size,
         phase: rainbowPhase!,
         brightness: rainbowBrightness!,
+        fromColor: color,
+        morph: rainbowMorph,
       );
     }
 
@@ -631,6 +591,7 @@ class _IroenPeerBorderPainter extends CustomPainter {
         oldDelegate.col != col ||
         oldDelegate.color != color ||
         oldDelegate.rainbowPhase != rainbowPhase ||
-        oldDelegate.rainbowBrightness != rainbowBrightness;
+        oldDelegate.rainbowBrightness != rainbowBrightness ||
+        oldDelegate.rainbowMorph != rainbowMorph;
   }
 }

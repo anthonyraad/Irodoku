@@ -192,29 +192,172 @@ void main() {
     expect(award.earned, 187);
   });
 
-  test('Daily streak of 3+ adds a flat 25 XP', () {
-    final two = PlayerXp.compute(
-      difficulty: Difficulty.medium,
-      mistakes: 1,
-      elapsed: const Duration(minutes: 30),
-      firstWinOfDay: false,
-      previousTotal: 0,
-      daily: true,
-      dailyStreak: 2,
-    );
-    final three = PlayerXp.compute(
-      difficulty: Difficulty.medium,
-      mistakes: 1,
-      elapsed: const Duration(minutes: 30),
-      firstWinOfDay: false,
-      previousTotal: 0,
-      daily: true,
-      dailyStreak: 3,
-    );
+  test('Daily streak XP is a flat tier: 25 / 50 / 75 / 100', () {
+    XpAward daily(int streak) => PlayerXp.compute(
+          difficulty: Difficulty.medium,
+          mistakes: 1,
+          elapsed: const Duration(minutes: 30),
+          firstWinOfDay: false,
+          previousTotal: 0,
+          daily: true,
+          dailyStreak: streak,
+        );
+
+    final two = daily(2);
     expect(two.streak, isFalse);
+    expect(two.streakXp, 0);
     expect(two.earned, 150);
+
+    final three = daily(3);
     expect(three.streak, isTrue);
+    expect(three.streakXp, 25);
     expect(three.earned, 175);
+    expect(three.breakdown.last, (label: 'Streak', xp: 25));
+
+    expect(daily(6).streakXp, 25);
+    expect(daily(7).streakXp, 50);
+    expect(daily(7).earned, 200);
+    expect(daily(9).streakXp, 50);
+    expect(daily(10).streakXp, 75);
+    expect(daily(10).earned, 225);
+    expect(daily(13).streakXp, 75);
+    expect(daily(14).streakXp, 100);
+    expect(daily(14).earned, 250);
+    expect(daily(30).streakXp, 100);
+  });
+
+  test('Pocket Daily is a flat 50 base with [Daily] receipt', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 2, seconds: 30),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+      daily: true,
+    );
+    expect(award.baseXp, 50);
+    expect(award.sourceLabel, '[Daily]');
+    expect(award.fast, isFalse);
+    expect(award.lazy, isFalse);
+    expect(award.earned, 62);
+    expect(
+      award.breakdown,
+      [
+        (label: '[Daily] finish', xp: 50),
+        (label: 'Flawless', xp: 12),
+      ],
+    );
+  });
+
+  test('Pocket Daily uses Pocket Speedy and Sloppy; not Lazy', () {
+    final speedy = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 1, seconds: 59),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+      daily: true,
+    );
+    final lazy = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 3, seconds: 1),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+      daily: true,
+    );
+    final sloppy = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 2, seconds: 30),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      pocket: true,
+      daily: true,
+    );
+    expect(speedy.fast, isTrue);
+    expect(speedy.fastXp, 12);
+    expect(lazy.lazy, isFalse);
+    expect(lazy.lazyXp, 0);
+    expect(sloppy.sloppy, isTrue);
+    expect(sloppy.sloppyXp, -12);
+    expect(sloppy.flawless, isFalse);
+  });
+
+  test('Pocket Daily streak XP is a flat tier: 5 / 10 / 15 / 20', () {
+    XpAward daily(int streak) => PlayerXp.compute(
+          difficulty: Difficulty.easy,
+          mistakes: 1,
+          elapsed: const Duration(minutes: 2, seconds: 30),
+          firstWinOfDay: false,
+          previousTotal: 0,
+          pocket: true,
+          daily: true,
+          dailyStreak: streak,
+        );
+
+    final two = daily(2);
+    expect(two.streak, isFalse);
+    expect(two.streakXp, 0);
+    expect(two.streakLabel, '[Streak]');
+
+    final three = daily(3);
+    expect(three.streak, isTrue);
+    expect(three.streakXp, 5);
+    expect(three.breakdown.last, (label: '[Streak]', xp: 5));
+
+    expect(daily(6).streakXp, 5);
+    expect(daily(7).streakXp, 10);
+    expect(daily(9).streakXp, 10);
+    expect(daily(10).streakXp, 15);
+    expect(daily(13).streakXp, 15);
+    expect(daily(14).streakXp, 20);
+    expect(daily(30).streakXp, 20);
+  });
+
+  test('Pocket Daily can take First of day and Lucky; not Freestyle', () {
+    final first = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 2, seconds: 30),
+      firstWinOfDay: true,
+      previousTotal: 0,
+      pocket: true,
+      daily: true,
+      noteless: true,
+      achievedXp: 40,
+      lucky: true,
+    );
+    expect(first.noteless, isFalse);
+    expect(first.achievedXp, 0);
+    expect(first.lucky, isTrue);
+    expect(first.firstWinOfDay, isTrue);
+    expect(
+      first.breakdown,
+      [
+        (label: '[Daily] finish', xp: 50),
+        (label: 'Sloppy', xp: -12),
+        (label: 'First of day', xp: 50),
+        (label: 'Lucky', xp: 400),
+      ],
+    );
+  });
+
+  test('Pocket Daily unlocks after a Pocket win', () {
+    expect(const GameStats().isPocketDailyUnlocked, isFalse);
+    expect(
+      const GameStats(
+        winsByDifficulty: {Difficulty.medium: 1},
+      ).isPocketDailyUnlocked,
+      isFalse,
+    );
+    expect(
+      const GameStats(pocketWins: 1).isPocketDailyUnlocked,
+      isTrue,
+    );
   });
 
   test('Wet paint adds 25% of base, rounded down', () {
@@ -474,8 +617,6 @@ void main() {
       pocket: true,
       wetPaint: true,
       noteless: true,
-      daily: true,
-      dailyStreak: 5,
       achievedXp: 1000,
     );
     expect(award.baseXp, 25);

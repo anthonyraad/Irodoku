@@ -65,7 +65,7 @@ class ColorCell extends StatefulWidget {
 
 class _ColorCellState extends State<ColorCell>
     with TickerProviderStateMixin {
-  static const _longPressDuration = Duration(milliseconds: 500);
+  static const _longPressDuration = Duration(milliseconds: 425);
   static const _revealDuration = Duration(milliseconds: 280);
   /// Peer-note clear: quick inverse of the fill bloom.
   static const _noteDismissDuration = Duration(milliseconds: 160);

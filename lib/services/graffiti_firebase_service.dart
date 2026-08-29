@@ -15,8 +15,21 @@ class GraffitiFirebaseService {
   /// Same top-level path as Wordle Battle; rooms are tagged with [appTag].
   static const roomsPath = 'rooms';
   static const appTag = 'irodoku_graffiti';
+  static const pocketAppTag = 'irodoku_graffiti_pocket';
   static const maxMistakes = 3;
+  static const pocketMaxMistakes = 2;
   static const maxQuickMatchScan = 120;
+
+  static String appTagFor({required bool pocket}) =>
+      pocket ? pocketAppTag : appTag;
+
+  static int gridSizeOf(List<dynamic> values) {
+    if (values.length == 36) return 6;
+    return 9;
+  }
+
+  static int maxMistakesForGrid(int n) =>
+      n == 6 ? pocketMaxMistakes : maxMistakes;
 
   static bool _initialized = false;
   static bool get isReady => _initialized;
@@ -90,10 +103,11 @@ class GraffitiFirebaseService {
     required String roomCode,
     required String hostId,
     required bool isQuickMatch,
+    bool pocket = false,
   }) async {
     final ref = roomRef(roomCode);
     await ref.set({
-      'app': appTag,
+      'app': appTagFor(pocket: pocket),
       'host': hostId,
       'players': {hostId: true},
       'gameState': 'waiting',
@@ -101,6 +115,7 @@ class GraffitiFirebaseService {
       'createdAt': DateTime.now().millisecondsSinceEpoch,
       'winner': null,
       'solo': false,
+      'pocket': pocket,
     });
     // Host disconnect while still alone deletes the lobby room.
     // Cancelled in [cancelHostDisconnect] once a second player seats.
@@ -123,8 +138,10 @@ class GraffitiFirebaseService {
   static Future<bool> joinRoomAsPlayer({
     required String roomCode,
     required String playerId,
+    bool pocket = false,
   }) async {
     final ref = roomRef(roomCode);
+    final expectedApp = appTagFor(pocket: pocket);
 
     final before = await ref.get();
     if (!before.exists || before.value is! Map) {
@@ -132,7 +149,7 @@ class GraffitiFirebaseService {
       return false;
     }
     final room = Map<dynamic, dynamic>.from(before.value as Map);
-    if (room['app']?.toString() != appTag) {
+    if (room['app']?.toString() != expectedApp) {
       debugPrint('Graffiti join: $roomCode wrong app (${room['app']})');
       return false;
     }
@@ -195,12 +212,13 @@ class GraffitiFirebaseService {
     required List<int> solution,
     required String palette,
   }) async {
+    final n = gridSizeOf(puzzle);
     final board = <String, Map<String, dynamic>>{};
-    for (var i = 0; i < 81; i++) {
+    for (var i = 0; i < n * n; i++) {
       final v = puzzle[i];
       if (v == 0) continue;
-      final r = i ~/ 9;
-      final c = i % 9;
+      final r = i ~/ n;
+      final c = i % n;
       board['${r}_$c'] = {
         'v': v,
         'locked': true,
@@ -240,7 +258,11 @@ class GraffitiFirebaseService {
       final stats = Map<dynamic, dynamic>.from(data['stats'] as Map? ?? {});
       final myStats = Map<dynamic, dynamic>.from(stats[playerId] as Map? ?? {});
       final myMistakes = (myStats['mistakes'] as num?)?.toInt() ?? 0;
-      if (myMistakes >= maxMistakes) return Transaction.abort();
+
+      final solution = List<dynamic>.from(data['solution'] as List? ?? []);
+      final n = gridSizeOf(solution);
+      if (solution.length != n * n) return Transaction.abort();
+      if (myMistakes >= maxMistakesForGrid(n)) return Transaction.abort();
 
       final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
       final existing = board[key];
@@ -249,9 +271,7 @@ class GraffitiFirebaseService {
         if (cell['locked'] == true) return Transaction.abort();
       }
 
-      final solution = List<dynamic>.from(data['solution'] as List? ?? []);
-      if (solution.length != 81) return Transaction.abort();
-      final correct = (solution[row * 9 + col] as num).toInt();
+      final correct = (solution[row * n + col] as num).toInt();
 
       if (value == correct) {
         board[key] = {
@@ -326,22 +346,25 @@ class GraffitiFirebaseService {
     final aMistakes = (aStats['mistakes'] as num?)?.toInt() ?? 0;
     final bMistakes = (bStats['mistakes'] as num?)?.toInt() ?? 0;
 
-    if (aMistakes >= maxMistakes && bMistakes >= maxMistakes) {
+    final puzzle = List<dynamic>.from(data['puzzle'] as List? ?? []);
+    final n = gridSizeOf(puzzle);
+    if (puzzle.length != n * n) return;
+    final cap = maxMistakesForGrid(n);
+
+    if (aMistakes >= cap && bMistakes >= cap) {
       data['gameState'] = 'finished';
       data['winner'] = 'defeat';
       return;
     }
 
     final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
-    final puzzle = List<dynamic>.from(data['puzzle'] as List? ?? []);
-    if (puzzle.length != 81) return;
 
     var emptyLeft = 0;
-    for (var i = 0; i < 81; i++) {
+    for (var i = 0; i < n * n; i++) {
       final given = (puzzle[i] as num?)?.toInt() ?? 0;
       if (given != 0) continue;
-      final r = i ~/ 9;
-      final c = i % 9;
+      final r = i ~/ n;
+      final c = i % n;
       final cell = board['${r}_$c'];
       if (cell is! Map || cell['locked'] != true) {
         emptyLeft++;
@@ -365,14 +388,18 @@ class GraffitiFirebaseService {
     }
   }
 
-  static Future<String?> findOpenQuickMatchRoom(String excludePlayerId) async {
+  static Future<String?> findOpenQuickMatchRoom(
+    String excludePlayerId, {
+    bool pocket = false,
+  }) async {
+    final tag = appTagFor(pocket: pocket);
     // Scan /rooms only (RTDB rules allow this path; no separate lobby index).
     DataSnapshot? snap;
     try {
       snap = await database
           .ref(roomsPath)
           .orderByChild('app')
-          .equalTo(appTag)
+          .equalTo(tag)
           .limitToLast(maxQuickMatchScan)
           .get();
     } catch (e) {
@@ -400,7 +427,7 @@ class GraffitiFirebaseService {
     for (final e in entries) {
       final code = e.key.toString();
       // Always re-read the room so we don't join a stale list snapshot.
-      if (await _isJoinableQuickRoom(code, excludePlayerId)) {
+      if (await _isJoinableQuickRoom(code, excludePlayerId, pocket: pocket)) {
         return code;
       }
     }
@@ -409,12 +436,13 @@ class GraffitiFirebaseService {
 
   static Future<bool> _isJoinableQuickRoom(
     String code,
-    String excludePlayerId,
-  ) async {
+    String excludePlayerId, {
+    bool pocket = false,
+  }) async {
     final snap = await roomRef(code).get();
     if (!snap.exists || snap.value is! Map) return false;
     final room = Map<dynamic, dynamic>.from(snap.value as Map);
-    if (room['app'] != appTag) return false;
+    if (room['app'] != appTagFor(pocket: pocket)) return false;
     if (room['gameState']?.toString() != 'waiting') return false;
     if (room['isQuickMatch'] != true) return false;
     final players = Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});

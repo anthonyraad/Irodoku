@@ -91,6 +91,7 @@ class GraffitiProvider extends ChangeNotifier {
   bool _recordedMatchResult = false;
   /// Match palette shared via RTDB — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
+  bool _pocket = false;
 
   List<List<Cell>> _cells = List.generate(
     9,
@@ -100,6 +101,9 @@ class GraffitiProvider extends ChangeNotifier {
   Set<String> _completedUnits = {};
   UnitCelebration? _celebration;
   int _celebrationSeq = 0;
+  int _colorCycleSeq = 0;
+  int _colorCycleSteps = 4;
+  int? _colorCycleFilterValue;
   NoteClearWave? _noteClearWave;
   int _noteClearWaveSeq = 0;
   int _noteClearWaveClearToken = 0;
@@ -134,6 +138,17 @@ class GraffitiProvider extends ChangeNotifier {
   String? get toast => _toast;
   GraffitiOutcome get outcome => _outcome;
   bool get busy => _busy;
+  bool get isPocket => _pocket;
+  int get gridSize =>
+      _pocket ? SudokuBoard.pocketSize : SudokuBoard.size;
+  int get boxW =>
+      _pocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
+  int get boxH =>
+      _pocket ? SudokuBoard.pocketBoxHeight : SudokuBoard.boxSize;
+  int get maxMistakes => _pocket
+      ? GraffitiFirebaseService.pocketMaxMistakes
+      : GraffitiFirebaseService.maxMistakes;
+  int get _cellCount => gridSize * gridSize;
   /// Palette for this match (room-shared). Falls back to Config only before play.
   GamePalette get activePalette => _sessionPalette ?? _settings.palette;
 
@@ -144,6 +159,9 @@ class GraffitiProvider extends ChangeNotifier {
   bool get bulkNoteSelect => _bulkNoteSelect;
   NoteClearWave? get noteClearWave => _noteClearWave;
   UnitCelebration? get celebration => _celebration;
+  int get colorCycleSeq => _colorCycleSeq;
+  int get colorCycleSteps => _colorCycleSteps;
+  int? get colorCycleFilterValue => _colorCycleFilterValue;
   bool get hasCellSelection =>
       _selectedRow != null || _bulkNoteSelect || _noteMode;
   bool get canUndo => _undoStack.isNotEmpty && !_eliminated;
@@ -155,8 +173,7 @@ class GraffitiProvider extends ChangeNotifier {
   bool get controlsEnabled =>
       _phase == GraffitiPhase.playing && !_eliminated && _outcome == GraffitiOutcome.none;
 
-  bool get _eliminated =>
-      _myMistakes >= GraffitiFirebaseService.maxMistakes;
+  bool get _eliminated => _myMistakes >= maxMistakes;
 
   Cell? get selectedCell {
     final r = _selectedRow;
@@ -182,7 +199,24 @@ class GraffitiProvider extends ChangeNotifier {
     return _selectedRow == row && _selectedCol == col;
   }
 
-  static int _cellKey(int row, int col) => row * 9 + col;
+  int _cellKey(int row, int col) => row * gridSize + col;
+
+  (int, int) _fromKey(int key) => (key ~/ gridSize, key % gridSize);
+
+  List<List<Cell>> _emptyGrid() => List.generate(
+        gridSize,
+        (_) => List.generate(gridSize, (_) => const Cell()),
+      );
+
+  /// Bind this singleton to 9×9 Graffiti or 6×6 [Graffiti] while idle.
+  void prepareLobby({required bool pocket}) {
+    if (_phase != GraffitiPhase.idle) return;
+    if (_pocket == pocket && _cells.length == gridSize) return;
+    _pocket = pocket;
+    _cells = _emptyGrid();
+    _solution = List.filled(_cellCount, 0);
+    notifyListeners();
+  }
 
   void clearToast() {
     if (_toast == null) return;
@@ -193,6 +227,19 @@ class GraffitiProvider extends ChangeNotifier {
   void clearCelebration() {
     if (_celebration == null) return;
     _celebration = null;
+    notifyListeners();
+  }
+
+  /// Local palette sweep on filled cells of [onlyValue]. Never written to RTDB.
+  void triggerColorCycle({int? onlyValue}) {
+    if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
+      return;
+    }
+    if (_celebration != null) return;
+    final half = gridSize ~/ 2;
+    _colorCycleSteps = half + Random().nextInt(2);
+    _colorCycleFilterValue = onlyValue;
+    _colorCycleSeq++;
     notifyListeners();
   }
 
@@ -230,8 +277,10 @@ class GraffitiProvider extends ChangeNotifier {
 
       // Join an open seat when possible; retry if another client claimed it.
       for (var attempt = 0; attempt < 6; attempt++) {
-        final open =
-            await GraffitiFirebaseService.findOpenQuickMatchRoom(pid);
+        final open = await GraffitiFirebaseService.findOpenQuickMatchRoom(
+          pid,
+          pocket: _pocket,
+        );
         if (open == null) break;
 
         final joined = await _tryJoinQuickMatch(open);
@@ -250,6 +299,7 @@ class GraffitiProvider extends ChangeNotifier {
         roomCode: code,
         hostId: pid,
         isQuickMatch: true,
+        pocket: _pocket,
       );
       _phase = GraffitiPhase.waiting;
       _statusMessage = 'Waiting for opponent…';
@@ -272,7 +322,9 @@ class GraffitiProvider extends ChangeNotifier {
     final exists = await ref.get();
     if (!exists.exists || exists.value is! Map) return false;
     final data = Map<dynamic, dynamic>.from(exists.value as Map);
-    if (data['app'] != GraffitiFirebaseService.appTag) return false;
+    if (data['app'] != GraffitiFirebaseService.appTagFor(pocket: _pocket)) {
+      return false;
+    }
     if (data['gameState']?.toString() != 'waiting') return false;
     final players = Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
     if (players.length >= 2) return false;
@@ -280,6 +332,7 @@ class GraffitiProvider extends ChangeNotifier {
     final joined = await GraffitiFirebaseService.joinRoomAsPlayer(
       roomCode: code,
       playerId: pid,
+      pocket: _pocket,
     );
     if (!joined) return false;
 
@@ -307,6 +360,7 @@ class GraffitiProvider extends ChangeNotifier {
         roomCode: code,
         hostId: _playerId!,
         isQuickMatch: false,
+        pocket: _pocket,
       );
       _phase = GraffitiPhase.waiting;
       _statusMessage = 'Room $code — waiting for opponent…';
@@ -342,8 +396,17 @@ class GraffitiProvider extends ChangeNotifier {
       return;
     }
     final data = Map<dynamic, dynamic>.from(exists.value as Map);
-    if (data['app'] != GraffitiFirebaseService.appTag) {
-      _failToIdle('Not a Graffiti room.');
+    final expectedApp = GraffitiFirebaseService.appTagFor(pocket: _pocket);
+    final actualApp = data['app']?.toString();
+    if (actualApp != expectedApp) {
+      final other = GraffitiFirebaseService.appTagFor(pocket: !_pocket);
+      if (actualApp == other) {
+        _failToIdle(
+          _pocket ? 'Not a [Graffiti] room.' : 'Not a Graffiti room.',
+        );
+      } else {
+        _failToIdle('Not a Graffiti room.');
+      }
       return;
     }
     final players = Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
@@ -354,6 +417,7 @@ class GraffitiProvider extends ChangeNotifier {
     final joined = await GraffitiFirebaseService.joinRoomAsPlayer(
       roomCode: code,
       playerId: pid,
+      pocket: _pocket,
     );
     if (!joined) {
       _failToIdle(asQuickMatch ? 'Match taken — try again.' : 'Could not join.');
@@ -459,7 +523,9 @@ class GraffitiProvider extends ChangeNotifier {
       }
       if (gameState == 'playing') {
         _phase = GraffitiPhase.playing;
-        _statusMessage = _solo ? 'Playing solo' : 'Graffiti';
+        _statusMessage = _solo
+            ? 'Playing solo'
+            : (_pocket ? '[Graffiti]' : 'Graffiti');
         _ensureTimerRunning();
       } else {
         _timer?.cancel();
@@ -511,6 +577,7 @@ class GraffitiProvider extends ChangeNotifier {
       elapsed: _elapsed,
       palette: activePalette,
       noteless: !_usedNotes,
+      pocket: _pocket,
     ));
   }
 
@@ -519,9 +586,11 @@ class GraffitiProvider extends ChangeNotifier {
     final host = _playerId;
     final opp = _opponentId;
     if (code == null || host == null || opp == null) return;
-    final difficulty =
-        Random().nextBool() ? Difficulty.easy : Difficulty.medium;
-    final generated = SudokuGenerator().generate(difficulty);
+    final generated = _pocket
+        ? SudokuGenerator().generatePocket()
+        : SudokuGenerator().generate(
+            Random().nextBool() ? Difficulty.easy : Difficulty.medium,
+          );
     final menu = GamePalette.menuValues;
     final palette = menu[Random().nextInt(menu.length)];
     await GraffitiFirebaseService.hostStartGame(
@@ -537,22 +606,32 @@ class GraffitiProvider extends ChangeNotifier {
   List<(int, int, int)> _hydrateBoard(Map<dynamic, dynamic> data) {
     final puzzle = List<dynamic>.from(data['puzzle'] as List? ?? []);
     final solution = List<dynamic>.from(data['solution'] as List? ?? []);
-    if (solution.length == 81) {
+    final n = GraffitiFirebaseService.gridSizeOf(
+      solution.isNotEmpty ? solution : puzzle,
+    );
+    _pocket = n == SudokuBoard.pocketSize;
+    if (solution.length == n * n) {
       _solution = solution.map((e) => (e as num).toInt()).toList();
     }
 
     final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
     final newlyLocked = <(int, int, int)>[];
     final remoteConfirms = <(int, int, int)>[];
+    Cell localAt(int r, int c) {
+      if (r < _cells.length && c < _cells[r].length) return _cells[r][c];
+      return const Cell();
+    }
+
     final next = List.generate(
-      9,
-      (r) => List.generate(9, (c) {
-        final given = puzzle.length == 81
-            ? ((puzzle[r * 9 + c] as num?)?.toInt() ?? 0)
+      n,
+      (r) => List.generate(n, (c) {
+        final given = puzzle.length == n * n
+            ? ((puzzle[r * n + c] as num?)?.toInt() ?? 0)
             : 0;
         final remote = board['${r}_$c'];
-        final localNotes = _cells[r][c].notes;
-        final wasConfirmed = _cells[r][c].isLocked || _cells[r][c].isGiven;
+        final local = localAt(r, c);
+        final localNotes = local.notes;
+        final wasConfirmed = local.isLocked || local.isGiven;
 
         if (given != 0) {
           return Cell(value: given, isGiven: true, isLocked: true);
@@ -591,8 +670,7 @@ class GraffitiProvider extends ChangeNotifier {
   void _pruneLockedBulkCells() {
     if (!_bulkNoteSelect) return;
     _bulkSelected.removeWhere((key) {
-      final row = key ~/ 9;
-      final col = key % 9;
+      final (row, col) = _fromKey(key);
       return !_cells[row][col].isEditable;
     });
     if (_bulkSelected.isEmpty) {
@@ -603,8 +681,9 @@ class GraffitiProvider extends ChangeNotifier {
         _selectedCol != null &&
         !_bulkSelected.contains(_cellKey(_selectedRow!, _selectedCol!))) {
       final last = _bulkSelected.last;
-      _selectedRow = last ~/ 9;
-      _selectedCol = last % 9;
+      final (row, col) = _fromKey(last);
+      _selectedRow = row;
+      _selectedCol = col;
     }
   }
 
@@ -655,7 +734,10 @@ class GraffitiProvider extends ChangeNotifier {
       return;
     }
     final cell = _cells[row][col];
-    if (!cell.isEditable) return;
+    if (!cell.isEditable) {
+      if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
+      return;
+    }
 
     if (_bulkNoteSelect) {
       final key = _cellKey(row, col);
@@ -741,8 +823,9 @@ class GraffitiProvider extends ChangeNotifier {
         _selectedCol = null;
       } else if (_selectedRow == row && _selectedCol == col) {
         final last = _bulkSelected.last;
-        _selectedRow = last ~/ 9;
-        _selectedCol = last % 9;
+        final (row, col) = _fromKey(last);
+        _selectedRow = row;
+        _selectedCol = col;
       }
     } else {
       _bulkSelected.add(key);
@@ -759,8 +842,7 @@ class GraffitiProvider extends ChangeNotifier {
 
   bool _bulkSelectionHasNotes() {
     for (final key in _bulkSelected) {
-      final row = key ~/ 9;
-      final col = key % 9;
+      final (row, col) = _fromKey(key);
       if (_cells[row][col].hasNotes) return true;
     }
     return false;
@@ -786,16 +868,27 @@ class GraffitiProvider extends ChangeNotifier {
   }
 
   Future<void> inputColor(int value) async {
-    if (!controlsEnabled || value < 1 || value > 9) return;
+    if (value < 1 || value > gridSize) return;
+    if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
+      return;
+    }
 
     if (_noteMode) {
+      if (!controlsEnabled) return;
       _toggleSelectedNote(value);
       return;
     }
 
-    final r = _selectedRow;
-    final c = _selectedCol;
-    if (r == null || c == null) return;
+    if (_selectedRow == null || _selectedCol == null) {
+      if (!_bulkNoteSelect) {
+        triggerColorCycle(onlyValue: value);
+      }
+      return;
+    }
+
+    if (!controlsEnabled) return;
+    final r = _selectedRow!;
+    final c = _selectedCol!;
     final cell = _cells[r][c];
     if (!cell.isEditable) return;
 
@@ -812,7 +905,7 @@ class GraffitiProvider extends ChangeNotifier {
     );
     if (!result.committed) return;
 
-    final correct = _solution[r * 9 + c] == value;
+    final correct = _solution[r * gridSize + c] == value;
     // Snapshot listener applies board + stats; optimistic cells for snappy feel.
     // Do not bump _myMistakes here — hydrate from RTDB is the source of truth
     // (optimistic + snapshot was double-counting).
@@ -876,8 +969,7 @@ class GraffitiProvider extends ChangeNotifier {
 
   Iterable<(int, int)> _bulkEditableCells() sync* {
     for (final key in _bulkSelected) {
-      final row = key ~/ 9;
-      final col = key % 9;
+      final (row, col) = _fromKey(key);
       if (_cells[row][col].isEditable) yield (row, col);
     }
   }
@@ -1053,14 +1145,14 @@ class GraffitiProvider extends ChangeNotifier {
       }
     });
 
-    final boxRow = row ~/ 3;
-    final boxCol = col ~/ 3;
-    for (var r = 0; r < SudokuBoard.size; r++) {
-      for (var c = 0; c < SudokuBoard.size; c++) {
+    final boxRow = row ~/ boxH;
+    final boxCol = col ~/ boxW;
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
         if (r == row && c == col) continue;
         final sameUnit = r == row ||
             c == col ||
-            (r ~/ 3 == boxRow && c ~/ 3 == boxCol);
+            (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
         if (!sameUnit) continue;
 
         final peer = _cells[r][c];
@@ -1072,19 +1164,24 @@ class GraffitiProvider extends ChangeNotifier {
 
   /// Keys for rows/cols/boxes fully filled with locked correct colors.
   Set<String> _successfullyCompletedUnits() {
-    if (_solution.length != 81) return {};
+    if (_solution.length != _cellCount) return {};
     final keys = <String>{};
-    for (var i = 0; i < SudokuBoard.size; i++) {
+    for (var i = 0; i < gridSize; i++) {
       keys.add('r$i');
       keys.add('c$i');
       keys.add('b$i');
     }
     return keys.where((key) {
-      final positions = SudokuBoard.positionsForUnitKey(key);
+      final positions = SudokuBoard.positionsForUnitKey(
+        key,
+        n: gridSize,
+        boxW: boxW,
+        boxH: boxH,
+      );
       return positions.every((pos) {
         final cell = _cells[pos.$1][pos.$2];
         if (!cell.isLocked && !cell.isGiven) return false;
-        return cell.value == _solution[pos.$1 * 9 + pos.$2];
+        return cell.value == _solution[pos.$1 * gridSize + pos.$2];
       });
     }).toSet();
   }
@@ -1106,7 +1203,12 @@ class GraffitiProvider extends ChangeNotifier {
     final originalValues = <(int, int), int>{};
 
     for (final key in unitKeys) {
-      final positions = SudokuBoard.positionsForUnitKey(key);
+      final positions = SudokuBoard.positionsForUnitKey(
+        key,
+        n: gridSize,
+        boxW: boxW,
+        boxH: boxH,
+      );
       for (var i = 0; i < positions.length; i++) {
         final pos = positions[i];
         final existing = cellStagger[pos];
@@ -1125,7 +1227,8 @@ class GraffitiProvider extends ChangeNotifier {
   }
 
   bool _cellBelongsToCompletedUnit(int row, int col) {
-    final box = (row ~/ 3) * 3 + (col ~/ 3);
+    final boxCols = gridSize ~/ boxW;
+    final box = (row ~/ boxH) * boxCols + (col ~/ boxW);
     return _completedUnits.contains('r$row') ||
         _completedUnits.contains('c$col') ||
         _completedUnits.contains('b$box');
@@ -1177,10 +1280,11 @@ class GraffitiProvider extends ChangeNotifier {
     _playedEndSound = false;
     _recordedMatchResult = false;
     _sessionPalette = null;
-    _cells = List.generate(9, (_) => List.generate(9, (_) => const Cell()));
-    _solution = List.filled(81, 0);
+    _cells = _emptyGrid();
+    _solution = List.filled(_cellCount, 0);
     _completedUnits = {};
     _celebration = null;
+    _colorCycleFilterValue = null;
     _noteClearWave = null;
     _selectedRow = null;
     _selectedCol = null;
@@ -1221,7 +1325,7 @@ class GraffitiProvider extends ChangeNotifier {
     if (r == null || c == null) return false;
     if (row == r && col == c) return false;
     if (row == r || col == c) return true;
-    return row ~/ 3 == r ~/ 3 && col ~/ 3 == c ~/ 3;
+    return row ~/ boxH == r ~/ boxH && col ~/ boxW == c ~/ boxW;
   }
 
   bool isSameColor(int row, int col) {

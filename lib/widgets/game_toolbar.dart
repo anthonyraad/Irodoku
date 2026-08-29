@@ -205,7 +205,7 @@ class _NoteToolButton extends StatefulWidget {
 }
 
 class _NoteToolButtonState extends State<_NoteToolButton> {
-  static const _longPressDuration = Duration(milliseconds: 500);
+  static const _longPressDuration = Duration(milliseconds: 425);
 
   Timer? _longPressTimer;
   bool _longPressTriggered = false;

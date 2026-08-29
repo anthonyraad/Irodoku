@@ -135,6 +135,9 @@ class GameProvider extends ChangeNotifier {
   /// 6×6 Chromatic Pocket parked while Classic / 9×9 Chromatic / Pocket / Daily is active.
   _HeldGameSession? _heldPocketChromatic;
 
+  /// In-progress 6×6 [Daily] parked while browsing Main Menu.
+  _HeldGameSession? _heldPocketDaily;
+
   /// After cold restore of a paused Daily, home should open Main Menu → Daily.
   bool _openDailyRoutePending = false;
 
@@ -192,6 +195,7 @@ class GameProvider extends ChangeNotifier {
   NoteClearWave? get noteClearWave => _noteClearWave;
   bool get isDaily => _isDaily;
   bool get isPocket => _isPocket;
+  bool get isPocketDaily => _isDaily && _isPocket;
   int get mistakeLimit =>
       _isPocket ? pocketMaxMistakes : maxMistakes;
   int get gridSize =>
@@ -220,14 +224,21 @@ class GameProvider extends ChangeNotifier {
     return _prefs.getDailyLastCompletedDay() == today;
   }
 
+  bool get isPocketDailyCompletedToday {
+    final today = DailyIrodoku.forDate().dayKey;
+    return _prefs.getPocketDailyLastCompletedDay() == today;
+  }
+
+  /// Won today's Daily — review only; losses can still be retried.
+  bool get isDailyFinishedToday => isDailyCompletedToday;
+
+  bool get isPocketDailyFinishedToday => isPocketDailyCompletedToday;
+
   /// Whether today's Daily Irodoku has already been lost (PST day).
   bool get isDailyFailedToday {
     final today = DailyIrodoku.forDate().dayKey;
     return _prefs.getDailyLastFailedDay() == today;
   }
-
-  /// Won today's Daily — review only; losses can still be retried.
-  bool get isDailyFinishedToday => isDailyCompletedToday;
 
   /// True when today's daily is live or parked for resume from Main Menu.
   bool get hasResumableDaily {
@@ -256,17 +267,38 @@ class GameProvider extends ChangeNotifier {
     return _prefs.getDailyStreak();
   }
 
+  int get pocketDailyStreakDisplay {
+    final today = DailyIrodoku.forDate().dayKey;
+    final last = _prefs.getPocketDailyLastCompletedDay();
+    if (last == null) return 0;
+    if (last != today && last != DailyIrodoku.previousDayKey(today)) {
+      return 0;
+    }
+    return _prefs.getPocketDailyStreak();
+  }
+
   /// Streak after today's Daily win: continues from yesterday, else resets to 1.
-  int _dailyStreakAfterThisWin() {
+  int _dailyStreakAfterThisWin({required bool pocket}) {
     final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
-    final last = _prefs.getDailyLastCompletedDay();
-    if (last == dayKey) return _prefs.getDailyStreak();
+    final last = pocket
+        ? _prefs.getPocketDailyLastCompletedDay()
+        : _prefs.getDailyLastCompletedDay();
+    if (last == dayKey) {
+      return pocket
+          ? _prefs.getPocketDailyStreak()
+          : _prefs.getDailyStreak();
+    }
     final yesterday = DailyIrodoku.previousDayKey(dayKey);
+    if (pocket) {
+      return last == yesterday ? _prefs.getPocketDailyStreak() + 1 : 1;
+    }
     return last == yesterday ? _prefs.getDailyStreak() + 1 : 1;
   }
 
   /// All-time highest Daily Iro win streak (survives missed days).
   int get dailyBestStreak => _prefs.getDailyBestStreak();
+
+  int get pocketDailyBestStreak => _prefs.getPocketDailyBestStreak();
 
   List<GamePalette> consumePendingPaletteUnlocks() {
     final pending = List<GamePalette>.from(_pendingPaletteUnlocks);
@@ -328,6 +360,14 @@ class GameProvider extends ChangeNotifier {
       final today = DailyIrodoku.forDate().dayKey;
       if (paused.dailyDayKey != today) {
         await _prefs.clearPausedGame();
+      } else if (paused.isPocket) {
+        // Pocket [Daily] stays nested; cold-start never auto-opens it.
+        _heldPocketDaily = _heldFromPaused(paused);
+        await _persistParkedPocketDaily();
+        await _prefs.clearPausedGame();
+        await _restoreHomeFromParkedHolds(preserveDaily: true);
+        unawaited(prefetchMasterPuzzle());
+        return;
       } else {
         // Don't put Daily on the home route — park it and reopen nested.
         _heldDaily = _heldFromPaused(paused);
@@ -347,7 +387,9 @@ class GameProvider extends ChangeNotifier {
     }
 
     // Killed on Main Menu: puzzles may exist only as parked holds.
-    await _restoreHomeFromParkedHolds(preserveDaily: _heldDaily != null);
+    await _restoreHomeFromParkedHolds(
+      preserveDaily: _heldDaily != null || _heldPocketDaily != null,
+    );
     unawaited(prefetchMasterPuzzle());
   }
 
@@ -476,7 +518,7 @@ class GameProvider extends ChangeNotifier {
       if (completed == null || completed.dailyDayKey != challenge.dayKey) {
         return false;
       }
-      if (!_isDaily) {
+      if (!(_isDaily && !_isPocket)) {
         await _parkHomeLive();
       }
       _applyFinishedDailyReview(completed, won: true);
@@ -494,7 +536,7 @@ class GameProvider extends ChangeNotifier {
 
     // Resume a daily parked while browsing Main Menu.
     if (_heldDaily != null && _heldDaily!.dailyDayKey == challenge.dayKey) {
-      if (!_isDaily) {
+      if (!(_isDaily && !_isPocket)) {
         await _parkHomeLive();
       }
       _applyHeld(_heldDaily!);
@@ -507,19 +549,23 @@ class GameProvider extends ChangeNotifier {
       return true;
     }
 
-    // Already on today's live daily board (still in progress).
-    if (_isDaily && _dailyDayKey == challenge.dayKey && !isGameOver) {
+    // Already on today's live 9×9 daily board (still in progress).
+    if (_isDaily &&
+        !_isPocket &&
+        _dailyDayKey == challenge.dayKey &&
+        !isGameOver) {
       _sessionPalette ??= challenge.palette;
       _ensureDailyPaletteForProgress();
       notifyListeners();
       return true;
     }
 
-    // Park the regular puzzle before replacing the live board with daily.
-    if (!_isDaily) {
+    // Park whatever is live if it isn't this 9×9 Daily.
+    if (_isDaily && _isPocket) {
+      await _parkLiveDailyToHold();
+    } else if (!_isDaily) {
       await _parkHomeLive();
     } else {
-      // Stale leftover daily on the live board — drop it.
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
     }
@@ -529,22 +575,101 @@ class GameProvider extends ChangeNotifier {
       difficulty: challenge.difficulty,
       seed: challenge.seed,
       dailyDayKey: challenge.dayKey,
+      pocket: false,
+    );
+    return true;
+  }
+
+  /// Starts or resumes today's seeded 6×6 [Daily Challenge].
+  Future<bool> startPocketDailyGame() async {
+    final challenge = DailyIrodoku.pocketForDate();
+    if (_isGenerating) return false;
+    if (!_stats.devMode && !_stats.stats.isPocketDailyUnlocked) {
+      return false;
+    }
+
+    if (_prefs.getPocketDailyLastCompletedDay() == challenge.dayKey) {
+      final completed = _prefs.loadCompletedPocketDailyGame();
+      if (completed == null || completed.dailyDayKey != challenge.dayKey) {
+        return false;
+      }
+      if (!isPocketDaily) {
+        await _parkHomeLive();
+      }
+      _applyFinishedDailyReview(completed, won: true);
+      notifyListeners();
+      return true;
+    }
+
+    _dailyReviewMode = false;
+
+    if (_heldPocketDaily != null &&
+        _heldPocketDaily!.dailyDayKey == challenge.dayKey) {
+      if (!isPocketDaily) {
+        await _parkHomeLive();
+      }
+      _applyHeld(_heldPocketDaily!);
+      _heldPocketDaily = null;
+      await _prefs.clearParkedPocketDailyGame();
+      _sessionPalette ??= challenge.palette;
+      _ensureDailyPaletteForProgress();
+      notifyListeners();
+      return true;
+    }
+
+    if (isPocketDaily &&
+        _dailyDayKey == challenge.dayKey &&
+        !isGameOver) {
+      _sessionPalette ??= challenge.palette;
+      _ensureDailyPaletteForProgress();
+      notifyListeners();
+      return true;
+    }
+
+    if (_isDaily && !_isPocket) {
+      await _parkLiveDailyToHold();
+    } else if (!isPocketDaily) {
+      await _parkHomeLive();
+    } else {
+      _heldPocketDaily = null;
+      await _prefs.clearParkedPocketDailyGame();
+    }
+
+    _sessionPalette = challenge.palette;
+    await startNewGame(
+      difficulty: challenge.difficulty,
+      seed: challenge.seed,
+      dailyDayKey: challenge.dayKey,
+      pocket: true,
     );
     return true;
   }
 
   /// Restart today's Daily from the given cells after a defeat.
   Future<void> retryDailyGame() async {
-    if (!_isDaily || _isGenerating || isDailyCompletedToday) return;
-    final challenge = DailyIrodoku.forDate();
-    await _prefs.clearDailyFailedDay();
-    await _prefs.clearFailedDailyGame();
+    if (!_isDaily || _isGenerating) return;
+    if (_isPocket) {
+      if (isPocketDailyCompletedToday) return;
+    } else if (isDailyCompletedToday) {
+      return;
+    }
+    final challenge =
+        _isPocket ? DailyIrodoku.pocketForDate() : DailyIrodoku.forDate();
+    if (!_isPocket) {
+      await _prefs.clearDailyFailedDay();
+      await _prefs.clearFailedDailyGame();
+    }
     _sessionPalette = challenge.palette;
     await startNewGame(
       difficulty: challenge.difficulty,
       seed: challenge.seed,
       dailyDayKey: challenge.dayKey,
+      pocket: _isPocket,
     );
+    if (_isPocket) {
+      _retriedAfterLoss = true;
+      notifyListeners();
+    }
   }
 
   /// Restart the current Classic / Chromatic / Pocket board after a defeat.
@@ -597,31 +722,28 @@ class GameProvider extends ChangeNotifier {
   /// Park the live Daily when leaving its screen for Main Menu.
   void parkDailyForMenu() {
     if (!_isDaily) return;
-    _timer?.cancel();
-    if (!isGameOver && !_dailyReviewMode) {
-      _heldDaily = _captureHeld();
-      unawaited(_persistParkedDaily());
-    } else {
-      _heldDaily = null;
-      unawaited(_prefs.clearParkedDailyGame());
-    }
+    unawaited(_parkLiveDailyToHold());
     _dailyReviewMode = false;
-    // Main Menu should reflect the user's real palette, not the daily's.
     _sessionPalette = null;
     notifyListeners();
   }
 
-  /// Restore the parked Classic/Chromatic puzzle when leaving Main Menu.
-  Future<void> leaveMenuToRegular() async {
+  /// Restore the parked Classic/Chromatic/Pocket puzzle when leaving Main Menu.
+  Future<void> leaveMenuToRegular({bool pocket = false}) async {
     // Clear any legacy prefs from older daily palette forcing.
     await _prefs.clearPaletteBeforeDaily();
 
-    // Classic / Chromatic buttons already swapped the live board before pop.
-    // Don't restore a parked hold on top of that (it was undoing Chromatic).
+    // Classic / Chromatic / Pocket buttons already swapped the live board
+    // before pop. Don't restore a parked hold on top of that.
     // Keep [_sessionPalette] when returning to a live Chromatic game so hops
     // survive a Main Menu visit (Config still shows the saved palette).
     if (!_isDaily) {
       notifyListeners();
+      return;
+    }
+
+    if (pocket) {
+      await _leaveMenuToPocketHome();
       return;
     }
 
@@ -652,24 +774,12 @@ class GameProvider extends ChangeNotifier {
     }
     if (held == null) {
       // Live board is still Daily — park it and start a fresh home game.
-      if (!isGameOver) {
-        _heldDaily = _captureHeld();
-        await _persistParkedDaily();
-      } else {
-        _heldDaily = null;
-        await _prefs.clearParkedDailyGame();
-      }
+      await _parkLiveDailyToHold();
       await startNewGame(preserveHeldDaily: true);
       return;
     }
 
-    if (!isGameOver) {
-      _heldDaily = _captureHeld();
-      await _persistParkedDaily();
-    } else {
-      _heldDaily = null;
-      await _prefs.clearParkedDailyGame();
-    }
+    await _parkLiveDailyToHold();
     await _settings.setChromatic(heldIsChromatic);
     _applyHeld(held);
     if (heldIsChromatic) {
@@ -682,6 +792,51 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _leaveMenuToPocketHome() async {
+    final preferChromatic = _settings.chromatic;
+    var held = preferChromatic ? _heldPocketChromatic : _heldPocket;
+    var heldIsChromatic = preferChromatic && held != null;
+    if (held == null) {
+      held = _heldPocket ?? _heldPocketChromatic;
+      heldIsChromatic = held != null && identical(held, _heldPocketChromatic);
+    }
+    if (held == null) {
+      final parked = preferChromatic
+          ? _prefs.loadParkedPocketChromaticGame()
+          : _prefs.loadParkedPocketGame();
+      if (parked != null && parked.isPocket && !parked.isDaily) {
+        held = _heldFromPaused(parked);
+        heldIsChromatic = preferChromatic;
+      }
+    }
+    if (held == null) {
+      final parkedAlt = preferChromatic
+          ? _prefs.loadParkedPocketGame()
+          : _prefs.loadParkedPocketChromaticGame();
+      if (parkedAlt != null && parkedAlt.isPocket && !parkedAlt.isDaily) {
+        held = _heldFromPaused(parkedAlt);
+        heldIsChromatic = !preferChromatic;
+      }
+    }
+    if (held == null) {
+      await _parkLiveDailyToHold();
+      await startNewGame(preserveHeldDaily: true, pocket: true);
+      return;
+    }
+
+    await _parkLiveDailyToHold();
+    await _settings.setChromatic(heldIsChromatic);
+    _applyHeld(held);
+    if (heldIsChromatic) {
+      _heldPocketChromatic = null;
+      await _prefs.clearParkedPocketChromaticGame();
+    } else {
+      _heldPocket = null;
+      await _prefs.clearParkedPocketGame();
+    }
+    notifyListeners();
+  }
+
   Future<void> startNewGame({
     Difficulty? difficulty,
     int? seed,
@@ -690,12 +845,16 @@ class GameProvider extends ChangeNotifier {
     bool? pocket,
   }) async {
     final startingDaily = dailyDayKey != null;
-    final startingPocket = !startingDaily && (pocket ?? _isPocket);
+    final startingPocket = pocket ?? (!startingDaily && _isPocket);
     _dailyReviewMode = false;
     if (startingDaily) {
-      // Fresh Daily replaces any parked Daily; keep parked regular / pocket.
-      _heldDaily = null;
-      await _prefs.clearParkedDailyGame();
+      if (startingPocket) {
+        _heldPocketDaily = null;
+        await _prefs.clearParkedPocketDailyGame();
+      } else {
+        _heldDaily = null;
+        await _prefs.clearParkedDailyGame();
+      }
     } else if (startingPocket) {
       // New Pocket keeps parked Classic/Chromatic/Daily and the other Pocket flavor.
       if (_settings.chromatic) {
@@ -711,13 +870,9 @@ class GameProvider extends ChangeNotifier {
       // When Daily is still the live board (under Main Menu), only re-park it —
       // do not clear parked Classic/Chromatic and do not replace the Daily board.
       if (_isDaily) {
-        if (!isGameOver && !_dailyReviewMode) {
-          _heldDaily = _captureHeld();
-          await _persistParkedDaily();
-        }
+        await _parkLiveDailyToHold();
         _sessionPalette = null;
         await _prefs.clearPaletteBeforeDaily();
-        // Keep parked Classic/Chromatic; do not replace the live Daily board.
         notifyListeners();
         return;
       }
@@ -740,12 +895,14 @@ class GameProvider extends ChangeNotifier {
       _heldChromatic = null;
       _heldPocket = null;
       _heldPocketChromatic = null;
+      _heldPocketDaily = null;
       _sessionPalette = null;
       await _prefs.clearParkedDailyGame();
       await _prefs.clearParkedRegularGame();
       await _prefs.clearParkedChromaticGame();
       await _prefs.clearParkedPocketGame();
       await _prefs.clearParkedPocketChromaticGame();
+      await _prefs.clearParkedPocketDailyGame();
       await _prefs.clearPaletteBeforeDaily();
     }
 
@@ -773,7 +930,9 @@ class GameProvider extends ChangeNotifier {
     final n = gridSize;
     _cells = List.generate(n, (_) => List.generate(n, (_) => const Cell()));
     if (startingDaily && _sessionPalette == null) {
-      _sessionPalette = DailyIrodoku.forDate().palette;
+      _sessionPalette = startingPocket
+          ? DailyIrodoku.pocketForDate().palette
+          : DailyIrodoku.forDate().palette;
     }
     _completedUnits = {};
     _celebration = null;
@@ -1443,10 +1602,15 @@ class GameProvider extends ChangeNotifier {
   /// Daily: after ~½ of units (14/27), switch to the day's second palette.
   void _maybeDailyPaletteShift(Set<String> completedUnits) {
     if (!_isDaily) return;
-    if (completedUnits.length < DailyIrodoku.paletteSwitchUnitThreshold) {
+    final challenge = _isPocket
+        ? DailyIrodoku.pocketForDate()
+        : DailyIrodoku.forDate();
+    final threshold = _isPocket
+        ? DailyIrodoku.pocketPaletteSwitchUnitThreshold
+        : DailyIrodoku.paletteSwitchUnitThreshold;
+    if (completedUnits.length < threshold) {
       return;
     }
-    final challenge = DailyIrodoku.forDate();
     if (_dailyDayKey != null && _dailyDayKey != challenge.dayKey) return;
     if (_sessionPalette == challenge.secondPalette) return;
     _sessionPalette = challenge.secondPalette;
@@ -1456,9 +1620,14 @@ class GameProvider extends ChangeNotifier {
   /// Align session palette with unit progress (restore / review / resume).
   void _ensureDailyPaletteForProgress() {
     if (!_isDaily) return;
-    final challenge = DailyIrodoku.forDate();
+    final challenge = _isPocket
+        ? DailyIrodoku.pocketForDate()
+        : DailyIrodoku.forDate();
+    final threshold = _isPocket
+        ? DailyIrodoku.pocketPaletteSwitchUnitThreshold
+        : DailyIrodoku.paletteSwitchUnitThreshold;
     final units = _successfullyCompletedUnits();
-    if (units.length >= DailyIrodoku.paletteSwitchUnitThreshold) {
+    if (units.length >= threshold) {
       _sessionPalette = challenge.secondPalette;
     } else {
       _sessionPalette ??= challenge.palette;
@@ -1677,7 +1846,7 @@ class GameProvider extends ChangeNotifier {
       if (!_isDaily && !_isPocket) {
         _stats.resetStreakSync(palette: _settings.palette);
         unawaited(_stats.persist());
-      } else if (_isPocket) {
+      } else if (_isPocket && !_isDaily) {
         _stats.resetPocketStreakSync(
           palette: activePalette,
           chromatic: _settings.chromatic,
@@ -1687,10 +1856,15 @@ class GameProvider extends ChangeNotifier {
       }
     }
     if (_isDaily) {
-      _heldDaily = null;
-      unawaited(_prefs.clearParkedDailyGame());
-      unawaited(_prefs.clearDailyFailedDay());
-      unawaited(_prefs.clearFailedDailyGame());
+      if (_isPocket) {
+        _heldPocketDaily = null;
+        unawaited(_prefs.clearParkedPocketDailyGame());
+      } else {
+        _heldDaily = null;
+        unawaited(_prefs.clearParkedDailyGame());
+        unawaited(_prefs.clearDailyFailedDay());
+        unawaited(_prefs.clearFailedDailyGame());
+      }
     }
   }
 
@@ -1725,22 +1899,48 @@ class GameProvider extends ChangeNotifier {
       _winRecorded = true;
       final winPalette = activePalette;
       if (_isPocket) {
-        _stats.awardPocketWin(
-          elapsed: _elapsed,
-          mistakes: _mistakes,
-          palette: winPalette,
-          chromatic: _settings.chromatic,
-          suppressSpeedAndFlawless: _retriedAfterLoss,
-        );
-        unawaited(
-          _achievements.onPocketGamesWon(
-            pocketGamesWon: _stats.stats.pocketGamesWon,
+        if (_isDaily) {
+          final streak = _dailyStreakAfterThisWin(pocket: true);
+          _stats.awardPocketDailyWin(
             elapsed: _elapsed,
             mistakes: _mistakes,
+            palette: winPalette,
+            dailyStreak: streak,
             suppressSpeedAndFlawless: _retriedAfterLoss,
-          ),
-        );
-        unawaited(_stats.persist());
+          );
+          unawaited(
+            _achievements.onPocketGamesWon(
+              pocketGamesWon: _stats.stats.pocketGamesWon,
+              elapsed: _elapsed,
+              mistakes: _mistakes,
+              suppressSpeedAndFlawless: _retriedAfterLoss,
+            ),
+          );
+          unawaited(_stats.persist());
+          _heldPocketDaily = null;
+          unawaited(_prefs.clearParkedPocketDailyGame());
+          final completed = _snapshotLiveGame();
+          unawaited(
+            _recordPocketDailyCompletion(completedBoard: completed),
+          );
+        } else {
+          _stats.awardPocketWin(
+            elapsed: _elapsed,
+            mistakes: _mistakes,
+            palette: winPalette,
+            chromatic: _settings.chromatic,
+            suppressSpeedAndFlawless: _retriedAfterLoss,
+          );
+          unawaited(
+            _achievements.onPocketGamesWon(
+              pocketGamesWon: _stats.stats.pocketGamesWon,
+              elapsed: _elapsed,
+              mistakes: _mistakes,
+              suppressSpeedAndFlawless: _retriedAfterLoss,
+            ),
+          );
+          unawaited(_stats.persist());
+        }
       } else {
         unawaited(
           _achievements.evaluateWin(
@@ -1755,7 +1955,7 @@ class GameProvider extends ChangeNotifier {
         if (_isDaily) {
           unawaited(
             _achievements.onDailyChallengeWon(
-              streak: _dailyStreakAfterThisWin(),
+              streak: _dailyStreakAfterThisWin(pocket: false),
             ),
           );
         }
@@ -1766,7 +1966,7 @@ class GameProvider extends ChangeNotifier {
           palette: winPalette,
           chromatic: _settings.chromatic && !_isDaily,
           daily: _isDaily,
-          dailyStreak: _isDaily ? _dailyStreakAfterThisWin() : 0,
+          dailyStreak: _isDaily ? _dailyStreakAfterThisWin(pocket: false) : 0,
           achievedXp: _achievements.consumeAchievedXp(),
           noteless: !_usedNotes,
           suppressSpeedAndFlawless: _retriedAfterLoss && !_isDaily,
@@ -1797,7 +1997,7 @@ class GameProvider extends ChangeNotifier {
       return;
     }
 
-    final streak = _dailyStreakAfterThisWin();
+    final streak = _dailyStreakAfterThisWin(pocket: false);
     await _prefs.setDailyProgress(
       lastCompletedDay: dayKey,
       streak: streak,
@@ -1811,8 +2011,32 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _recordPocketDailyCompletion({PausedGame? completedBoard}) async {
+    final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
+    final last = _prefs.getPocketDailyLastCompletedDay();
+    if (last == dayKey) {
+      if (completedBoard != null) {
+        await _prefs.saveCompletedPocketDailyGame(completedBoard);
+      }
+      return;
+    }
+
+    final streak = _dailyStreakAfterThisWin(pocket: true);
+    await _prefs.setPocketDailyProgress(
+      lastCompletedDay: dayKey,
+      streak: streak,
+    );
+    if (completedBoard != null) {
+      await _prefs.saveCompletedPocketDailyGame(completedBoard);
+    }
+    unawaited(_achievements.onDailyChallengeWon(streak: streak));
+    notifyListeners();
+  }
+
   void _applyFinishedDailyReview(PausedGame finished, {required bool won}) {
-    final challenge = DailyIrodoku.forDate();
+    final challenge = finished.isPocket
+        ? DailyIrodoku.pocketForDate()
+        : DailyIrodoku.forDate();
     _applyPausedBoard(
       finished,
       sessionPalette: finished.sessionPalette ?? challenge.palette,
@@ -1849,6 +2073,12 @@ class GameProvider extends ChangeNotifier {
       await _prefs.clearFailedDailyGame();
     }
 
+    final completedPocketDaily = _prefs.loadCompletedPocketDailyGame();
+    if (completedPocketDaily != null &&
+        completedPocketDaily.dailyDayKey != today) {
+      await _prefs.clearCompletedPocketDailyGame();
+    }
+
     final parkedRegular = _prefs.loadParkedRegularGame();
     if (parkedRegular != null &&
         !parkedRegular.isDaily &&
@@ -1870,6 +2100,7 @@ class GameProvider extends ChangeNotifier {
     final parkedDaily = _prefs.loadParkedDailyGame();
     if (parkedDaily != null &&
         parkedDaily.isDaily &&
+        !parkedDaily.isPocket &&
         parkedDaily.dailyDayKey == today) {
       _heldDaily = _heldFromPaused(parkedDaily);
     } else if (parkedDaily != null) {
@@ -1877,23 +2108,39 @@ class GameProvider extends ChangeNotifier {
     }
 
     final parkedPocket = _prefs.loadParkedPocketGame();
-    if (parkedPocket != null && parkedPocket.isPocket) {
+    if (parkedPocket != null &&
+        parkedPocket.isPocket &&
+        !parkedPocket.isDaily) {
       _heldPocket = _heldFromPaused(parkedPocket);
     } else if (parkedPocket != null) {
       await _prefs.clearParkedPocketGame();
     }
 
     final parkedPocketChromatic = _prefs.loadParkedPocketChromaticGame();
-    if (parkedPocketChromatic != null && parkedPocketChromatic.isPocket) {
+    if (parkedPocketChromatic != null &&
+        parkedPocketChromatic.isPocket &&
+        !parkedPocketChromatic.isDaily) {
       _heldPocketChromatic = _heldFromPaused(parkedPocketChromatic);
     } else if (parkedPocketChromatic != null) {
       await _prefs.clearParkedPocketChromaticGame();
     }
+
+    final parkedPocketDaily = _prefs.loadParkedPocketDailyGame();
+    if (parkedPocketDaily != null &&
+        parkedPocketDaily.isDaily &&
+        parkedPocketDaily.isPocket &&
+        parkedPocketDaily.dailyDayKey == today) {
+      _heldPocketDaily = _heldFromPaused(parkedPocketDaily);
+    } else if (parkedPocketDaily != null) {
+      await _prefs.clearParkedPocketDailyGame();
+    }
   }
 
-  /// Park Classic, Chromatic, or Pocket so Daily/mode-switch can replace live.
+  /// Park Classic, Chromatic, Pocket, or Daily so another mode can replace live.
   Future<void> _parkHomeLive() async {
-    if (_isPocket) {
+    if (_isDaily) {
+      await _parkLiveDailyToHold();
+    } else if (_isPocket) {
       await _parkLivePocket();
     } else {
       await _parkRegularFromLive();
@@ -1901,7 +2148,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> _parkLivePocket() async {
-    if (!_isPocket) return;
+    if (!_isPocket || _isDaily) return;
     if (_settings.chromatic) {
       await _parkPocketChromaticFromLive();
     } else {
@@ -1924,7 +2171,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> _parkPocketFromLive() async {
-    if (!_isPocket || _settings.chromatic) return;
+    if (!_isPocket || _isDaily || _settings.chromatic) return;
     if (!_hasActiveGame && !isGameOver && _solution == null) return;
     _timer?.cancel();
     _heldPocket = _captureHeld();
@@ -1932,7 +2179,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> _parkPocketChromaticFromLive() async {
-    if (!_isPocket || !_settings.chromatic) return;
+    if (!_isPocket || _isDaily || !_settings.chromatic) return;
     if (!_hasActiveGame && !isGameOver && _solution == null) return;
     _timer?.cancel();
     _heldPocketChromatic = _captureHeld();
@@ -2009,12 +2256,34 @@ class GameProvider extends ChangeNotifier {
     await _prefs.saveParkedPocketChromaticGame(paused);
   }
 
-  Future<void> _parkDailyIfLive() async {
+  Future<void> _persistParkedPocketDaily() async {
+    final held = _heldPocketDaily;
+    if (held == null) {
+      await _prefs.clearParkedPocketDailyGame();
+      return;
+    }
+    final paused = _pausedFromHeld(held);
+    if (paused == null) {
+      await _prefs.clearParkedPocketDailyGame();
+      return;
+    }
+    await _prefs.saveParkedPocketDailyGame(paused);
+  }
+
+  Future<void> _parkLiveDailyToHold() async {
     if (!_isDaily) return;
     _timer?.cancel();
     if (!isGameOver && !_dailyReviewMode) {
-      _heldDaily = _captureHeld();
-      await _persistParkedDaily();
+      if (_isPocket) {
+        _heldPocketDaily = _captureHeld();
+        await _persistParkedPocketDaily();
+      } else {
+        _heldDaily = _captureHeld();
+        await _persistParkedDaily();
+      }
+    } else if (_isPocket) {
+      _heldPocketDaily = null;
+      await _prefs.clearParkedPocketDailyGame();
     } else {
       _heldDaily = null;
       await _prefs.clearParkedDailyGame();
@@ -2023,14 +2292,18 @@ class GameProvider extends ChangeNotifier {
     _sessionPalette = null;
   }
 
+  Future<void> _parkDailyIfLive() async {
+    await _parkLiveDailyToHold();
+  }
+
   /// Switch to Classic mode for Main Menu → resume or start.
   Future<void> openClassicGame() async {
     if (_isGenerating) return;
 
-    if (_isPocket) {
-      await _parkLivePocket();
-    } else if (_isDaily) {
+    if (_isDaily) {
       await _parkDailyIfLive();
+    } else if (_isPocket) {
+      await _parkLivePocket();
     } else if (_settings.chromatic) {
       await _parkRegularFromLive();
     } else {
@@ -2056,10 +2329,10 @@ class GameProvider extends ChangeNotifier {
     if (_isGenerating) return false;
     if (!_stats.areAllMenuPalettesUnlocked) return false;
 
-    if (_isPocket) {
-      await _parkLivePocket();
-    } else if (_isDaily) {
+    if (_isDaily) {
       await _parkDailyIfLive();
+    } else if (_isPocket) {
+      await _parkLivePocket();
     } else if (!_settings.chromatic) {
       await _parkRegularFromLive();
     } else {
@@ -2084,7 +2357,7 @@ class GameProvider extends ChangeNotifier {
   Future<void> openPocketGame() async {
     if (_isGenerating) return;
 
-    if (_isPocket && !_settings.chromatic) {
+    if (_isPocket && !_isDaily && !_settings.chromatic) {
       notifyListeners();
       return;
     }
@@ -2114,7 +2387,7 @@ class GameProvider extends ChangeNotifier {
     if (_isGenerating) return false;
     if (!_stats.areAllMenuPalettesUnlocked) return false;
 
-    if (_isPocket && _settings.chromatic) {
+    if (_isPocket && !_isDaily && _settings.chromatic) {
       notifyListeners();
       return true;
     }
@@ -2169,7 +2442,10 @@ class GameProvider extends ChangeNotifier {
       });
     });
     final sessionPalette = paused.isDaily
-        ? (paused.sessionPalette ?? DailyIrodoku.forDate().palette)
+        ? (paused.sessionPalette ??
+            (paused.isPocket
+                ? DailyIrodoku.pocketForDate().palette
+                : DailyIrodoku.forDate().palette))
         : paused.sessionPalette;
     return _HeldGameSession(
       cells: cells,

@@ -8,7 +8,6 @@ import '../core/theme.dart';
 import '../providers/graffiti_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
-import '../services/graffiti_firebase_service.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/graffiti_grid.dart';
@@ -20,7 +19,9 @@ import '../widgets/typing_title.dart';
 import '../widgets/xp_gain_panel.dart';
 
 class GraffitiScreen extends StatefulWidget {
-  const GraffitiScreen({super.key});
+  final bool pocket;
+
+  const GraffitiScreen({super.key, this.pocket = false});
 
   @override
   State<GraffitiScreen> createState() => _GraffitiScreenState();
@@ -29,15 +30,16 @@ class GraffitiScreen extends StatefulWidget {
 class _GraffitiScreenState extends State<GraffitiScreen> {
   final _joinController = TextEditingController();
   GraffitiProvider? _game;
+  bool _bound = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _game = context.read<GraffitiProvider>();
-      _game!.addListener(_onGraffiti);
-    });
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_bound) return;
+    _bound = true;
+    _game = context.read<GraffitiProvider>();
+    _game!.prepareLobby(pocket: widget.pocket);
+    _game!.addListener(_onGraffiti);
   }
 
   void _onGraffiti() {
@@ -68,7 +70,7 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
     final leave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Leave Graffiti?'),
+        title: Text(game.isPocket ? 'Leave [Graffiti]?' : 'Leave Graffiti?'),
         content: const Text('You will disconnect from the match.'),
         actions: [
           TextButton(
@@ -98,7 +100,9 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
             game.phase == GraffitiPhase.finished;
         return Scaffold(
           appBar: AppBar(
-            title: const TypingTitle(text: 'Graffiti'),
+            title: TypingTitle(
+              text: widget.pocket ? '[Graffiti]' : 'Graffiti',
+            ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
               onPressed: withMenuSelect(
@@ -158,7 +162,9 @@ class _LobbyBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         Text(
-          'Irodoku VS; color in more cells than your opponent to win',
+          game.isPocket
+              ? '[Pocket] VS; color in more cells than your opponent to win'
+              : 'Irodoku VS; color in more cells than your opponent to win',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context)
                     .colorScheme
@@ -203,13 +209,13 @@ class _LobbyBody extends StatelessWidget {
           ),
         ] else ...[
           MenuActionButton(
-            label: 'Quick Play',
+            label: game.isPocket ? '[Quick Play]' : 'Quick Play',
             enabled: !game.busy,
             onPressed: game.quickPlay,
           ),
           const SizedBox(height: 12),
           MenuActionButton(
-            label: 'Create Room',
+            label: game.isPocket ? '[Create Room]' : 'Create Room',
             enabled: !game.busy,
             onPressed: game.createRoom,
           ),
@@ -294,7 +300,7 @@ class _GameBody extends StatelessWidget {
               const Spacer(),
               MistakeDisplay(
                 mistakes: game.myMistakes,
-                maxMistakes: GraffitiFirebaseService.maxMistakes,
+                maxMistakes: game.maxMistakes,
               ),
               const Spacer(),
               _GraffitiScore(
@@ -312,19 +318,30 @@ class _GameBody extends StatelessWidget {
                 const toolbarGap = 8.0;
                 final xlPicker = settings.xlPicker;
                 const xlSwatchCells = 3 * 0.85 * 0.85;
+                final pocketPicker = game.isPocket;
+                // Size the square like Classic (9×9) so Pocket's 6×6
+                // is the same on-screen height and width.
+                const layoutN = 9;
                 final belowFixed = toolbarGap + GameToolbar.height + pickerGap;
-                final pickerRows = xlPicker ? xlSwatchCells * 3 : 1.0;
+                const pocketSwatchScale = 0.70;
+                final pickerRows = pocketPicker
+                    ? 2.0 * layoutN / 3.0 * pocketSwatchScale
+                    : (xlPicker ? xlSwatchCells * 3 : 1.0);
                 final cellFromWidth =
-                    (constraints.maxWidth - boardBorder * 2) / 9;
+                    (constraints.maxWidth - boardBorder * 2) / layoutN;
                 final cellFromHeight = (constraints.maxHeight -
                         belowFixed -
                         boardBorder * 2) /
-                    (9 + pickerRows);
+                    (layoutN + pickerRows);
                 final cellSize = math.min(cellFromWidth, cellFromHeight);
-                final boardSize = cellSize * 9 + boardBorder * 2;
-                final swatchSize =
-                    xlPicker ? cellSize * xlSwatchCells : cellSize;
-                final pickerHeight = swatchSize * (xlPicker ? 3.0 : 1.0);
+                final boardSize = cellSize * layoutN + boardBorder * 2;
+                final boardInner = cellSize * layoutN;
+                final swatchSize = pocketPicker
+                    ? boardInner / 3 * pocketSwatchScale
+                    : (xlPicker ? cellSize * xlSwatchCells : cellSize);
+                final pickerHeight = pocketPicker
+                    ? swatchSize * 2.0
+                    : swatchSize * (xlPicker ? 3.0 : 1.0);
                 final overlayLabel = switch (outcome) {
                   GraffitiOutcome.win => '[VICTORY]',
                   GraffitiOutcome.lose || GraffitiOutcome.defeat => '[DEFEAT]',
@@ -418,7 +435,8 @@ class _GameBody extends StatelessWidget {
                             child: ColorPicker(
                               swatchSize: swatchSize,
                               visible: true,
-                              xlMode: xlPicker,
+                              xlMode: xlPicker && !pocketPicker,
+                              pocket: pocketPicker,
                               palette: game.activePalette,
                               onColorSelected: game.inputColor,
                               onNoteAdded: game.addNote,

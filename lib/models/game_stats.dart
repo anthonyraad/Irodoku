@@ -10,6 +10,9 @@ class GameStats {
   /// Easy wins required before Graffiti unlocks.
   static const int graffitiUnlockEasyWins = 1;
 
+  /// Pocket wins required before [Graffiti] / [Daily Challenge] unlock.
+  static const int graffitiUnlockPocketWins = 1;
+
   final int currentStreak;
   final int bestStreak;
   final int gamesPlayed;
@@ -37,6 +40,11 @@ class GameStats {
   final int pocketBestStreak;
   final int pocketChromaticCurrentStreak;
   final int pocketChromaticBestStreak;
+  final int pocketGraffitiWins;
+  final int pocketGraffitiLosses;
+  final int pocketGraffitiDraws;
+  final int pocketDailyWins;
+  final Duration? pocketDailyBestTime;
 
   const GameStats({
     this.currentStreak = 0,
@@ -65,6 +73,11 @@ class GameStats {
     this.pocketBestStreak = 0,
     this.pocketChromaticCurrentStreak = 0,
     this.pocketChromaticBestStreak = 0,
+    this.pocketGraffitiWins = 0,
+    this.pocketGraffitiLosses = 0,
+    this.pocketGraffitiDraws = 0,
+    this.pocketDailyWins = 0,
+    this.pocketDailyBestTime,
   });
 
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
@@ -77,11 +90,15 @@ class GameStats {
   int chromaticWinsFor(Difficulty difficulty) =>
       chromaticWinsByDifficulty[difficulty] ?? 0;
 
-  int get pocketGamesWon => pocketWins + pocketChromaticWins;
+  int get pocketGamesWon =>
+      pocketWins + pocketChromaticWins + pocketDailyWins;
 
   /// Display form e.g. `15-17 (2)`.
   String get graffitiRecordLabel =>
       '$graffitiWins-$graffitiLosses ($graffitiDraws)';
+
+  String get pocketGraffitiRecordLabel =>
+      '$pocketGraffitiWins-$pocketGraffitiLosses ($pocketGraffitiDraws)';
 
   int bestStreakForPalette(GamePalette palette) =>
       bestStreakByPalette[palette] ?? 0;
@@ -133,6 +150,12 @@ class GameStats {
   bool get isGraffitiUnlocked =>
       winsFor(Difficulty.easy) >= graffitiUnlockEasyWins;
 
+  bool get isPocketGraffitiUnlocked =>
+      pocketWins >= graffitiUnlockPocketWins;
+
+  bool get isPocketDailyUnlocked =>
+      pocketWins >= graffitiUnlockPocketWins;
+
   Difficulty get highestUnlocked {
     Difficulty best = Difficulty.easy;
     for (final d in Difficulty.values) {
@@ -168,6 +191,11 @@ class GameStats {
     int? pocketBestStreak,
     int? pocketChromaticCurrentStreak,
     int? pocketChromaticBestStreak,
+    int? pocketGraffitiWins,
+    int? pocketGraffitiLosses,
+    int? pocketGraffitiDraws,
+    int? pocketDailyWins,
+    Duration? pocketDailyBestTime,
   }) {
     return GameStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -203,6 +231,11 @@ class GameStats {
           pocketChromaticCurrentStreak ?? this.pocketChromaticCurrentStreak,
       pocketChromaticBestStreak:
           pocketChromaticBestStreak ?? this.pocketChromaticBestStreak,
+      pocketGraffitiWins: pocketGraffitiWins ?? this.pocketGraffitiWins,
+      pocketGraffitiLosses: pocketGraffitiLosses ?? this.pocketGraffitiLosses,
+      pocketGraffitiDraws: pocketGraffitiDraws ?? this.pocketGraffitiDraws,
+      pocketDailyWins: pocketDailyWins ?? this.pocketDailyWins,
+      pocketDailyBestTime: pocketDailyBestTime ?? this.pocketDailyBestTime,
     );
   }
 }

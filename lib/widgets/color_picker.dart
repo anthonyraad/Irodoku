@@ -1,10 +1,56 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
 import '../models/palette_swatch.dart';
+
+/// Maps keyboard keys to a picker color by a 3×3 layout:
+///
+/// ```
+/// 7 8 9 / Q W E  →  1 2 3
+/// 4 5 6 / A S D  →  4 5 6
+/// 1 2 3 / Z X C  →  7 8 9
+/// ```
+///
+/// Number-row and numpad digits share the same map. Returns null when the
+/// key is unused or [maxColor] is below that slot (Pocket only has six).
+int? colorValueForNumpadKey(LogicalKeyboardKey key, {int maxColor = 9}) {
+  final value = switch (key) {
+    LogicalKeyboardKey.digit7 ||
+    LogicalKeyboardKey.numpad7 ||
+    LogicalKeyboardKey.keyQ => 1,
+    LogicalKeyboardKey.digit8 ||
+    LogicalKeyboardKey.numpad8 ||
+    LogicalKeyboardKey.keyW => 2,
+    LogicalKeyboardKey.digit9 ||
+    LogicalKeyboardKey.numpad9 ||
+    LogicalKeyboardKey.keyE => 3,
+    LogicalKeyboardKey.digit4 ||
+    LogicalKeyboardKey.numpad4 ||
+    LogicalKeyboardKey.keyA => 4,
+    LogicalKeyboardKey.digit5 ||
+    LogicalKeyboardKey.numpad5 ||
+    LogicalKeyboardKey.keyS => 5,
+    LogicalKeyboardKey.digit6 ||
+    LogicalKeyboardKey.numpad6 ||
+    LogicalKeyboardKey.keyD => 6,
+    LogicalKeyboardKey.digit1 ||
+    LogicalKeyboardKey.numpad1 ||
+    LogicalKeyboardKey.keyZ => 7,
+    LogicalKeyboardKey.digit2 ||
+    LogicalKeyboardKey.numpad2 ||
+    LogicalKeyboardKey.keyX => 8,
+    LogicalKeyboardKey.digit3 ||
+    LogicalKeyboardKey.numpad3 ||
+    LogicalKeyboardKey.keyC => 9,
+    _ => null,
+  };
+  if (value == null || value > maxColor) return null;
+  return value;
+}
 
 class ColorPicker extends StatelessWidget {
   final double swatchSize;
@@ -109,16 +155,21 @@ class ColorPicker extends StatelessWidget {
       );
     }
 
-    return AnimatedOpacity(
-      opacity: visible ? 1 : 0,
-      duration: const Duration(milliseconds: 150),
-      child: IgnorePointer(
-        ignoring: !visible,
-        // Absorb taps so the game-screen dismiss GestureDetector doesn't steal them.
-        child: GestureDetector(
-          onTap: () {},
-          behavior: HitTestBehavior.opaque,
-          child: picker,
+    return _NumpadColorKeys(
+      enabled: visible,
+      maxColor: pocket ? 6 : 9,
+      onColorSelected: onColorSelected,
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: const Duration(milliseconds: 150),
+        child: IgnorePointer(
+          ignoring: !visible,
+          // Absorb taps so the game-screen dismiss GestureDetector doesn't steal them.
+          child: GestureDetector(
+            onTap: () {},
+            behavior: HitTestBehavior.opaque,
+            child: picker,
+          ),
         ),
       ),
     );
@@ -137,6 +188,67 @@ class ColorPicker extends StatelessWidget {
       onSwipeUp: () => onNoteRemoved(value),
     );
   }
+}
+
+/// Listens for number / numpad keys while the picker is on screen, even if
+/// the board has pointer focus.
+class _NumpadColorKeys extends StatefulWidget {
+  final bool enabled;
+  final int maxColor;
+  final ValueChanged<int> onColorSelected;
+  final Widget child;
+
+  const _NumpadColorKeys({
+    required this.enabled,
+    required this.maxColor,
+    required this.onColorSelected,
+    required this.child,
+  });
+
+  @override
+  State<_NumpadColorKeys> createState() => _NumpadColorKeysState();
+}
+
+class _NumpadColorKeysState extends State<_NumpadColorKeys> {
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    super.dispose();
+  }
+
+  bool get _textFieldFocused {
+    final ctx = FocusManager.instance.primaryFocus?.context;
+    if (ctx == null) return false;
+    return ctx.findAncestorStateOfType<EditableTextState>() != null;
+  }
+
+  bool _onKey(KeyEvent event) {
+    if (!widget.enabled) return false;
+    if (event is! KeyDownEvent) return false;
+    if (HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed ||
+        HardwareKeyboard.instance.isAltPressed) {
+      return false;
+    }
+    if (!(ModalRoute.of(context)?.isCurrent ?? false)) return false;
+    if (_textFieldFocused) return false;
+    final value = colorValueForNumpadKey(
+      event.logicalKey,
+      maxColor: widget.maxColor,
+    );
+    if (value == null) return false;
+    widget.onColorSelected(value);
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _ColorSwatch extends StatefulWidget {
