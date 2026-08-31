@@ -452,6 +452,38 @@ void main() {
     expect(award.breakdown, [(label: 'Daily finish', xp: 150)]);
   });
 
+  test('Wet paint never applies to Graffiti or [Graffiti]', () {
+    final graffiti = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 10),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: 'Graffiti',
+      graffiti: true,
+      wetPaint: true,
+    );
+    final pocketGraffiti = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 10),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: '[Graffiti]',
+      graffiti: true,
+      pocket: true,
+      wetPaint: true,
+    );
+    expect(graffiti.wetPaint, isFalse);
+    expect(graffiti.wetPaintXp, 0);
+    expect(graffiti.earned, 100);
+    expect(graffiti.breakdown, [(label: 'Graffiti finish', xp: 100)]);
+    expect(pocketGraffiti.wetPaint, isFalse);
+    expect(pocketGraffiti.wetPaintXp, 0);
+    expect(pocketGraffiti.earned, 50);
+    expect(pocketGraffiti.breakdown, [(label: '[Graffiti] finish', xp: 50)]);
+  });
+
   test('Wet paint never applies to Chromatic', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.hard,
@@ -605,6 +637,37 @@ void main() {
     expect(under.earned, 125);
     expect(onThreshold.fast, isFalse);
     expect(onThreshold.earned, 100);
+  });
+
+  test('Pocket [Graffiti] is a flat 50 base with Graffiti Speedy and Freestyle', () {
+    final award = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 4, seconds: 59),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: '[Graffiti]',
+      graffiti: true,
+      pocket: true,
+      noteless: true,
+    );
+    expect(award.baseXp, 50);
+    expect(award.sourceLabel, '[Graffiti]');
+    expect(award.fast, isTrue);
+    expect(award.fastXp, 12);
+    expect(award.noteless, isTrue);
+    expect(award.notelessXp, 20);
+    expect(award.sloppy, isFalse);
+    expect(award.lazy, isFalse);
+    expect(
+      award.breakdown,
+      [
+        (label: '[Graffiti] finish', xp: 50),
+        (label: 'Flawless', xp: 12),
+        (label: 'Speedy', xp: 12),
+        (label: 'Freestyle', xp: 20),
+      ],
+    );
   });
 
   test('Pocket Flawless and First of day apply; extras do not', () {

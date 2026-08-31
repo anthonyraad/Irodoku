@@ -56,6 +56,8 @@ abstract final class PlayerXp {
   /// Pocket is a flat base; Speedy is under 2:00. Lazy is over 3:00.
   static const pocketBaseXp = 25;
   static const pocketDailyBaseXp = 50;
+  /// Pocket [Graffiti] uses Graffiti rules with a smaller finish.
+  static const pocketGraffitiBaseXp = 50;
   static const pocketFastThreshold = Duration(minutes: 2);
   static const pocketLazyThreshold = Duration(minutes: 3);
   static const pocketLazyXp = -6;
@@ -171,21 +173,23 @@ abstract final class PlayerXp {
     final pocketDaily = pocket && daily;
     final base = pocketDaily
         ? pocketDailyBaseXp
-        : pocket
-            ? pocketBaseXp
-            : daily
-                ? dailyBaseXp
-                : baseXp(difficulty);
+        : graffiti
+            ? (pocket ? pocketGraffitiBaseXp : baseXp(graffitiDifficulty))
+            : pocket
+                ? pocketBaseXp
+                : daily
+                    ? dailyBaseXp
+                    : baseXp(difficulty);
     final flawless = mistakes == 0 && !suppressSpeedAndFlawless;
-    final sloppy = pocket ? mistakes == 1 : mistakes == 2;
+    final sloppy = !graffiti && pocket ? mistakes == 1 : mistakes == 2;
     final fast = suppressSpeedAndFlawless
         ? false
-        : pocket
-            ? elapsed < pocketFastThreshold
-            : graffiti
-                ? elapsed < graffitiFastThreshold
+        : graffiti
+            ? elapsed < graffitiFastThreshold
+            : pocket
+                ? elapsed < pocketFastThreshold
                 : elapsed < fastThreshold(difficulty);
-    final lazyXp = pocket && !daily && elapsed > pocketLazyThreshold
+    final lazyXp = pocket && !daily && !graffiti && elapsed > pocketLazyThreshold
         ? pocketLazyXp
         : !pocket &&
                 !daily &&
@@ -199,8 +203,8 @@ abstract final class PlayerXp {
     final sloppyXp = sloppy ? -(base * flawlessModifier).floor() : 0;
     final fastXp = fast ? (base * fastModifier).floor() : 0;
     final notelessXp =
-        !pocket && noteless ? (base * notelessModifier).floor() : 0;
-    final wetPaintXp = !daily && !chromatic && !pocket && wetPaint
+        (!pocket || graffiti) && noteless ? (base * notelessModifier).floor() : 0;
+    final wetPaintXp = !daily && !chromatic && !pocket && !graffiti && wetPaint
         ? (base * wetPaintModifier).floor()
         : 0;
     final firstOfDay = firstWinOfDay ? firstWinOfDayBonus : 0;

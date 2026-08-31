@@ -151,6 +151,7 @@ class StatsProvider extends ChangeNotifier {
     final wetPaint = !daily &&
         !chromatic &&
         !pocket &&
+        !graffiti &&
         lastPalette != null &&
         lastPalette != palette.storageKey;
     final careerBefore = graffiti ? _careerWins : _careerWins - 1;
@@ -175,7 +176,7 @@ class StatsProvider extends ChangeNotifier {
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
     unawaited(_prefs.setXpLastAwardDay(_todayKey()));
-    if (!daily && !chromatic && !pocket) {
+    if (!daily && !chromatic && !pocket && !graffiti) {
       unawaited(_prefs.setXpLastWinPalette(palette.storageKey));
     }
     return award;
@@ -289,7 +290,7 @@ class StatsProvider extends ChangeNotifier {
   /// Persists a finished Graffiti match. Mutual defeat counts as a loss.
   ///
   /// [pocket] writes W-L-D to the Pocket [Stats] record only — never the
-  /// main Stats Graffiti line. XP still uses Graffiti (Medium) rules.
+  /// main Stats Graffiti line. XP still uses Graffiti rules; Pocket is a 50 base.
   Future<void> recordGraffitiResult(
     GraffitiMatchResult result, {
     int mistakes = 0,
@@ -324,6 +325,7 @@ class StatsProvider extends ChangeNotifier {
         sourceLabel: pocket ? '[Graffiti]' : 'Graffiti',
         noteless: noteless,
         graffiti: true,
+        pocket: pocket,
       );
     } else {
       _lastXpAward = null;
