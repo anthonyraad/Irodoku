@@ -47,8 +47,7 @@ class StatsProvider extends ChangeNotifier {
   bool get isPocketGraffitiUnlocked =>
       devMode || _stats.isPocketGraffitiUnlocked;
 
-  bool get isPocketDailyUnlocked =>
-      devMode || _stats.isPocketDailyUnlocked;
+  bool get isPocketDailyUnlocked => devMode || _stats.isPocketDailyUnlocked;
 
   void notifyDevModeChanged() => notifyListeners();
 
@@ -148,7 +147,8 @@ class StatsProvider extends ChangeNotifier {
   }) {
     final first = isFirstWinOfDay;
     final lastPalette = _prefs.getXpLastWinPalette();
-    final wetPaint = !daily &&
+    final wetPaint =
+        !daily &&
         !chromatic &&
         !pocket &&
         !graffiti &&
@@ -197,10 +197,12 @@ class StatsProvider extends ChangeNotifier {
     bool chromatic = false,
     bool suppressSpeedAndFlawless = false,
   }) {
-    final pocketCurrent =
-        Map<GamePalette, int>.from(_stats.pocketCurrentStreakByPalette);
-    final pocketBest =
-        Map<GamePalette, int>.from(_stats.pocketBestStreakByPalette);
+    final pocketCurrent = Map<GamePalette, int>.from(
+      _stats.pocketCurrentStreakByPalette,
+    );
+    final pocketBest = Map<GamePalette, int>.from(
+      _stats.pocketBestStreakByPalette,
+    );
     for (final p in GamePalette.values) {
       if (p != palette) pocketCurrent[p] = 0;
     }
@@ -224,8 +226,8 @@ class StatsProvider extends ChangeNotifier {
         pocketChromaticCurrentStreak: chromaticStreak,
         pocketChromaticBestStreak:
             chromaticStreak > _stats.pocketChromaticBestStreak
-                ? chromaticStreak
-                : _stats.pocketChromaticBestStreak,
+            ? chromaticStreak
+            : _stats.pocketChromaticBestStreak,
       );
     } else {
       final previous = _stats.pocketBestTime;
@@ -287,7 +289,7 @@ class StatsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Persists a finished Graffiti match. Mutual defeat counts as a loss.
+  /// Persists a finished Graffiti match. Legacy mutual-defeat rooms count as a loss.
   ///
   /// [pocket] writes W-L-D to the Pocket [Stats] record only — never the
   /// main Stats Graffiti line. XP still uses Graffiti rules; Pocket is a 50 base.
@@ -300,21 +302,22 @@ class StatsProvider extends ChangeNotifier {
     bool pocket = false,
   }) async {
     _stats = switch (result) {
-      GraffitiMatchResult.win => pocket
-          ? _stats.copyWith(
-              pocketGraffitiWins: _stats.pocketGraffitiWins + 1,
-            )
-          : _stats.copyWith(graffitiWins: _stats.graffitiWins + 1),
-      GraffitiMatchResult.loss => pocket
-          ? _stats.copyWith(
-              pocketGraffitiLosses: _stats.pocketGraffitiLosses + 1,
-            )
-          : _stats.copyWith(graffitiLosses: _stats.graffitiLosses + 1),
-      GraffitiMatchResult.draw => pocket
-          ? _stats.copyWith(
-              pocketGraffitiDraws: _stats.pocketGraffitiDraws + 1,
-            )
-          : _stats.copyWith(graffitiDraws: _stats.graffitiDraws + 1),
+      GraffitiMatchResult.win =>
+        pocket
+            ? _stats.copyWith(pocketGraffitiWins: _stats.pocketGraffitiWins + 1)
+            : _stats.copyWith(graffitiWins: _stats.graffitiWins + 1),
+      GraffitiMatchResult.loss =>
+        pocket
+            ? _stats.copyWith(
+                pocketGraffitiLosses: _stats.pocketGraffitiLosses + 1,
+              )
+            : _stats.copyWith(graffitiLosses: _stats.graffitiLosses + 1),
+      GraffitiMatchResult.draw =>
+        pocket
+            ? _stats.copyWith(
+                pocketGraffitiDraws: _stats.pocketGraffitiDraws + 1,
+              )
+            : _stats.copyWith(graffitiDraws: _stats.graffitiDraws + 1),
     };
     if (result == GraffitiMatchResult.win) {
       _awardWinXp(
@@ -347,13 +350,13 @@ class StatsProvider extends ChangeNotifier {
     bool suppressSpeedAndFlawless = false,
   }) {
     final newStreak = _stats.currentStreak + 1;
-    final bestStreak =
-        newStreak > _stats.bestStreak ? newStreak : _stats.bestStreak;
+    final bestStreak = newStreak > _stats.bestStreak
+        ? newStreak
+        : _stats.bestStreak;
 
     final bestTimes = Map<Difficulty, Duration?>.from(_stats.bestTimes);
     final previous = bestTimes[difficulty];
-    if (!suppressSpeedAndFlawless &&
-        (previous == null || elapsed < previous)) {
+    if (!suppressSpeedAndFlawless && (previous == null || elapsed < previous)) {
       bestTimes[difficulty] = elapsed;
     }
 
@@ -361,10 +364,12 @@ class StatsProvider extends ChangeNotifier {
     winsByDifficulty[difficulty] = _stats.winsFor(difficulty) + 1;
 
     var chromaticGamesWon = _stats.chromaticGamesWon;
-    final chromaticBestTimes =
-        Map<Difficulty, Duration?>.from(_stats.chromaticBestTimes);
-    final chromaticWinsByDifficulty =
-        Map<Difficulty, int>.from(_stats.chromaticWinsByDifficulty);
+    final chromaticBestTimes = Map<Difficulty, Duration?>.from(
+      _stats.chromaticBestTimes,
+    );
+    final chromaticWinsByDifficulty = Map<Difficulty, int>.from(
+      _stats.chromaticWinsByDifficulty,
+    );
     if (chromatic) {
       chromaticGamesWon += 1;
       final chromaticPrevious = chromaticBestTimes[difficulty];
@@ -376,10 +381,12 @@ class StatsProvider extends ChangeNotifier {
           (_stats.chromaticWinsFor(difficulty)) + 1;
     }
 
-    final currentStreakByPalette =
-        Map<GamePalette, int>.from(_stats.currentStreakByPalette);
-    final bestStreakByPalette =
-        Map<GamePalette, int>.from(_stats.bestStreakByPalette);
+    final currentStreakByPalette = Map<GamePalette, int>.from(
+      _stats.currentStreakByPalette,
+    );
+    final bestStreakByPalette = Map<GamePalette, int>.from(
+      _stats.bestStreakByPalette,
+    );
     for (final p in GamePalette.values) {
       if (p != palette) currentStreakByPalette[p] = 0;
     }
@@ -467,8 +474,9 @@ class StatsProvider extends ChangeNotifier {
   }
 
   void resetStreakSync({required GamePalette palette}) {
-    final currentStreakByPalette =
-        Map<GamePalette, int>.from(_stats.currentStreakByPalette);
+    final currentStreakByPalette = Map<GamePalette, int>.from(
+      _stats.currentStreakByPalette,
+    );
     final hadPaletteStreak = (currentStreakByPalette[palette] ?? 0) > 0;
     currentStreakByPalette[palette] = 0;
     if (_stats.currentStreak == 0 && !hadPaletteStreak) return;
@@ -484,8 +492,9 @@ class StatsProvider extends ChangeNotifier {
     required GamePalette palette,
     required bool chromatic,
   }) {
-    final pocketCurrent =
-        Map<GamePalette, int>.from(_stats.pocketCurrentStreakByPalette);
+    final pocketCurrent = Map<GamePalette, int>.from(
+      _stats.pocketCurrentStreakByPalette,
+    );
     pocketCurrent[palette] = 0;
     _stats = chromatic
         ? _stats.copyWith(

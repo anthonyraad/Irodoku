@@ -16,14 +16,7 @@ import '../sudoku/sudoku_generator.dart';
 import 'settings_provider.dart';
 import 'stats_provider.dart';
 
-enum GraffitiPhase {
-  idle,
-  connecting,
-  searching,
-  waiting,
-  playing,
-  finished,
-}
+enum GraffitiPhase { idle, connecting, searching, waiting, playing, finished }
 
 enum GraffitiOutcome { none, win, lose, draw, defeat }
 
@@ -68,10 +61,10 @@ class GraffitiProvider extends ChangeNotifier {
     required SettingsProvider settings,
     required StatsProvider stats,
     SoundService? sounds,
-  })  : _settings = settings,
-        _stats = stats,
-        _ownsSounds = sounds == null,
-        _sounds = sounds ?? SoundService();
+  }) : _settings = settings,
+       _stats = stats,
+       _ownsSounds = sounds == null,
+       _sounds = sounds ?? SoundService();
 
   final SettingsProvider _settings;
   final StatsProvider _stats;
@@ -89,6 +82,9 @@ class GraffitiProvider extends ChangeNotifier {
   GraffitiOutcome _outcome = GraffitiOutcome.none;
   bool _playedEndSound = false;
   bool _recordedMatchResult = false;
+  bool _iWantRematch = false;
+  bool _opponentWantsRematch = false;
+
   /// Match palette shared via RTDB — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
   bool _pocket = false;
@@ -124,9 +120,12 @@ class GraffitiProvider extends ChangeNotifier {
   StreamSubscription<DatabaseEvent>? _roomSub;
   bool _startingGame = false;
   bool _busy = false;
+  bool _fillInFlight = false;
   Duration _elapsed = Duration.zero;
   Timer? _timer;
   bool _timerStarted = false;
+  DateTime? _lockedUntil;
+  Timer? _lockoutTicker;
 
   GraffitiPhase get phase => _phase;
   String? get roomCode => _roomCode;
@@ -137,18 +136,17 @@ class GraffitiProvider extends ChangeNotifier {
   String? get statusMessage => _statusMessage;
   String? get toast => _toast;
   GraffitiOutcome get outcome => _outcome;
+  bool get iWantRematch => _iWantRematch;
+  bool get opponentWantsRematch => _opponentWantsRematch;
+  bool get rematchAvailable =>
+      !_solo && _opponentId != null && _phase == GraffitiPhase.finished;
   bool get busy => _busy;
   bool get isPocket => _pocket;
-  int get gridSize =>
-      _pocket ? SudokuBoard.pocketSize : SudokuBoard.size;
-  int get boxW =>
-      _pocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
-  int get boxH =>
-      _pocket ? SudokuBoard.pocketBoxHeight : SudokuBoard.boxSize;
-  int get maxMistakes => _pocket
-      ? GraffitiFirebaseService.pocketMaxMistakes
-      : GraffitiFirebaseService.maxMistakes;
+  int get gridSize => _pocket ? SudokuBoard.pocketSize : SudokuBoard.size;
+  int get boxW => _pocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
+  int get boxH => _pocket ? SudokuBoard.pocketBoxHeight : SudokuBoard.boxSize;
   int get _cellCount => gridSize * gridSize;
+
   /// Palette for this match (room-shared). Falls back to Config only before play.
   GamePalette get activePalette => _sessionPalette ?? _settings.palette;
 
@@ -164,16 +162,35 @@ class GraffitiProvider extends ChangeNotifier {
   int? get colorCycleFilterValue => _colorCycleFilterValue;
   bool get hasCellSelection =>
       _selectedRow != null || _bulkNoteSelect || _noteMode;
-  bool get canUndo => _undoStack.isNotEmpty && !_eliminated;
+  bool get canUndo => _undoStack.isNotEmpty && !isLockedOut;
   int get myCorrect => _myCorrect;
   int get myMistakes => _myMistakes;
   int get oppCorrect => _oppCorrect;
   int get oppMistakes => _oppMistakes;
-  bool get eliminated => _eliminated;
-  bool get controlsEnabled =>
-      _phase == GraffitiPhase.playing && !_eliminated && _outcome == GraffitiOutcome.none;
+  bool get isLockedOut {
+    if (_phase != GraffitiPhase.playing) return false;
+    final until = _lockedUntil;
+    if (until == null) return false;
+    return DateTime.now().isBefore(until);
+  }
 
-  bool get _eliminated => _myMistakes >= maxMistakes;
+  /// Picker-slot countdown, e.g. `[0:05]`, or null when not locked out.
+  String? get lockoutCountdownLabel {
+    if (!isLockedOut) return null;
+    final until = _lockedUntil;
+    if (until == null) return null;
+    final ms = until.difference(DateTime.now()).inMilliseconds;
+    if (ms <= 0) return null;
+    final total = (ms / 1000).ceil();
+    final minutes = total ~/ 60;
+    final seconds = (total % 60).toString().padLeft(2, '0');
+    return '[$minutes:$seconds]';
+  }
+
+  bool get controlsEnabled =>
+      _phase == GraffitiPhase.playing &&
+      !isLockedOut &&
+      _outcome == GraffitiOutcome.none;
 
   Cell? get selectedCell {
     final r = _selectedRow;
@@ -204,9 +221,9 @@ class GraffitiProvider extends ChangeNotifier {
   (int, int) _fromKey(int key) => (key ~/ gridSize, key % gridSize);
 
   List<List<Cell>> _emptyGrid() => List.generate(
-        gridSize,
-        (_) => List.generate(gridSize, (_) => const Cell()),
-      );
+    gridSize,
+    (_) => List.generate(gridSize, (_) => const Cell()),
+  );
 
   /// Bind this singleton to 9×9 Graffiti or 6×6 [Graffiti] while idle.
   void prepareLobby({required bool pocket}) {
@@ -420,7 +437,9 @@ class GraffitiProvider extends ChangeNotifier {
       pocket: _pocket,
     );
     if (!joined) {
-      _failToIdle(asQuickMatch ? 'Match taken — try again.' : 'Could not join.');
+      _failToIdle(
+        asQuickMatch ? 'Match taken — try again.' : 'Could not join.',
+      );
       return;
     }
     _roomCode = code;
@@ -447,7 +466,8 @@ class GraffitiProvider extends ChangeNotifier {
     _roomSub = GraffitiFirebaseService.roomRef(code).onValue.listen((event) {
       final raw = event.snapshot.value;
       if (raw == null) {
-        if (_phase == GraffitiPhase.playing || _phase == GraffitiPhase.finished) {
+        if (_phase == GraffitiPhase.playing ||
+            _phase == GraffitiPhase.finished) {
           _toast = 'Opponent left';
           _solo = true;
           notifyListeners();
@@ -461,8 +481,7 @@ class GraffitiProvider extends ChangeNotifier {
   }
 
   void _applyRoomSnapshot(Map<dynamic, dynamic> data) {
-    final players =
-        Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
+    final players = Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
     final pid = _playerId;
     if (pid != null && opponentId == null && players.length == 2) {
       for (final k in players.keys) {
@@ -476,16 +495,25 @@ class GraffitiProvider extends ChangeNotifier {
 
     final gameState = data['gameState']?.toString() ?? 'waiting';
     final wasPlaying = _phase == GraffitiPhase.playing;
+    final wasFinished = _phase == GraffitiPhase.finished;
+    final rematch = Map<dynamic, dynamic>.from(data['rematch'] as Map? ?? {});
+    _iWantRematch = pid != null && rematch[pid] == true;
+    _opponentWantsRematch = _opponentId != null && rematch[_opponentId] == true;
 
-    if (players.length < 2 &&
-        wasPlaying &&
-        data['solo'] != true &&
-        gameState == 'playing') {
+    final opponentGone =
+        players.length < 2 &&
+        (wasPlaying ||
+            wasFinished ||
+            gameState == 'playing' ||
+            gameState == 'finished');
+    if (opponentGone && !_solo) {
       _solo = true;
       _toast = 'Opponent left';
+      _opponentWantsRematch = false;
     }
     if (data['solo'] == true) {
       _solo = true;
+      _opponentWantsRematch = false;
     }
 
     if (_isHost &&
@@ -504,6 +532,28 @@ class GraffitiProvider extends ChangeNotifier {
           _startingGame = false;
         }
       });
+    }
+
+    if (_isHost &&
+        players.length == 2 &&
+        gameState == 'finished' &&
+        !_solo &&
+        pid != null &&
+        _opponentId != null &&
+        GraffitiFirebaseService.bothWantRematch(rematch, pid, _opponentId!) &&
+        !_startingGame) {
+      _startingGame = true;
+      Future.microtask(() async {
+        try {
+          await _hostStartGame();
+        } finally {
+          _startingGame = false;
+        }
+      });
+    }
+
+    if (gameState == 'playing' && wasFinished) {
+      _prepareNextMatch();
     }
 
     if (gameState == 'playing' || gameState == 'finished') {
@@ -530,6 +580,7 @@ class GraffitiProvider extends ChangeNotifier {
       } else {
         _timer?.cancel();
         _phase = GraffitiPhase.finished;
+        _clearLockout();
         _resolveOutcome(data['winner']?.toString());
         _playEndSoundOnce();
         _recordMatchResultOnce();
@@ -566,19 +617,22 @@ class GraffitiProvider extends ChangeNotifier {
     final result = switch (_outcome) {
       GraffitiOutcome.win => GraffitiMatchResult.win,
       GraffitiOutcome.draw => GraffitiMatchResult.draw,
-      GraffitiOutcome.lose || GraffitiOutcome.defeat => GraffitiMatchResult.loss,
+      GraffitiOutcome.lose ||
+      GraffitiOutcome.defeat => GraffitiMatchResult.loss,
       GraffitiOutcome.none => null,
     };
     if (result == null) return;
     _recordedMatchResult = true;
-    unawaited(_stats.recordGraffitiResult(
-      result,
-      mistakes: _myMistakes,
-      elapsed: _elapsed,
-      palette: activePalette,
-      noteless: !_usedNotes,
-      pocket: _pocket,
-    ));
+    unawaited(
+      _stats.recordGraffitiResult(
+        result,
+        mistakes: _myMistakes,
+        elapsed: _elapsed,
+        palette: activePalette,
+        noteless: !_usedNotes,
+        pocket: _pocket,
+      ),
+    );
   }
 
   Future<void> _hostStartGame() async {
@@ -601,6 +655,72 @@ class GraffitiProvider extends ChangeNotifier {
       solution: generated.solution.toFlat(),
       palette: palette.storageKey,
     );
+  }
+
+  /// Clears local match flags so a rematch can score and time from scratch.
+  void _prepareNextMatch() {
+    _timer?.cancel();
+    _timer = null;
+    _timerStarted = false;
+    _elapsed = Duration.zero;
+    _outcome = GraffitiOutcome.none;
+    _playedEndSound = false;
+    _recordedMatchResult = false;
+    _solo = false;
+    _iWantRematch = false;
+    _opponentWantsRematch = false;
+    _cells = _emptyGrid();
+    _solution = List.filled(_cellCount, 0);
+    _completedUnits = {};
+    _celebration = null;
+    _colorCycleFilterValue = null;
+    _noteClearWave = null;
+    _selectedRow = null;
+    _selectedCol = null;
+    _noteMode = false;
+    _usedNotes = false;
+    _exitBulkNoteSelect();
+    _undoStack.clear();
+    _myCorrect = 0;
+    _myMistakes = 0;
+    _oppCorrect = 0;
+    _oppMistakes = 0;
+    _clearLockout();
+  }
+
+  Future<void> requestRematch() async {
+    final code = _roomCode;
+    final pid = _playerId;
+    if (code == null || pid == null) return;
+    if (_phase != GraffitiPhase.finished || _solo) return;
+    _iWantRematch = true;
+    notifyListeners();
+    try {
+      await GraffitiFirebaseService.setRematchVote(
+        roomCode: code,
+        playerId: pid,
+        wantsRematch: true,
+      );
+    } catch (_) {
+      _iWantRematch = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> cancelRematch() async {
+    final code = _roomCode;
+    final pid = _playerId;
+    if (code == null || pid == null) return;
+    if (!_iWantRematch) return;
+    _iWantRematch = false;
+    notifyListeners();
+    try {
+      await GraffitiFirebaseService.setRematchVote(
+        roomCode: code,
+        playerId: pid,
+        wantsRematch: false,
+      );
+    } catch (_) {}
   }
 
   List<(int, int, int)> _hydrateBoard(Map<dynamic, dynamic> data) {
@@ -705,6 +825,11 @@ class GraffitiProvider extends ChangeNotifier {
       final mine = Map<dynamic, dynamic>.from(stats[pid] as Map);
       _myCorrect = (mine['correct'] as num?)?.toInt() ?? 0;
       _myMistakes = (mine['mistakes'] as num?)?.toInt() ?? 0;
+      final untilMs = (mine['lockedUntil'] as num?)?.toInt() ?? 0;
+      if (untilMs > 0) {
+        _lockedUntil = DateTime.fromMillisecondsSinceEpoch(untilMs);
+      }
+      _syncLockoutTicker();
     }
     if (oid != null && stats[oid] is Map) {
       final opp = Map<dynamic, dynamic>.from(stats[oid] as Map);
@@ -886,7 +1011,7 @@ class GraffitiProvider extends ChangeNotifier {
       return;
     }
 
-    if (!controlsEnabled) return;
+    if (!controlsEnabled || _fillInFlight) return;
     final r = _selectedRow!;
     final c = _selectedCol!;
     final cell = _cells[r][c];
@@ -896,35 +1021,43 @@ class GraffitiProvider extends ChangeNotifier {
     final pid = _playerId;
     if (code == null || pid == null) return;
 
-    final result = await GraffitiFirebaseService.placeColorTransaction(
-      roomCode: code,
-      playerId: pid,
-      row: r,
-      col: c,
-      value: value,
-    );
-    if (!result.committed) return;
-
-    final correct = _solution[r * gridSize + c] == value;
-    // Snapshot listener applies board + stats; optimistic cells for snappy feel.
-    // Do not bump _myMistakes here — hydrate from RTDB is the source of truth
-    // (optimistic + snapshot was double-counting).
-    if (correct) {
-      _cells[r][c] = Cell(value: value, isLocked: true);
-      // Correct fills are shared/locked — not undoable.
-      _clearPeerNotes(r, c, value);
-      final unitCompleted = _syncCompletedUnits(celebrate: true);
-      if (!unitCompleted && !_cellBelongsToCompletedUnit(r, c)) {
-        _playSound(_placementConfirmSound(value));
-      }
-    } else {
-      _undoStack.add(
-        _FillUndo(row: r, col: c, value: value, wasMistake: true),
+    _fillInFlight = true;
+    try {
+      final result = await GraffitiFirebaseService.placeColorTransaction(
+        roomCode: code,
+        playerId: pid,
+        row: r,
+        col: c,
+        value: value,
       );
-      _cells[r][c] = Cell(value: value, hasConflict: true);
-      _playSound(_sounds.playMistake);
+      if (!result.committed) return;
+
+      final correct = _solution[r * gridSize + c] == value;
+      // Snapshot listener applies board + stats; optimistic cells for snappy feel.
+      // Do not bump _myMistakes here — hydrate from RTDB is the source of truth
+      // (optimistic + snapshot was double-counting).
+      if (correct) {
+        _cells[r][c] = Cell(value: value, isLocked: true);
+        // Correct fills are shared/locked — not undoable.
+        _clearPeerNotes(r, c, value);
+        final unitCompleted = _syncCompletedUnits(celebrate: true);
+        if (!unitCompleted && !_cellBelongsToCompletedUnit(r, c)) {
+          _playSound(_placementConfirmSound(value));
+        }
+      } else {
+        _undoStack.add(
+          _FillUndo(row: r, col: c, value: value, wasMistake: true),
+        );
+        _cells[r][c] = Cell(value: value, hasConflict: true);
+        _playSound(_sounds.playMistake);
+        if (!isLockedOut) {
+          _beginLocalLockout(mistakeNumber: _myMistakes + 1);
+        }
+      }
+      notifyListeners();
+    } finally {
+      _fillInFlight = false;
     }
-    notifyListeners();
   }
 
   void addNote(int value) {
@@ -980,7 +1113,9 @@ class GraffitiProvider extends ChangeNotifier {
     final changes = <_NoteUndo>[];
     for (final (row, col) in targets) {
       final cell = _cells[row][col];
-      final next = add ? cell.withNoteAdded(value) : cell.withNoteRemoved(value);
+      final next = add
+          ? cell.withNoteAdded(value)
+          : cell.withNoteRemoved(value);
       if (identical(next, cell)) continue;
       _cells[row][col] = next;
       changes.add(_NoteUndo(row: row, col: col, value: value, added: add));
@@ -1005,7 +1140,9 @@ class GraffitiProvider extends ChangeNotifier {
     if (forceAdd && has) return;
     if (forceRemove && !has) return;
     final added = forceAdd || (!forceRemove && !has);
-    _cells[r][c] = added ? cell.withNoteAdded(value) : cell.withNoteRemoved(value);
+    _cells[r][c] = added
+        ? cell.withNoteAdded(value)
+        : cell.withNoteRemoved(value);
     if (added) _usedNotes = true;
     _undoStack.add(_NoteUndo(row: r, col: c, value: value, added: added));
     _playSound(added ? _sounds.playNote : _sounds.playNoteDeselect);
@@ -1063,18 +1200,20 @@ class GraffitiProvider extends ChangeNotifier {
       case _NoteUndo(:final row, :final col, :final value, :final added):
         final cell = _cells[row][col];
         if (!cell.isEditable) break;
-        _cells[row][col] =
-            added ? cell.withNoteRemoved(value) : cell.withNoteAdded(value);
+        _cells[row][col] = added
+            ? cell.withNoteRemoved(value)
+            : cell.withNoteAdded(value);
         _playSound(added ? _sounds.playNoteDeselect : _sounds.playNote);
         notifyListeners();
-      case _FillUndo(
-          :final row,
-          :final col,
-          :final value,
-          :final wasMistake,
-        ):
+      case _FillUndo(:final row, :final col, :final value, :final wasMistake):
         // Clears the fill only — mistake Xs are permanent.
-        await _undoFill(row, col, value, wasMistake: wasMistake, pushUndo: false);
+        await _undoFill(
+          row,
+          col,
+          value,
+          wasMistake: wasMistake,
+          pushUndo: false,
+        );
       case _BulkNoteUndo(:final changes):
         for (final change in changes.reversed) {
           final cell = _cells[change.row][change.col];
@@ -1131,12 +1270,7 @@ class GraffitiProvider extends ChangeNotifier {
   /// Removes [value] from notes in the same row, column, and box as (row, col).
   void _clearPeerNotes(int row, int col, int value) {
     final seq = ++_noteClearWaveSeq;
-    _noteClearWave = NoteClearWave(
-      row: row,
-      col: col,
-      value: value,
-      seq: seq,
-    );
+    _noteClearWave = NoteClearWave(row: row, col: col, value: value, seq: seq);
     final clearToken = ++_noteClearWaveClearToken;
     Future<void>.delayed(const Duration(milliseconds: 520), () {
       if (_noteClearWaveClearToken != clearToken) return;
@@ -1150,7 +1284,8 @@ class GraffitiProvider extends ChangeNotifier {
     for (var r = 0; r < gridSize; r++) {
       for (var c = 0; c < gridSize; c++) {
         if (r == row && c == col) continue;
-        final sameUnit = r == row ||
+        final sameUnit =
+            r == row ||
             c == col ||
             (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
         if (!sameUnit) continue;
@@ -1279,7 +1414,11 @@ class GraffitiProvider extends ChangeNotifier {
     _outcome = GraffitiOutcome.none;
     _playedEndSound = false;
     _recordedMatchResult = false;
+    _iWantRematch = false;
+    _opponentWantsRematch = false;
     _sessionPalette = null;
+    _fillInFlight = false;
+    _clearLockout();
     _cells = _emptyGrid();
     _solution = List.filled(_cellCount, 0);
     _completedUnits = {};
@@ -1312,6 +1451,38 @@ class GraffitiProvider extends ChangeNotifier {
     });
   }
 
+  void _beginLocalLockout({required int mistakeNumber}) {
+    final seconds = GraffitiFirebaseService.lockoutSecondsForMistake(
+      mistakeNumber,
+    );
+    if (seconds <= 0) return;
+    _lockedUntil = DateTime.now().add(Duration(seconds: seconds));
+    _exitBulkNoteSelect();
+    _syncLockoutTicker();
+  }
+
+  void _clearLockout() {
+    _lockedUntil = null;
+    _lockoutTicker?.cancel();
+    _lockoutTicker = null;
+  }
+
+  void _syncLockoutTicker() {
+    if (!isLockedOut) {
+      _lockoutTicker?.cancel();
+      _lockoutTicker = null;
+      return;
+    }
+    if (_lockoutTicker != null) return;
+    _lockoutTicker = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!isLockedOut) {
+        _lockoutTicker?.cancel();
+        _lockoutTicker = null;
+      }
+      notifyListeners();
+    });
+  }
+
   String formatElapsed() {
     final totalSeconds = _elapsed.inSeconds;
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
@@ -1340,6 +1511,7 @@ class GraffitiProvider extends ChangeNotifier {
   @override
   void dispose() {
     _timer?.cancel();
+    _lockoutTicker?.cancel();
     _roomSub?.cancel();
     if (_ownsSounds) unawaited(_sounds.dispose());
     super.dispose();

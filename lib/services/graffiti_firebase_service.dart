@@ -16,20 +16,23 @@ class GraffitiFirebaseService {
   static const roomsPath = 'rooms';
   static const appTag = 'irodoku_graffiti';
   static const pocketAppTag = 'irodoku_graffiti_pocket';
-  static const maxMistakes = 3;
-  static const pocketMaxMistakes = 2;
   static const maxQuickMatchScan = 120;
 
   static String appTagFor({required bool pocket}) =>
       pocket ? pocketAppTag : appTag;
 
+  /// 1st mistake: 5s, 2nd: 10s, 3rd and later: 15s.
+  static int lockoutSecondsForMistake(int mistakeNumber) {
+    if (mistakeNumber <= 0) return 0;
+    if (mistakeNumber == 1) return 5;
+    if (mistakeNumber == 2) return 10;
+    return 15;
+  }
+
   static int gridSizeOf(List<dynamic> values) {
     if (values.length == 36) return 6;
     return 9;
   }
-
-  static int maxMistakesForGrid(int n) =>
-      n == 6 ? pocketMaxMistakes : maxMistakes;
 
   static bool _initialized = false;
   static bool get isReady => _initialized;
@@ -239,7 +242,30 @@ class GraffitiFirebaseService {
       },
       'winner': null,
       'solo': false,
+      'rematch': null,
     });
+  }
+
+  /// Records whether [playerId] wants another match in this room.
+  static Future<void> setRematchVote({
+    required String roomCode,
+    required String playerId,
+    required bool wantsRematch,
+  }) async {
+    final voteRef = roomRef(roomCode).child('rematch').child(playerId);
+    if (wantsRematch) {
+      await voteRef.set(true);
+    } else {
+      await voteRef.remove();
+    }
+  }
+
+  static bool bothWantRematch(
+    Map<dynamic, dynamic> rematch,
+    String playerId,
+    String opponentId,
+  ) {
+    return rematch[playerId] == true && rematch[opponentId] == true;
   }
 
   static Future<TransactionResult> placeColorTransaction({
@@ -258,11 +284,13 @@ class GraffitiFirebaseService {
       final stats = Map<dynamic, dynamic>.from(data['stats'] as Map? ?? {});
       final myStats = Map<dynamic, dynamic>.from(stats[playerId] as Map? ?? {});
       final myMistakes = (myStats['mistakes'] as num?)?.toInt() ?? 0;
+      final lockedUntil = (myStats['lockedUntil'] as num?)?.toInt() ?? 0;
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (lockedUntil > nowMs) return Transaction.abort();
 
       final solution = List<dynamic>.from(data['solution'] as List? ?? []);
       final n = gridSizeOf(solution);
       if (solution.length != n * n) return Transaction.abort();
-      if (myMistakes >= maxMistakesForGrid(n)) return Transaction.abort();
 
       final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
       final existing = board[key];
@@ -289,6 +317,8 @@ class GraffitiFirebaseService {
           'mistake': true,
         };
         myStats['mistakes'] = myMistakes + 1;
+        myStats['lockedUntil'] =
+            nowMs + lockoutSecondsForMistake(myMistakes + 1) * 1000;
       }
       stats[playerId] = myStats;
       data['board'] = board;
@@ -349,13 +379,6 @@ class GraffitiFirebaseService {
     final puzzle = List<dynamic>.from(data['puzzle'] as List? ?? []);
     final n = gridSizeOf(puzzle);
     if (puzzle.length != n * n) return;
-    final cap = maxMistakesForGrid(n);
-
-    if (aMistakes >= cap && bMistakes >= cap) {
-      data['gameState'] = 'finished';
-      data['winner'] = 'defeat';
-      return;
-    }
 
     final board = Map<dynamic, dynamic>.from(data['board'] as Map? ?? {});
 
@@ -405,8 +428,10 @@ class GraffitiFirebaseService {
     } catch (e) {
       debugPrint('Graffiti app-index scan failed, using shallow scan: $e');
       try {
-        snap =
-            await database.ref(roomsPath).limitToLast(maxQuickMatchScan).get();
+        snap = await database
+            .ref(roomsPath)
+            .limitToLast(maxQuickMatchScan)
+            .get();
       } catch (e2) {
         debugPrint('Graffiti rooms scan failed: $e2');
         return null;
@@ -464,11 +489,14 @@ class GraffitiFirebaseService {
     await ref.runTransaction((Object? raw) {
       if (raw == null) return Transaction.abort();
       final data = Map<dynamic, dynamic>.from(raw as Map);
-      final players =
-          Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
+      final players = Map<dynamic, dynamic>.from(data['players'] as Map? ?? {});
       players.remove(playerId);
       data['players'] = players;
-      if (data['gameState'] == 'playing') {
+      final rematch = Map<dynamic, dynamic>.from(data['rematch'] as Map? ?? {});
+      rematch.remove(playerId);
+      data['rematch'] = rematch;
+      final state = data['gameState']?.toString();
+      if (state == 'playing' || state == 'finished') {
         data['solo'] = true;
       }
       return Transaction.success(data);
