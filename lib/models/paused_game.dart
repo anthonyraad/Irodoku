@@ -17,6 +17,8 @@ class PausedGame {
   final GamePalette? sessionPalette;
   /// Iro slot sources for this board; null when not using an Iro mix.
   final List<String>? iroSources;
+  /// Pocket: 0 = palette slots 1–6, 3 = slots 4–9. Ignored on 9×9 / Daily.
+  final int pocketSwatchOffset;
   final bool usedNotes;
   /// True when this board was restarted after a defeat (Classic / Chromatic / Pocket).
   final bool retriedAfterLoss;
@@ -32,6 +34,7 @@ class PausedGame {
     this.dailyDayKey,
     this.sessionPalette,
     this.iroSources,
+    this.pocketSwatchOffset = 0,
     this.usedNotes = false,
     this.retriedAfterLoss = false,
   });
@@ -47,6 +50,7 @@ class PausedGame {
       'dailyDayKey': dailyDayKey,
       'sessionPalette': sessionPalette?.storageKey,
       'iroSources': iroSources,
+      'pocketSwatchOffset': pocketSwatchOffset,
       'usedNotes': usedNotes,
       'retriedAfterLoss': retriedAfterLoss,
       'cells': [
@@ -116,9 +120,15 @@ class PausedGame {
       sessionPalette:
           sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),
       iroSources: _stringList(json['iroSources']),
+      pocketSwatchOffset: _pocketSwatchOffsetFromJson(json['pocketSwatchOffset']),
       usedNotes: json['usedNotes'] as bool? ?? notesOnBoard,
       retriedAfterLoss: json['retriedAfterLoss'] as bool? ?? false,
     );
+  }
+
+  static int _pocketSwatchOffsetFromJson(Object? raw) {
+    final value = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
+    return value == 3 ? 3 : 0;
   }
 
   static List<String>? _stringList(Object? raw) {

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../core/palette.dart';
@@ -113,9 +115,15 @@ class _ChromaticPaletteTransitionState extends State<ChromaticPaletteTransition>
 
   List<PaletteSwatch> _lerpedSwatches(double rawT) {
     final t = Curves.easeInOutCubic.transform(rawT.clamp(0.0, 1.0));
+    final from = _fromSwatches;
     final to = _toSwatches;
+    if (from.isEmpty) return to;
+    if (to.isEmpty) return from;
+    final n = math.max(from.length, to.length);
+    PaletteSwatch at(List<PaletteSwatch> list, int i) =>
+        list[i.clamp(0, list.length - 1)];
     return [
-      for (var i = 0; i < 9; i++) PaletteSwatch.lerp(_fromSwatches[i], to[i], t),
+      for (var i = 0; i < n; i++) PaletteSwatch.lerp(at(from, i), at(to, i), t),
     ];
   }
 

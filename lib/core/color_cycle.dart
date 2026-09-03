@@ -39,8 +39,10 @@ abstract final class ColorCycle {
     final offset = sweep * steps;
 
     final startIndex = colorValue - 1;
-    final i0 = (startIndex + offset.floor()) % 9;
-    final i1 = (startIndex + offset.ceil()) % 9;
+    final n = list.length;
+    if (n <= 0) return original;
+    final i0 = (startIndex + offset.floor()) % n;
+    final i1 = (startIndex + offset.ceil()) % n;
     final frac = offset - offset.floor();
     return PaletteSwatch.lerp(list[i0], list[i1], frac);
   }

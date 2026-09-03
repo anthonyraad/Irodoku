@@ -310,6 +310,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         palette: palette,
                         displaySwatches: displaySwatches,
                         swatchSources: game.iroSources,
+                        swatchSlotOffset: game.pocketSwatchOffset,
                         bulkNoteSelect: game.bulkNoteSelect,
                         isRelated: isRelated,
                         isSameColor: isSameColor,

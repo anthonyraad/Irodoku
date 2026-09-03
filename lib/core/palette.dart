@@ -270,15 +270,32 @@ abstract final class IrodokuPalette {
     return null;
   }
 
+  /// Pocket high window: board values 1–6 map to palette slots 4–9.
+  static const int pocketHighSwatchOffset = 3;
+  static const int pocketSwatchCount = 6;
+
+  static int normalizePocketSwatchOffset(int offset) =>
+      offset == pocketHighSwatchOffset ? pocketHighSwatchOffset : 0;
+
+  /// Six consecutive entries starting at [offset] (0 or 3).
+  static List<T> pocketWindow<T>(List<T> full, int offset) {
+    final start = normalizePocketSwatchOffset(offset);
+    if (full.length < start + pocketSwatchCount) return List<T>.from(full);
+    return full.sublist(start, start + pocketSwatchCount);
+  }
+
   /// Outline for slot [value] when each slot may come from a different palette.
+  /// [slotOffset] is added to [value] for near-white outline checks (Pocket 4–9).
   static Color? outlineForSlot(
     int value,
     GamePalette palette, [
     List<GamePalette>? sources,
+    int slotOffset = 0,
   ]) {
+    final slot = value + slotOffset;
     if (sources != null && value >= 1 && value <= sources.length) {
-      return outlineForValue(value, sources[value - 1]);
+      return outlineForValue(slot, sources[value - 1]);
     }
-    return outlineForValue(value, palette);
+    return outlineForValue(slot, palette);
   }
 }

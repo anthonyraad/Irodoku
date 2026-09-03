@@ -437,6 +437,8 @@ class _GameScreenState extends State<GameScreen> {
                                               palette: palette,
                                               displaySwatches: swatches,
                                               swatchSources: game.iroSources,
+                                              swatchSlotOffset:
+                                                  game.pocketSwatchOffset,
                                               visible: true,
                                               onColorSelected:
                                                   game.applyPickerColor,

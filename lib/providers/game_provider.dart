@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/cell.dart';
 import '../models/daily_irodoku.dart';
@@ -125,6 +126,9 @@ class GameProvider extends ChangeNotifier {
   /// Compiled Iro mashup for this board (Classic / Pocket / Chromatic hops).
   IroMix? _iroMix;
 
+  /// Pocket: 0 = slots 1–6, 3 = slots 4–9. Always 0 on 9×9, Daily, and Graffiti.
+  int _pocketSwatchOffset = 0;
+
   /// Classic (non-chromatic) puzzle parked while Daily/Chromatic is active.
   _HeldGameSession? _heldRegular;
 
@@ -219,9 +223,30 @@ class GameProvider extends ChangeNotifier {
   GamePalette get activePalette =>
       _iroMix != null ? GamePalette.iro : (_sessionPalette ?? _settings.palette);
 
-  List<PaletteSwatch>? get displaySwatches => _iroMix?.swatches;
-  String? get iroMixKey => _iroMix?.key;
-  List<GamePalette>? get iroSources => _iroMix?.sources;
+  List<PaletteSwatch>? get displaySwatches {
+    final full = _iroMix?.swatches;
+    if (!_isPocket) return full;
+    final source = full ?? IrodokuPalette.swatchesFor(activePalette);
+    return IrodokuPalette.pocketWindow(source, pocketSwatchOffset);
+  }
+
+  String? get iroMixKey {
+    final mix = _iroMix?.key;
+    final offset = pocketSwatchOffset;
+    if (offset == 0) return mix;
+    return '${mix ?? activePalette.storageKey}:w$offset';
+  }
+
+  List<GamePalette>? get iroSources {
+    final full = _iroMix?.sources;
+    if (full == null) return null;
+    if (!_isPocket) return full;
+    return IrodokuPalette.pocketWindow(full, pocketSwatchOffset);
+  }
+
+  /// 0 or 3. Always 0 outside eligible Pocket (not Daily).
+  int get pocketSwatchOffset =>
+      (_isPocket && !_isDaily) ? _pocketSwatchOffset : 0;
 
   /// Short date for the active daily (`8.9.26`), or null when not daily.
   String? get dailyDateLabel {
@@ -940,6 +965,7 @@ class GameProvider extends ChangeNotifier {
     _dailyDayKey = dailyDayKey;
     _isPocket = startingPocket;
     _prepareIroMix(daily: startingDaily);
+    _rollPocketSwatchOffset();
     final n = gridSize;
     _cells = List.generate(n, (_) => List.generate(n, (_) => const Cell()));
     if (startingDaily && _sessionPalette == null) {
@@ -1060,6 +1086,7 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
       iroSources: _iroMix?.toKeys(),
+      pocketSwatchOffset: pocketSwatchOffset,
       usedNotes: _usedNotes,
       retriedAfterLoss: _retriedAfterLoss,
     );
@@ -1321,8 +1348,10 @@ class GameProvider extends ChangeNotifier {
   }
 
   Future<void> Function() _placementConfirmSound(int value) {
-    final palette = _iroMix != null && value >= 1 && value <= _iroMix!.sources.length
-        ? _iroMix!.sources[value - 1]
+    final slot = value + pocketSwatchOffset;
+    final mix = _iroMix;
+    final palette = mix != null && slot >= 1 && slot <= mix.sources.length
+        ? mix.sources[slot - 1]
         : activePalette;
     if (palette == GamePalette.world11) return _sounds.playCoin;
     if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
@@ -1331,7 +1360,7 @@ class GameProvider extends ChangeNotifier {
     if (palette == GamePalette.neon) return _sounds.playSlide;
     if (palette == GamePalette.rainbow) return _sounds.playRainbowConfirm;
     if (palette == GamePalette.glass || palette == GamePalette.sky) {
-      return () => _sounds.playNoteConfirm(value);
+      return () => _sounds.playNoteConfirm(slot);
     }
     return _sounds.playConfirm;
   }
@@ -1655,12 +1684,14 @@ class GameProvider extends ChangeNotifier {
   ///
   /// Includes 6×6 [Chromatic] Pocket. Hops use [_sessionPalette] only — the
   /// user's saved Config palette is left unchanged. Iro stays Iro and remixes.
+  /// Eligible Pocket also re-rolls the 1–6 vs 4–9 swatch window.
   void _maybeChromaticShift() {
     if (_isDaily) return;
     if (!_settings.chromatic) return;
     if (_settings.palette == GamePalette.iro) {
       _sessionPalette = GamePalette.iro;
       _iroMix = IroMix.random();
+      _rollPocketSwatchOffset();
       notifyListeners();
       return;
     }
@@ -1671,7 +1702,24 @@ class GameProvider extends ChangeNotifier {
     if (options.isEmpty) return;
     _sessionPalette = options[Random().nextInt(options.length)];
     _iroMix = null;
+    _rollPocketSwatchOffset();
     notifyListeners();
+  }
+
+  bool get _pocketHighWindowUnlocked =>
+      _stats.devMode ||
+      (_achievements.isUnlocked('r3c7') &&
+          _achievements.isUnlocked('r4c9') &&
+          _achievements.isUnlocked('r7c7'));
+
+  /// Eligible Pocket (not Daily): 50/50 first six vs last six palette slots.
+  void _rollPocketSwatchOffset() {
+    if (!_isPocket || _isDaily || !_pocketHighWindowUnlocked) {
+      _pocketSwatchOffset = 0;
+      return;
+    }
+    _pocketSwatchOffset =
+        Random().nextBool() ? IrodokuPalette.pocketHighSwatchOffset : 0;
   }
 
   void _prepareIroMix({required bool daily}) {
@@ -2479,6 +2527,7 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: held.dailyDayKey,
       sessionPalette: held.sessionPalette,
       iroSources: held.iroMix?.toKeys(),
+      pocketSwatchOffset: held.pocketSwatchOffset,
       usedNotes: held.usedNotes,
       retriedAfterLoss: held.retriedAfterLoss,
     );
@@ -2521,6 +2570,7 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: paused.dailyDayKey,
       sessionPalette: sessionPalette,
       iroMix: IroMix.fromKeys(paused.iroSources),
+      pocketSwatchOffset: paused.pocketSwatchOffset,
       firstFillColor: null,
       lastFillColor: null,
       lastFillRow: null,
@@ -2561,6 +2611,9 @@ class GameProvider extends ChangeNotifier {
     _dailyDayKey = paused.dailyDayKey;
     _sessionPalette = sessionPalette;
     _iroMix = IroMix.fromKeys(paused.iroSources);
+    _pocketSwatchOffset = IrodokuPalette.normalizePocketSwatchOffset(
+      paused.pocketSwatchOffset,
+    );
     _solution = SudokuBoard.fromFlat(paused.solution, pocket: paused.isPocket);
     _noteMode = false;
     _undoStack.clear();
@@ -2617,6 +2670,7 @@ class GameProvider extends ChangeNotifier {
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
       iroMix: _iroMix,
+      pocketSwatchOffset: _pocketSwatchOffset,
       firstFillColor: _firstFillColor,
       lastFillColor: _lastFillColor,
       lastFillRow: _lastFillRow,
@@ -2672,6 +2726,9 @@ class GameProvider extends ChangeNotifier {
     _dailyDayKey = held.dailyDayKey;
     _sessionPalette = held.sessionPalette;
     _iroMix = held.iroMix;
+    _pocketSwatchOffset = IrodokuPalette.normalizePocketSwatchOffset(
+      held.pocketSwatchOffset,
+    );
     _isGenerating = false;
     _pendingPaletteUnlocks = [];
     _noteClearWave = null;
@@ -2781,6 +2838,7 @@ class _HeldGameSession {
   final String? dailyDayKey;
   final GamePalette? sessionPalette;
   final IroMix? iroMix;
+  final int pocketSwatchOffset;
   final int? firstFillColor;
   final int? lastFillColor;
   final int? lastFillRow;
@@ -2822,6 +2880,7 @@ class _HeldGameSession {
     required this.dailyDayKey,
     required this.sessionPalette,
     this.iroMix,
+    this.pocketSwatchOffset = 0,
     required this.firstFillColor,
     required this.lastFillColor,
     required this.lastFillRow,

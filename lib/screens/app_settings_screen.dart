@@ -84,21 +84,14 @@ Future<void> showHowToPlayDialog(BuildContext context) {
             ),
             const TextSpan(
               text:
-                  ' is Sudoku played with colors. A 9×9 board is divided into nine 3×3 boxes.\n\nEach row, column, and box must contain each of the nine colors exactly once. Some colors start filled; the player fills the rest.\n',
+                  ' is Sudoku played with colors. A 9×9 board is divided into nine 3×3 boxes.\n\nEach row, column, and box must contain each of the nine colors exactly once. Some colors start filled; the player fills the rest.\n\n',
+            ),
+            TextSpan(text: 'Tap a cell, then tap a color', style: bold),
+            const TextSpan(
+              text: ' from the picker (or use notes for candidates)',
             ),
           ],
         ),
-      ),
-      const SizedBox(height: 14),
-      _helpBulletRich(
-        baseStyle,
-        TextSpan(text: 'Tap a cell, then tap a color', style: bold),
-        ' from the picker (or use notes for candidates)',
-      ),
-      _helpBulletRich(
-        baseStyle,
-        TextSpan(text: 'Three mistakes end the game', style: bold),
-        '. A wrong fill counts as a mistake; a correct fill locks the color',
       ),
     ],
   );

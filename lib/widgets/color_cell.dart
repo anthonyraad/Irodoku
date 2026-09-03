@@ -18,10 +18,12 @@ class ColorCell extends StatefulWidget {
   final bool isRelated;
   final bool isSameColor;
   final GamePalette palette;
-  /// When set (length 9), used for fills instead of [palette] lookups.
+  /// When set, used for fills instead of [palette] lookups.
   final List<PaletteSwatch>? displaySwatches;
   /// Per-slot source palettes for Iro mixes (outlines / SFX).
   final List<GamePalette>? swatchSources;
+  /// Pocket 4–9 window: added to board values for near-white outline checks.
+  final int swatchSlotOffset;
   final bool bulkNoteSelect;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -45,6 +47,7 @@ class ColorCell extends StatefulWidget {
     required this.palette,
     this.displaySwatches,
     this.swatchSources,
+    this.swatchSlotOffset = 0,
     this.bulkNoteSelect = false,
     this.isRelated = false,
     this.isSameColor = false,
@@ -187,6 +190,7 @@ class _ColorCellState extends State<ColorCell>
         value,
         widget.palette,
         widget.swatchSources,
+        widget.swatchSlotOffset,
       );
       if (outline != null) {
         _departingNoteOutlines[value] = outline;
@@ -203,6 +207,7 @@ class _ColorCellState extends State<ColorCell>
           value,
           widget.palette,
           widget.swatchSources,
+          widget.swatchSlotOffset,
         );
     _revealController.duration = _noteDismissDuration;
     _revealController.reverse(from: 1);
@@ -380,6 +385,7 @@ class _ColorCellState extends State<ColorCell>
               cell.value,
               widget.palette,
               widget.swatchSources,
+              widget.swatchSlotOffset,
             );
       } else if (_departingCommittedSwatch != null) {
         committedOutline = _departingCommittedOutline;
@@ -391,6 +397,7 @@ class _ColorCellState extends State<ColorCell>
                       value,
                       widget.palette,
                       widget.swatchSources,
+                      widget.swatchSlotOffset,
                     ) ??
                     _departingNoteOutlines[value])
                 case final outline?)
