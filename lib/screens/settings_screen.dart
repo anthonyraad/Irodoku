@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +9,7 @@ import '../core/theme.dart';
 import '../models/daily_irodoku.dart';
 import '../models/difficulty.dart';
 import '../models/game_stats.dart';
+import '../models/player_xp.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
@@ -39,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _titleIconsVisible = false;
   int _titleIconGeneration = 0;
   int _streakSweepGeneration = 0;
+  int _pocketNudgeEpoch = 0;
   Timer? _titleIconTimer;
   Timer? _streakSweepTimer;
   Timer? _midnightTimer;
@@ -55,7 +58,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     final gen = ++_titleIconGeneration;
     final streakGen = ++_streakSweepGeneration;
     _streakSweep.value = 0;
-    setState(() => _titleIconsVisible = false);
+    setState(() {
+      _titleIconsVisible = false;
+      _pocketNudgeEpoch++;
+    });
     _titleIconTimer = Timer(_titleIconRevealDelay, () {
       if (!mounted || gen != _titleIconGeneration) return;
       if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
@@ -273,6 +279,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                   difficultySweep: _difficultySweep,
                   streakSweep: _streakSweep,
+                  pocketNudgeEpoch: _pocketNudgeEpoch,
                 ),
               ),
               const Divider(height: 32),
@@ -701,6 +708,7 @@ class _PlayModeGrid extends StatefulWidget {
   final ValueChanged<bool> onPocketMenuChanged;
   final Animation<double> difficultySweep;
   final Animation<double> streakSweep;
+  final int pocketNudgeEpoch;
 
   const _PlayModeGrid({
     required this.busy,
@@ -726,6 +734,7 @@ class _PlayModeGrid extends StatefulWidget {
     required this.onPocketMenuChanged,
     required this.difficultySweep,
     required this.streakSweep,
+    required this.pocketNudgeEpoch,
   });
 
   @override
@@ -784,6 +793,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
           onPocket: widget.onPocket,
           onPocketModeChanged: _onPocketModeChanged,
           difficultySweep: widget.difficultySweep,
+          pocketNudgeEpoch: widget.pocketNudgeEpoch,
         ),
         const SizedBox(height: 12),
         Row(
@@ -861,6 +871,7 @@ class _ClassicOrPocketButton extends StatefulWidget {
   final VoidCallback onPocket;
   final ValueChanged<bool> onPocketModeChanged;
   final Animation<double> difficultySweep;
+  final int pocketNudgeEpoch;
 
   const _ClassicOrPocketButton({
     required this.busy,
@@ -868,6 +879,7 @@ class _ClassicOrPocketButton extends StatefulWidget {
     required this.onPocket,
     required this.onPocketModeChanged,
     required this.difficultySweep,
+    required this.pocketNudgeEpoch,
   });
 
   @override
@@ -875,16 +887,20 @@ class _ClassicOrPocketButton extends StatefulWidget {
 }
 
 class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _minDistance = 28.0;
   static const _minVelocity = 180.0;
   static const _ignoreTapAfterSwipe = Duration(milliseconds: 120);
+  static const _nudgeDelay = Duration(milliseconds: 680);
 
   bool _pocket = false;
   double _dragDx = 0;
   bool _ignoreTap = false;
   Timer? _ignoreTapTimer;
+  Timer? _nudgeTimer;
   late final AnimationController _shake;
+  late final AnimationController _nudge;
+  late final Animation<double> _nudgeSlide;
 
   @override
   void initState() {
@@ -893,13 +909,60 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
       vsync: this,
       duration: const Duration(milliseconds: 210),
     );
+    _nudge = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 820),
+    );
+    _nudgeSlide = _nudge.drive(const _PocketNudgeSlide());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ClassicOrPocketButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pocketNudgeEpoch != widget.pocketNudgeEpoch) {
+      _scheduleNudge();
+    }
   }
 
   @override
   void dispose() {
     _ignoreTapTimer?.cancel();
+    _nudgeTimer?.cancel();
     _shake.dispose();
+    _nudge.dispose();
     super.dispose();
+  }
+
+  void _scheduleNudge() {
+    _nudgeTimer?.cancel();
+    _nudge.stop();
+    _nudge.value = 0;
+    if (widget.pocketNudgeEpoch <= 0 || _pocket) return;
+    final settings = context.read<SettingsProvider>();
+    if (settings.pocketSwipeDiscovered) return;
+    if (PlayerXp.levelFor(context.read<StatsProvider>().stats.totalXp) < 5) {
+      return;
+    }
+
+    _nudgeTimer = Timer(_nudgeDelay, () {
+      if (!mounted || _pocket) return;
+      if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
+      if (context.read<SettingsProvider>().pocketSwipeDiscovered) return;
+      _nudge.forward(from: 0);
+    });
+  }
+
+  void _cancelNudgeMotion() {
+    _nudgeTimer?.cancel();
+    if (_nudge.isAnimating || _nudge.value != 0) {
+      _nudge.stop();
+      _nudge.value = 0;
+    }
+  }
+
+  void _dismissNudgeForever() {
+    _cancelNudgeMotion();
+    unawaited(context.read<SettingsProvider>().markPocketSwipeDiscovered());
   }
 
   void _setPocket(bool pocket) {
@@ -908,6 +971,7 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
     setState(() => _pocket = pocket);
     _shake.forward(from: 0);
     widget.onPocketModeChanged(pocket);
+    if (pocket) _dismissNudgeForever();
   }
 
   void _suppressTapFromSwipe() {
@@ -944,7 +1008,10 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onHorizontalDragStart: (_) => _dragDx = 0,
+      onHorizontalDragStart: (_) {
+        _dragDx = 0;
+        _cancelNudgeMotion();
+      },
       onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
       onHorizontalDragEnd: _onDragEnd,
       child: MenuActionButton(
@@ -952,9 +1019,28 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
         enabled: !widget.busy,
         onPressed: _onPressed,
         labelShake: _shake,
+        labelSlide: _nudgeSlide,
         labelSweep: widget.difficultySweep,
       ),
     );
+  }
+}
+
+/// Ease the Irodoku label right, then rubber-band it back to rest.
+class _PocketNudgeSlide extends Animatable<double> {
+  static const _peak = 13.0;
+  static const _pullEnd = 0.40;
+
+  const _PocketNudgeSlide();
+
+  @override
+  double transform(double t) {
+    if (t <= 0 || t >= 1) return 0;
+    if (t < _pullEnd) {
+      return Curves.easeOutCubic.transform(t / _pullEnd) * _peak;
+    }
+    final u = (t - _pullEnd) / (1 - _pullEnd);
+    return _peak * math.exp(-5.2 * u) * math.cos(u * math.pi * 1.05);
   }
 }
 

@@ -182,7 +182,11 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
               final bottomColor =
                   (row + 1) % 3 == 0 && row != 8 ? thick : thin;
 
-              final cellWidget = useMosaic
+              // Zoomed-out: a uniform 3×3 (including empty) paints as one cell.
+              // Mixed sub-tiles only appear after the user edits inside zoom.
+              final showMosaic =
+                  useMosaic && !iroen.mosaicIsUniform(row, col);
+              final cellWidget = showMosaic
                   ? _IroenMosaicCell(
                       subValues: iroen.mosaicAt(row, col),
                       palette: widget.palette,
@@ -206,8 +210,12 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
                       isRelated: isRelated,
                       isSameColor: isSameColor,
                       onTap: () => iroen.selectCell(row, col),
-                      onLongPress: () => iroen.handleCellLongPress(row, col),
-                      onDoubleTap: () => iroen.clearCell(row, col),
+                      onLongPress: iroen.isPickingQuadrant
+                          ? null
+                          : () => iroen.handleCellLongPress(row, col),
+                      onDoubleTap: iroen.isPickingQuadrant
+                          ? null
+                          : () => iroen.clearCell(row, col),
                     );
 
               return Expanded(

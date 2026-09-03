@@ -58,6 +58,7 @@ class PreferencesService {
   static const _keyIroenGallery = 'iroen_gallery';
   static const _keyIroenActiveMosaicId = 'iroen_active_mosaic_id';
   static const _keyDevMode = 'dev_mode';
+  static const _keyPocketSwipeDiscovered = 'pocket_swipe_discovered';
   static const _keyAchievements = 'achievements_progress';
   static const _keyAchievementsSeen = 'achievements_seen_ids';
   static const _keyDailyLastCompleted = 'daily_last_completed_day';
@@ -122,6 +123,14 @@ class PreferencesService {
 
   Future<void> setDevMode(bool enabled) async {
     await _prefs.setBool(_keyDevMode, enabled);
+  }
+
+  /// True after the player has swiped the Main Menu Irodoku button to Pocket.
+  bool getPocketSwipeDiscovered() =>
+      _prefs.getBool(_keyPocketSwipeDiscovered) ?? false;
+
+  Future<void> setPocketSwipeDiscovered(bool discovered) async {
+    await _prefs.setBool(_keyPocketSwipeDiscovered, discovered);
   }
 
   bool get hasTotalXp => _prefs.containsKey(_keyTotalXp);

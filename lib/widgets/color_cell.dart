@@ -20,6 +20,8 @@ class ColorCell extends StatefulWidget {
   final GamePalette palette;
   /// When set (length 9), used for fills instead of [palette] lookups.
   final List<PaletteSwatch>? displaySwatches;
+  /// Per-slot source palettes for Iro mixes (outlines / SFX).
+  final List<GamePalette>? swatchSources;
   final bool bulkNoteSelect;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -42,6 +44,7 @@ class ColorCell extends StatefulWidget {
     required this.isSelected,
     required this.palette,
     this.displaySwatches,
+    this.swatchSources,
     this.bulkNoteSelect = false,
     this.isRelated = false,
     this.isSameColor = false,
@@ -180,7 +183,11 @@ class _ColorCellState extends State<ColorCell>
   void _queueDepartingNotes(Set<int> removed) {
     for (final value in removed) {
       _departingNoteSwatches[value] = _swatchFor(value);
-      final outline = IrodokuPalette.outlineForValue(value, widget.palette);
+      final outline = IrodokuPalette.outlineForSlot(
+        value,
+        widget.palette,
+        widget.swatchSources,
+      );
       if (outline != null) {
         _departingNoteOutlines[value] = outline;
       } else {
@@ -192,7 +199,11 @@ class _ColorCellState extends State<ColorCell>
   void _beginDepartingCommitted(int value) {
     _departingCommittedSwatch = _swatchFor(value);
     _departingCommittedOutline =
-        IrodokuPalette.outlineForValue(value, widget.palette);
+        IrodokuPalette.outlineForSlot(
+          value,
+          widget.palette,
+          widget.swatchSources,
+        );
     _revealController.duration = _noteDismissDuration;
     _revealController.reverse(from: 1);
   }
@@ -325,6 +336,7 @@ class _ColorCellState extends State<ColorCell>
                 colorCyclePhase,
                 stepCount: widget.colorCycleSteps,
                 palette: widget.palette,
+                swatches: widget.displaySwatches,
               )
             : _swatchFor(value);
 
@@ -364,14 +376,22 @@ class _ColorCellState extends State<ColorCell>
     if (!celebrating) {
       if (cell.value != 0 && !cell.hasNotes) {
         committedOutline =
-            IrodokuPalette.outlineForValue(cell.value, widget.palette);
+            IrodokuPalette.outlineForSlot(
+              cell.value,
+              widget.palette,
+              widget.swatchSources,
+            );
       } else if (_departingCommittedSwatch != null) {
         committedOutline = _departingCommittedOutline;
       }
       if (noteSwatches != null) {
         noteOutlines = {
           for (final value in noteSwatches.keys)
-            if ((IrodokuPalette.outlineForValue(value, widget.palette) ??
+            if ((IrodokuPalette.outlineForSlot(
+                      value,
+                      widget.palette,
+                      widget.swatchSources,
+                    ) ??
                     _departingNoteOutlines[value])
                 case final outline?)
               value: outline,

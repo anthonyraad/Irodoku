@@ -65,6 +65,7 @@ class ColorPicker extends StatelessWidget {
   final GamePalette palette;
   /// Optional live swatches (e.g. chromatic crossfade); falls back to [palette].
   final List<PaletteSwatch>? displaySwatches;
+  final List<GamePalette>? swatchSources;
 
   const ColorPicker({
     super.key,
@@ -75,6 +76,7 @@ class ColorPicker extends StatelessWidget {
     required this.visible,
     required this.palette,
     this.displaySwatches,
+    this.swatchSources,
     this.xlMode = false,
     this.pocket = false,
     this.swatchWidth,
@@ -177,7 +179,7 @@ class ColorPicker extends StatelessWidget {
 
   Widget _buildSwatch({required int index, required Color line}) {
     final value = index + 1;
-    final outline = IrodokuPalette.outlineForValue(value, palette);
+    final outline = IrodokuPalette.outlineForSlot(value, palette, swatchSources);
     final swatches = displaySwatches ?? IrodokuPalette.swatchesFor(palette);
     return _ColorSwatch(
       swatch: swatches[index],

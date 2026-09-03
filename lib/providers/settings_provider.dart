@@ -4,6 +4,7 @@ import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
 import '../services/preferences_service.dart';
+import 'achievements_provider.dart';
 import 'stats_provider.dart';
 
 class SettingsProvider extends ChangeNotifier {
@@ -12,6 +13,7 @@ class SettingsProvider extends ChangeNotifier {
 
   final PreferencesService _prefs;
   final StatsProvider _stats;
+  final AchievementsProvider _achievements;
 
   Difficulty _difficulty;
   bool _darkMode;
@@ -20,18 +22,24 @@ class SettingsProvider extends ChangeNotifier {
   bool _xlPicker;
   bool _chromatic;
   GamePalette _palette;
+  bool _pocketSwipeDiscovered;
   int _darkModeToggleStreak = 0;
   DateTime? _lastDarkModeToggle;
 
-  SettingsProvider(this._prefs, {required StatsProvider stats})
-      : _stats = stats,
+  SettingsProvider(
+    this._prefs, {
+    required StatsProvider stats,
+    required AchievementsProvider achievements,
+  })  : _stats = stats,
+        _achievements = achievements,
         _difficulty = _prefs.getDifficulty(),
         _darkMode = _prefs.getDarkMode(),
         _devMode = _prefs.getDevMode(),
         _soundEnabled = _prefs.getSoundEnabled(),
         _xlPicker = _prefs.getXlPicker(),
         _chromatic = _prefs.getChromatic(),
-        _palette = _prefs.getPalette() {
+        _palette = _prefs.getPalette(),
+        _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered() {
     _clampDifficultyToUnlocked();
     _clampPaletteToUnlocked();
     _clampChromaticToUnlocked();
@@ -46,6 +54,15 @@ class SettingsProvider extends ChangeNotifier {
   bool get xlPicker => true;
   bool get chromatic => _chromatic;
   GamePalette get palette => _palette;
+  /// True after a successful swipe-right to Pocket on the Main Menu button.
+  bool get pocketSwipeDiscovered => _pocketSwipeDiscovered;
+  bool get isIroUnlocked => _devMode || _achievements.allUnlocked;
+
+  Future<void> markPocketSwipeDiscovered() async {
+    if (_pocketSwipeDiscovered) return;
+    _pocketSwipeDiscovered = true;
+    await _prefs.setPocketSwipeDiscovered(true);
+  }
 
   Future<void> setDifficulty(Difficulty difficulty) async {
     if (_difficulty == difficulty) return;
@@ -101,8 +118,14 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setPalette(GamePalette palette, {bool force = false}) async {
     if (_palette == palette) return;
     if (!force) {
-      if (!palette.visibleInMenu) return;
-      if (!_devMode && !_prefs.loadStats().isPaletteUnlocked(palette)) return;
+      if (palette == GamePalette.iro) {
+        if (!isIroUnlocked) return;
+      } else {
+        if (!palette.visibleInMenu) return;
+        if (!_devMode && !_prefs.loadStats().isPaletteUnlocked(palette)) {
+          return;
+        }
+      }
     }
     _palette = palette;
     notifyListeners();
@@ -121,8 +144,15 @@ class SettingsProvider extends ChangeNotifier {
 
   void ensurePaletteUnlocked([GameStats? stats]) {
     if (_devMode) return;
+    if (_palette == GamePalette.iro) {
+      if (_achievements.allUnlocked) return;
+    } else {
+      final current = stats ?? _prefs.loadStats();
+      if (current.isPaletteUnlocked(_palette) && _palette.visibleInMenu) {
+        return;
+      }
+    }
     final current = stats ?? _prefs.loadStats();
-    if (current.isPaletteUnlocked(_palette) && _palette.visibleInMenu) return;
     _palette = current.fallbackPalette;
     notifyListeners();
     _prefs.setPalette(_palette);
@@ -138,9 +168,13 @@ class SettingsProvider extends ChangeNotifier {
 
   void _clampPaletteToUnlocked() {
     if (_devMode) return;
-    final stats = _prefs.loadStats();
-    if (stats.isPaletteUnlocked(_palette) && _palette.visibleInMenu) return;
-    _palette = stats.fallbackPalette;
+    if (_palette == GamePalette.iro) {
+      if (_achievements.allUnlocked) return;
+    } else {
+      final stats = _prefs.loadStats();
+      if (stats.isPaletteUnlocked(_palette) && _palette.visibleInMenu) return;
+    }
+    _palette = _prefs.loadStats().fallbackPalette;
     _prefs.setPalette(_palette);
   }
 

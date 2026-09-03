@@ -281,6 +281,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                     stagger: stagger,
                     original: original,
                     palette: palette,
+                    displaySwatches: displaySwatches,
                   );
                   celebrationScale = CelebrationColors.scaleFor(t);
                   celebrationShimmer = CelebrationColors.shimmerFor(t);
@@ -308,6 +309,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         isSelected: isSelected,
                         palette: palette,
                         displaySwatches: displaySwatches,
+                        swatchSources: game.iroSources,
                         bulkNoteSelect: game.bulkNoteSelect,
                         isRelated: isRelated,
                         isSameColor: isSameColor,

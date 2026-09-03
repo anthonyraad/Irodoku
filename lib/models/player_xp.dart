@@ -14,6 +14,8 @@ abstract final class PlayerXp {
   static const fastModifier = 0.25;
   static const notelessModifier = 0.40;
   static const wetPaintModifier = 0.25;
+  /// Iro doubles the pre-Iro receipt total (finish + every bonus/penalty).
+  static const iroMultiplier = 2;
 
   static int baseXp(Difficulty difficulty) => switch (difficulty) {
         Difficulty.easy => 50,
@@ -169,6 +171,7 @@ abstract final class PlayerXp {
     bool graffiti = false,
     bool lucky = false,
     bool suppressSpeedAndFlawless = false,
+    bool iro = false,
   }) {
     final pocketDaily = pocket && daily;
     final base = pocketDaily
@@ -220,7 +223,7 @@ abstract final class PlayerXp {
             : chromaticBonusFor(difficulty);
     final artistryXp = pocket ? 0 : achievedXp;
     final luckyBonus = lucky ? luckyXp : 0;
-    final earned = base +
+    final subtotal = base +
         flawlessXp +
         sloppyXp +
         fastXp +
@@ -232,6 +235,8 @@ abstract final class PlayerXp {
         chromaticXp +
         artistryXp +
         luckyBonus;
+    final iroXp = iro ? subtotal * (iroMultiplier - 1) : 0;
+    final earned = subtotal + iroXp;
     return XpAward(
       baseXp: base,
       difficulty: difficulty,
@@ -267,6 +272,8 @@ abstract final class PlayerXp {
       previousTotal: previousTotal,
       newTotal: previousTotal + earned,
       lucky: luckyBonus > 0,
+      iro: iro,
+      iroXp: iroXp,
     );
   }
 
@@ -305,6 +312,8 @@ class XpAward {
   final int previousTotal;
   final int newTotal;
   final bool lucky;
+  final bool iro;
+  final int iroXp;
 
   const XpAward({
     required this.baseXp,
@@ -334,6 +343,8 @@ class XpAward {
     required this.previousTotal,
     required this.newTotal,
     this.lucky = false,
+    this.iro = false,
+    this.iroXp = 0,
   });
 
   int get previousLevel => PlayerXp.levelFor(previousTotal);
@@ -355,5 +366,6 @@ class XpAward {
           (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
         if (streak) (label: streakLabel, xp: streakXp),
         if (lucky) (label: 'Lucky', xp: PlayerXp.luckyXp),
+        if (iro) (label: 'Iro', xp: iroXp),
       ];
 }

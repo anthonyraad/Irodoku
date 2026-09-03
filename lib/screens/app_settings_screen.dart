@@ -8,6 +8,8 @@ import '../core/theme.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../models/iro_mix.dart';
+import '../providers/achievements_provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
@@ -61,45 +63,75 @@ Future<void> showHowToPlayDialog(BuildContext context) {
   final palette = context.read<SettingsProvider>().palette;
   final paletteColors = IrodokuPalette.colorsFor(palette);
 
-  return _showHelpDialog(
+  Widget irodokuLabel() => _PaletteSweepLabel(
+        text: 'Irodoku',
+        style: bold,
+        colors: paletteColors,
+      );
+
+  final classicPage = Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text.rich(
+        TextSpan(
+          style: baseStyle,
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: irodokuLabel(),
+            ),
+            const TextSpan(
+              text:
+                  ' is Sudoku played with colors. A 9×9 board is divided into nine 3×3 boxes.\n\nEach row, column, and box must contain each of the nine colors exactly once. Some colors start filled; the player fills the rest.\n',
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 14),
+      _helpBulletRich(
+        baseStyle,
+        TextSpan(text: 'Tap a cell, then tap a color', style: bold),
+        ' from the picker (or use notes for candidates)',
+      ),
+      _helpBulletRich(
+        baseStyle,
+        TextSpan(text: 'Three mistakes end the game', style: bold),
+        '. A wrong fill counts as a mistake; a correct fill locks the color',
+      ),
+    ],
+  );
+
+  final pocketPage = Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text.rich(
+        TextSpan(
+          style: baseStyle,
+          children: [
+            TextSpan(text: 'Pocket Irodoku', style: bold),
+            const TextSpan(
+              text:
+                  ' is played with a 6×6 board that is divided into six 2×3 boxes.\n\nEach row, column, and box must contain each of the 6 colors exactly once. Otherwise, the same Irodoku rules and controls apply.\n\nAccess Pocket mode for Irodoku, Graffiti, and more by ',
+            ),
+            TextSpan(
+              text: 'swiping right on the Irodoku button',
+              style: bold,
+            ),
+            const TextSpan(text: ' from the main menu.'),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  return showDialog<void>(
     context: context,
-    title: 'How to Play',
-    body: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text.rich(
-          TextSpan(
-            style: baseStyle,
-            children: [
-              WidgetSpan(
-                alignment: PlaceholderAlignment.baseline,
-                baseline: TextBaseline.alphabetic,
-                child: _PaletteSweepLabel(
-                  text: 'Irodoku',
-                  style: bold,
-                  colors: paletteColors,
-                ),
-              ),
-              const TextSpan(
-                text:
-                    ' is Sudoku played with colors. A 9×9 board is divided into nine 3×3 boxes.\n\nEach row, column, and box must contain each of the nine colors exactly once. Some colors start filled; the player fills the rest.\n',
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        _helpBulletRich(
-          baseStyle,
-          TextSpan(text: 'Tap a cell, then tap a color', style: bold),
-          ' from the picker (or use notes for candidates)',
-        ),
-        _helpBulletRich(
-          baseStyle,
-          TextSpan(text: 'Three mistakes end the game', style: bold),
-          '. A wrong fill counts as a mistake; a correct fill locks the color',
-        ),
-      ],
+    builder: (context) => _HowToPlayDialog(
+      classicPage: classicPage,
+      pocketPage: pocketPage,
     ),
   );
 }
@@ -335,6 +367,161 @@ Future<void> _showHelpDialog({
   );
 }
 
+class _HowToPlayDialog extends StatefulWidget {
+  final Widget classicPage;
+  final Widget pocketPage;
+
+  const _HowToPlayDialog({
+    required this.classicPage,
+    required this.pocketPage,
+  });
+
+  @override
+  State<_HowToPlayDialog> createState() => _HowToPlayDialogState();
+}
+
+class _HowToPlayDialogState extends State<_HowToPlayDialog> {
+  static const _minDistance = 28.0;
+  static const _minVelocity = 180.0;
+  static const _pageDuration = Duration(milliseconds: 240);
+
+  late final PageController _page;
+  int _index = 0;
+  double _dragDx = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _page = PageController();
+  }
+
+  @override
+  void dispose() {
+    _page.dispose();
+    super.dispose();
+  }
+
+  void _goTo(int index) {
+    final clamped = index.clamp(0, 1);
+    if (clamped == _index) return;
+    _page.animateToPage(
+      clamped,
+      duration: _pageDuration,
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final swipeLeft = _dragDx < -_minDistance || velocity < -_minVelocity;
+    final swipeRight = _dragDx > _minDistance || velocity > _minVelocity;
+    _dragDx = 0;
+    if (swipeLeft) {
+      _goTo(_index + 1);
+    } else if (swipeRight) {
+      _goTo(_index - 1);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Theme.of(context).colorScheme.onSurface;
+    final height =
+        (MediaQuery.sizeOf(context).height * 0.42).clamp(220.0, 340.0);
+    final pages = [widget.classicPage, widget.pocketPage];
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (_) => _dragDx = 0,
+      onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
+      onHorizontalDragEnd: _onDragEnd,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        titlePadding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+        title: SizedBox(
+          width: double.infinity,
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'How to Play',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        height: 1.25,
+                      ),
+                ),
+              ),
+              Positioned(
+                right: 0,
+                top: 0,
+                child: IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close, color: Colors.black),
+                ),
+              ),
+            ],
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: height,
+          child: Column(
+            children: [
+              Expanded(
+                child: PageView(
+                  controller: _page,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onPageChanged: (index) => setState(() => _index = index),
+                  children: [
+                    for (final page in pages)
+                      SingleChildScrollView(
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: page,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < pages.length; i++)
+                    GestureDetector(
+                      onTap: () => _goTo(i),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 4,
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == _index
+                                ? ink
+                                : ink.withValues(alpha: 0.28),
+                          ),
+                          child: const SizedBox(width: 8, height: 8),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Shared Config controls used by Main Menu and [AppSettingsScreen].
 class ConfigSettingsPanel extends StatelessWidget {
   /// Sound / Dark mode toggles (Settings page only; hidden on Main Menu).
@@ -355,8 +542,9 @@ class ConfigSettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer3<SettingsProvider, StatsProvider, GameProvider>(
-      builder: (context, settings, statsProvider, game, _) {
+    return Consumer4<SettingsProvider, StatsProvider, GameProvider,
+        AchievementsProvider>(
+      builder: (context, settings, statsProvider, game, _, _) {
         final stats = statsProvider.stats;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -399,6 +587,11 @@ class ConfigSettingsPanel extends StatelessWidget {
                           unlocked: statsProvider.isPaletteUnlocked(palette),
                         ),
                       ),
+                    if (settings.isIroUnlocked)
+                      const DropdownMenuItem(
+                        value: GamePalette.iro,
+                        child: Text('Iro'),
+                      ),
                   ],
                   selectedItemBuilder: (context) => [
                     for (final palette in GamePalette.menuValues)
@@ -406,10 +599,17 @@ class ConfigSettingsPanel extends StatelessWidget {
                         alignment: AlignmentDirectional.centerEnd,
                         child: Text(palette.label),
                       ),
+                    if (settings.isIroUnlocked)
+                      const Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: Text('Iro'),
+                      ),
                   ],
                   onChanged: (palette) {
                     if (palette == null) return;
-                    if (!statsProvider.isPaletteUnlocked(palette)) {
+                    if (palette == GamePalette.iro) {
+                      if (!settings.isIroUnlocked) return;
+                    } else if (!statsProvider.isPaletteUnlocked(palette)) {
                       _showPaletteLockedSnackBar(context, palette);
                       return;
                     }
@@ -635,12 +835,13 @@ Future<void> _onPaletteChosen(
     final startNew = await showStartNewGameDialog(context);
     if (!context.mounted) return;
     if (startNew != true) return;
-    await game.startNewGame(preserveHeldDaily: preserveDaily);
     await settings.setPalette(palette);
+    await game.startNewGame(preserveHeldDaily: preserveDaily);
     return;
   }
 
   await settings.setPalette(palette);
+  game.syncIroMixToConfigPalette();
 }
 
 void _showUnlockSnackBar(
@@ -841,15 +1042,43 @@ class _LockedMenuItem extends StatelessWidget {
   }
 }
 
-class _PalettePreviewRow extends StatelessWidget {
+class _PalettePreviewRow extends StatefulWidget {
   final GamePalette palette;
 
   const _PalettePreviewRow({required this.palette});
 
   @override
+  State<_PalettePreviewRow> createState() => _PalettePreviewRowState();
+}
+
+class _PalettePreviewRowState extends State<_PalettePreviewRow> {
+  IroMix? _mix;
+
+  @override
+  void initState() {
+    super.initState();
+    _remixIfIro();
+  }
+
+  @override
+  void didUpdateWidget(_PalettePreviewRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.palette != widget.palette) {
+      _remixIfIro();
+    }
+  }
+
+  void _remixIfIro() {
+    _mix = widget.palette == GamePalette.iro ? IroMix.random() : null;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final palette = widget.palette;
     final line = IrodokuTheme.thinGridLine(IrodokuTheme.boardBrightness);
-    final swatches = IrodokuPalette.swatchesFor(palette);
+    final mix = _mix;
+    final swatches = mix?.swatches ?? IrodokuPalette.swatchesFor(palette);
+    final sources = mix?.sources;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -866,10 +1095,17 @@ class _PalettePreviewRow extends StatelessWidget {
                   child: DecoratedBox(
                     decoration: swatches[i].boxDecoration(
                       border: Border.all(
-                        color:
-                            IrodokuPalette.outlineForValue(i + 1, palette) ??
+                        color: IrodokuPalette.outlineForSlot(
+                              i + 1,
+                              palette,
+                              sources,
+                            ) ??
                             line,
-                        width: IrodokuPalette.outlineForValue(i + 1, palette) !=
+                        width: IrodokuPalette.outlineForSlot(
+                                  i + 1,
+                                  palette,
+                                  sources,
+                                ) !=
                                 null
                             ? 1.5
                             : 0.6,

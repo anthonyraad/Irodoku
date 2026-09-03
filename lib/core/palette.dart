@@ -225,7 +225,16 @@ abstract final class IrodokuPalette {
         GamePalette.glass => glassSwatches,
         GamePalette.sky => skySwatches,
         GamePalette.greyscale => _solidSwatches(greyscaleColors),
+        GamePalette.iro => _iroShowcaseSwatches(),
       };
+
+  static List<PaletteSwatch> _iroShowcaseSwatches() {
+    final palettes = GamePalette.menuValues;
+    return [
+      for (var i = 0; i < 9; i++)
+        swatchesFor(palettes[i % palettes.length])[i],
+    ];
+  }
 
   static List<Color> colorsFor(GamePalette palette) =>
       swatchesFor(palette).map((swatch) => swatch.representative).toList();
@@ -259,5 +268,17 @@ abstract final class IrodokuPalette {
       return lightFillOutline;
     }
     return null;
+  }
+
+  /// Outline for slot [value] when each slot may come from a different palette.
+  static Color? outlineForSlot(
+    int value,
+    GamePalette palette, [
+    List<GamePalette>? sources,
+  ]) {
+    if (sources != null && value >= 1 && value <= sources.length) {
+      return outlineForValue(value, sources[value - 1]);
+    }
+    return outlineForValue(value, palette);
   }
 }

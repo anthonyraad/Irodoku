@@ -905,4 +905,39 @@ void main() {
     expect(award.earned, 175);
     expect(award.breakdown, [(label: 'Hard finish', xp: 175)]);
   });
+
+  test('Iro doubles the receipt total as the last line', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.hard,
+      mistakes: 0,
+      elapsed: const Duration(minutes: 11, seconds: 59),
+      firstWinOfDay: true,
+      previousTotal: 0,
+      iro: true,
+    );
+    expect(award.iro, isTrue);
+    expect(award.iroXp, 311);
+    expect(award.earned, 622);
+    expect(award.breakdown.last, (label: 'Iro', xp: 311));
+    expect(
+      award.breakdown.fold<int>(0, (sum, line) => sum + line.xp),
+      award.earned,
+    );
+  });
+
+  test('Iro sits below Lucky and doubles Lucky with the rest', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.easy,
+      mistakes: 3,
+      elapsed: const Duration(minutes: 15),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      lucky: true,
+      iro: true,
+    );
+    expect(award.earned, (50 + PlayerXp.luckyXp) * PlayerXp.iroMultiplier);
+    expect(award.breakdown[award.breakdown.length - 2],
+        (label: 'Lucky', xp: 400));
+    expect(award.breakdown.last, (label: 'Iro', xp: 450));
+  });
 }

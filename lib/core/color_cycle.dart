@@ -24,13 +24,15 @@ abstract final class ColorCycle {
     double t, {
     required int stepCount,
     required GamePalette palette,
+    List<PaletteSwatch>? swatches,
   }) {
-    final swatches = IrodokuPalette.swatchesFor(palette);
-    final original = IrodokuPalette.swatchForValue(colorValue, palette);
-    if (original == null) return swatches.first;
+    final list = swatches ?? IrodokuPalette.swatchesFor(palette);
+    final original = IrodokuPalette.swatchFromList(colorValue, list) ??
+        IrodokuPalette.swatchForValue(colorValue, palette);
+    if (original == null) return list.first;
     if (t <= 0 || t >= 1) return original;
 
-    final steps = stepCount.clamp(1, swatches.length);
+    final steps = stepCount.clamp(1, list.length);
     final eased = Curves.easeInOutCubic.transform(t);
     // Out-and-back: sweep forward through [steps] colors, then return.
     final sweep = eased < 0.5 ? eased * 2 : (1 - eased) * 2;
@@ -40,6 +42,6 @@ abstract final class ColorCycle {
     final i0 = (startIndex + offset.floor()) % 9;
     final i1 = (startIndex + offset.ceil()) % 9;
     final frac = offset - offset.floor();
-    return PaletteSwatch.lerp(swatches[i0], swatches[i1], frac);
+    return PaletteSwatch.lerp(list[i0], list[i1], frac);
   }
 }

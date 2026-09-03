@@ -172,6 +172,7 @@ class StatsProvider extends ChangeNotifier {
       graffiti: graffiti,
       lucky: PlayerXp.rollLucky(careerBefore),
       suppressSpeedAndFlawless: suppressSpeedAndFlawless,
+      iro: palette == GamePalette.iro && !daily && !graffiti,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;

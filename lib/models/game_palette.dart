@@ -9,7 +9,8 @@ enum GamePalette {
   pkmn2,
   glass,
   sky,
-  greyscale;
+  greyscale,
+  iro;
 
   String get label => switch (this) {
         GamePalette.standard => 'Default',
@@ -21,6 +22,7 @@ enum GamePalette {
         GamePalette.glass => 'Glass',
         GamePalette.sky => 'Sky',
         GamePalette.greyscale => 'Greyscale',
+        GamePalette.iro => 'Iro',
       };
 
   String get storageKey => switch (this) {
@@ -33,6 +35,7 @@ enum GamePalette {
         GamePalette.glass => 'glass',
         GamePalette.sky => 'sky',
         GamePalette.greyscale => 'greyscale',
+        GamePalette.iro => 'iro',
       };
 
   static GamePalette fromStorageKey(String? key) {
@@ -47,8 +50,10 @@ enum GamePalette {
     );
   }
 
-  /// Palettes shown in the Settings dropdown (Greyscale hidden for now).
-  bool get visibleInMenu => this != GamePalette.greyscale;
+  /// Palettes shown in the Settings dropdown for everyone (Greyscale and Iro
+  /// are gated separately).
+  bool get visibleInMenu =>
+      this != GamePalette.greyscale && this != GamePalette.iro;
 
   static List<GamePalette> get menuValues =>
       values.where((palette) => palette.visibleInMenu).toList();
@@ -59,7 +64,8 @@ enum GamePalette {
         GamePalette.pkmn ||
         GamePalette.pkmn2 ||
         GamePalette.glass ||
-        GamePalette.sky =>
+        GamePalette.sky ||
+        GamePalette.iro =>
           true,
         _ => false,
       };

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:irodoku/models/cell.dart';
+import 'package:irodoku/models/game_palette.dart';
 import 'package:irodoku/widgets/color_cell.dart';
 
 void main() {
@@ -14,6 +15,7 @@ void main() {
             child: ColorCell(
               cell: Cell(notes: {1, 5, 9}),
               isSelected: true,
+              palette: GamePalette.standard,
             ),
           ),
         ),

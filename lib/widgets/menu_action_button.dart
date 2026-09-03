@@ -20,6 +20,8 @@ class MenuActionButton extends StatelessWidget {
   final VoidCallback onPressed;
   /// 0–1 progress; when set, the label shakes horizontally as it runs.
   final Animation<double>? labelShake;
+  /// Horizontal label offset in logical pixels (Pocket swipe teaching nudge).
+  final Animation<double>? labelSlide;
   /// 0–1 progress; when set, the label sweeps the selected Config palette.
   final Animation<double>? labelSweep;
   /// 0–1 progress; when set, the badge pill sweeps the selected Config palette.
@@ -34,6 +36,7 @@ class MenuActionButton extends StatelessWidget {
     this.muted = false,
     this.locked = false,
     this.labelShake,
+    this.labelSlide,
     this.labelSweep,
     this.badgeSweep,
   });
@@ -161,12 +164,20 @@ class MenuActionButton extends StatelessWidget {
 
   Widget _shakingLabel(Widget child) {
     final shake = labelShake;
-    if (shake == null) return child;
+    final slide = labelSlide;
+    if (shake == null && slide == null) return child;
     return AnimatedBuilder(
-      animation: shake,
+      animation: Listenable.merge([
+        if (shake != null) shake,
+        if (slide != null) slide,
+      ]),
       builder: (context, child) {
-        final t = shake.value;
-        final dx = math.sin(t * math.pi * 5) * 4 * (1 - t);
+        var dx = 0.0;
+        if (shake != null) {
+          final t = shake.value;
+          dx += math.sin(t * math.pi * 5) * 4 * (1 - t);
+        }
+        if (slide != null) dx += slide.value;
         return Transform.translate(offset: Offset(dx, 0), child: child);
       },
       child: child,

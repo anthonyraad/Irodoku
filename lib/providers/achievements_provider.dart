@@ -13,6 +13,10 @@ import '../services/sound_service.dart';
 import 'settings_provider.dart';
 
 class AchievementsProvider extends ChangeNotifier {
+  /// TEMP: treat every achievement as unlocked so Iro can be tested.
+  /// Does not write to prefs. Set to `false` when done.
+  static const bool debugUnlockAll = false;
+
   /// Pause before the achievement sting after a game-win SFX so the file's
   /// leading silence isn't covered by the win sound.
   static const _winAchievementSoundDelay = Duration(milliseconds: 800);
@@ -44,7 +48,13 @@ class AchievementsProvider extends ChangeNotifier {
 
   AchievementsProgress get progress => _progress;
 
-  bool isUnlocked(String id) => _progress.isUnlocked(id);
+  bool isUnlocked(String id) =>
+      debugUnlockAll || _progress.isUnlocked(id);
+
+  /// Every cell on the Achievements grid is unlocked.
+  bool get allUnlocked =>
+      debugUnlockAll ||
+      Achievement.all.every((a) => _progress.unlockedIds.contains(a.id));
 
   /// Unlocked achievements not yet shown on the Achievements screen.
   Set<String> get unseenUnlockedIds =>
@@ -350,8 +360,9 @@ class AchievementsProvider extends ChangeNotifier {
     );
   }
 
-  Future<void> recordErase() async {
-    final next = _progress.cellsErased + 1;
+  Future<void> recordErase([int count = 1]) async {
+    if (count <= 0) return;
+    final next = _progress.cellsErased + count;
     _progress = _progress.copyWith(cellsErased: next);
     if (next >= 100) _unlock('r2c7');
     notifyListeners();

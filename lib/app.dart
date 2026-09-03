@@ -37,6 +37,7 @@ class IrodokuApp extends StatelessWidget {
           create: (context) => SettingsProvider(
             preferences,
             stats: context.read<StatsProvider>(),
+            achievements: context.read<AchievementsProvider>(),
           ),
         ),
         ChangeNotifierProvider(
@@ -49,7 +50,11 @@ class IrodokuApp extends StatelessWidget {
           ),
         ),
         ChangeNotifierProvider(
-          create: (_) => IroenProvider(preferences: preferences),
+          create: (context) => IroenProvider(
+            preferences: preferences,
+            settings: context.read<SettingsProvider>(),
+            sounds: context.read<SoundService>(),
+          ),
         ),
         ChangeNotifierProvider(
           create: (context) => GraffitiProvider(

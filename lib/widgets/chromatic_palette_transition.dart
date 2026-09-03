@@ -4,10 +4,14 @@ import '../core/palette.dart';
 import '../models/game_palette.dart';
 import '../models/palette_swatch.dart';
 
-/// Smoothly crossfades palette swatches when [palette] changes in chromatic mode.
+/// Smoothly crossfades palette swatches when [palette] or [swatchKey] changes.
 class ChromaticPaletteTransition extends StatefulWidget {
   final GamePalette palette;
   final bool animate;
+  /// When set, used instead of [IrodokuPalette.swatchesFor] for [palette].
+  final List<PaletteSwatch>? swatches;
+  /// Identity of [swatches] so Iro remixes animate even when [palette] stays Iro.
+  final String? swatchKey;
   final Widget Function(
     BuildContext context,
     GamePalette palette,
@@ -18,6 +22,8 @@ class ChromaticPaletteTransition extends StatefulWidget {
     super.key,
     required this.palette,
     required this.animate,
+    this.swatches,
+    this.swatchKey,
     required this.builder,
   });
 
@@ -32,18 +38,27 @@ class _ChromaticPaletteTransitionState extends State<ChromaticPaletteTransition>
 
   late final AnimationController _controller;
   late List<PaletteSwatch> _fromSwatches;
-  late GamePalette _toPalette;
+  late List<PaletteSwatch> _toSwatches;
+
+  List<PaletteSwatch> _resolved({
+    required GamePalette palette,
+    List<PaletteSwatch>? swatches,
+  }) =>
+      swatches ?? IrodokuPalette.swatchesFor(palette);
 
   @override
   void initState() {
     super.initState();
-    _toPalette = widget.palette;
-    _fromSwatches = IrodokuPalette.swatchesFor(widget.palette);
+    _toSwatches = _resolved(
+      palette: widget.palette,
+      swatches: widget.swatches,
+    );
+    _fromSwatches = _toSwatches;
     _controller = AnimationController(vsync: this, duration: _duration)
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed && mounted) {
           setState(() {
-            _fromSwatches = IrodokuPalette.swatchesFor(_toPalette);
+            _fromSwatches = _toSwatches;
             _controller.value = 0;
           });
         }
@@ -53,19 +68,27 @@ class _ChromaticPaletteTransitionState extends State<ChromaticPaletteTransition>
   @override
   void didUpdateWidget(ChromaticPaletteTransition oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.palette == widget.palette) return;
+    final paletteChanged = oldWidget.palette != widget.palette;
+    final mixChanged = oldWidget.swatchKey != widget.swatchKey;
+    if (!paletteChanged && !mixChanged) return;
+
+    final next = _resolved(
+      palette: widget.palette,
+      swatches: widget.swatches,
+    );
 
     if (!widget.animate) {
-      _toPalette = widget.palette;
-      _fromSwatches = IrodokuPalette.swatchesFor(widget.palette);
+      _toSwatches = next;
+      _fromSwatches = next;
       _controller.value = 0;
       return;
     }
 
-    // Capture what is currently on screen. Important: [widget.palette] is already
-    // the new target here, so at rest we must use [oldWidget.palette].
-    _fromSwatches = _visibleSwatches(fallbackPalette: oldWidget.palette);
-    _toPalette = widget.palette;
+    _fromSwatches = _visibleSwatches(
+      fallbackPalette: oldWidget.palette,
+      fallbackSwatches: oldWidget.swatches,
+    );
+    _toSwatches = next;
     _controller.forward(from: 0);
   }
 
@@ -75,16 +98,22 @@ class _ChromaticPaletteTransitionState extends State<ChromaticPaletteTransition>
     super.dispose();
   }
 
-  List<PaletteSwatch> _visibleSwatches({required GamePalette fallbackPalette}) {
+  List<PaletteSwatch> _visibleSwatches({
+    required GamePalette fallbackPalette,
+    List<PaletteSwatch>? fallbackSwatches,
+  }) {
     if (_controller.isAnimating || _controller.value > 0) {
       return _lerpedSwatches(_controller.value);
     }
-    return IrodokuPalette.swatchesFor(fallbackPalette);
+    return _resolved(
+      palette: fallbackPalette,
+      swatches: fallbackSwatches,
+    );
   }
 
   List<PaletteSwatch> _lerpedSwatches(double rawT) {
     final t = Curves.easeInOutCubic.transform(rawT.clamp(0.0, 1.0));
-    final to = IrodokuPalette.swatchesFor(_toPalette);
+    final to = _toSwatches;
     return [
       for (var i = 0; i < 9; i++) PaletteSwatch.lerp(_fromSwatches[i], to[i], t),
     ];
@@ -92,7 +121,10 @@ class _ChromaticPaletteTransitionState extends State<ChromaticPaletteTransition>
 
   List<PaletteSwatch> _currentSwatches() {
     if (!_controller.isAnimating && _controller.value == 0) {
-      return IrodokuPalette.swatchesFor(widget.palette);
+      return _resolved(
+        palette: widget.palette,
+        swatches: widget.swatches,
+      );
     }
     return _lerpedSwatches(_controller.value);
   }

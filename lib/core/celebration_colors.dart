@@ -12,17 +12,18 @@ abstract final class CelebrationColors {
     required int stagger,
     required PaletteSwatch original,
     required GamePalette palette,
+    List<PaletteSwatch>? displaySwatches,
   }) {
     const cycleEnd = 0.78;
     final clamped = t.clamp(0.0, 1.0);
 
     if (clamped < cycleEnd) {
       final cycleT = _easeInOutCubic(clamped / cycleEnd);
-      return _rainbow(cycleT, stagger, palette);
+      return _rainbow(cycleT, stagger, palette, displaySwatches);
     }
 
     final settleT = _easeOutCubic((clamped - cycleEnd) / (1 - cycleEnd));
-    final from = _rainbow(1.0, stagger, palette);
+    final from = _rainbow(1.0, stagger, palette, displaySwatches);
     return PaletteSwatch.lerp(from, original, settleT);
   }
 
@@ -48,8 +49,9 @@ abstract final class CelebrationColors {
     double cycleT,
     int stagger,
     GamePalette palette,
+    List<PaletteSwatch>? displaySwatches,
   ) {
-    final swatches = IrodokuPalette.swatchesFor(palette);
+    final swatches = displaySwatches ?? IrodokuPalette.swatchesFor(palette);
     final pos = (cycleT * swatches.length + stagger * 0.45) % swatches.length;
     final i = pos.floor();
     final f = _easeInOutCubic(pos - i);

@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
+import '../models/game_palette.dart';
+
 /// Plays short UI sound effects from bundled assets.
 ///
 /// Sounds are preloaded into dedicated [AudioPlayer]s (low-latency mode) so
@@ -216,6 +218,20 @@ class SoundService {
   Future<void> playNoteConfirm(int colorValue) {
     final index = (colorValue - 1).clamp(0, _noteConfirmsByValue.length - 1);
     return _playPooledNote(_noteConfirmsByValue[index]);
+  }
+
+  /// Confirm sting for placing [value] from [palette].
+  Future<void> playPlacementConfirm(GamePalette palette, int value) {
+    if (palette == GamePalette.world11) return playCoin();
+    if (palette == GamePalette.pkmn || palette == GamePalette.pkmn2) {
+      return playPlink();
+    }
+    if (palette == GamePalette.neon) return playSlide();
+    if (palette == GamePalette.rainbow) return playRainbowConfirm();
+    if (palette == GamePalette.glass || palette == GamePalette.sky) {
+      return playNoteConfirm(value);
+    }
+    return playConfirm();
   }
 
   Future<void> playMistake() => _play(_mistake);

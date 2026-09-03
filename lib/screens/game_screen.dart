@@ -340,6 +340,8 @@ class _GameScreenState extends State<GameScreen> {
 
                           return ChromaticPaletteTransition(
                             palette: game.activePalette,
+                            swatches: game.displaySwatches,
+                            swatchKey: game.iroMixKey,
                             animate: settings.chromatic || game.isDaily,
                             builder: (context, palette, swatches) {
                               return Align(
@@ -434,6 +436,7 @@ class _GameScreenState extends State<GameScreen> {
                                               pocket: pocketPicker,
                                               palette: palette,
                                               displaySwatches: swatches,
+                                              swatchSources: game.iroSources,
                                               visible: true,
                                               onColorSelected:
                                                   game.applyPickerColor,

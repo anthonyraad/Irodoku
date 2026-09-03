@@ -15,6 +15,8 @@ class PausedGame {
 
   /// Live session palette (Chromatic hop / Daily), not the saved Config choice.
   final GamePalette? sessionPalette;
+  /// Iro slot sources for this board; null when not using an Iro mix.
+  final List<String>? iroSources;
   final bool usedNotes;
   /// True when this board was restarted after a defeat (Classic / Chromatic / Pocket).
   final bool retriedAfterLoss;
@@ -29,6 +31,7 @@ class PausedGame {
     this.isPocket = false,
     this.dailyDayKey,
     this.sessionPalette,
+    this.iroSources,
     this.usedNotes = false,
     this.retriedAfterLoss = false,
   });
@@ -43,6 +46,7 @@ class PausedGame {
       'isPocket': isPocket,
       'dailyDayKey': dailyDayKey,
       'sessionPalette': sessionPalette?.storageKey,
+      'iroSources': iroSources,
       'usedNotes': usedNotes,
       'retriedAfterLoss': retriedAfterLoss,
       'cells': [
@@ -111,9 +115,17 @@ class PausedGame {
       dailyDayKey: json['dailyDayKey'] as String?,
       sessionPalette:
           sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),
+      iroSources: _stringList(json['iroSources']),
       usedNotes: json['usedNotes'] as bool? ?? notesOnBoard,
       retriedAfterLoss: json['retriedAfterLoss'] as bool? ?? false,
     );
+  }
+
+  static List<String>? _stringList(Object? raw) {
+    if (raw is! List) return null;
+    final keys = [for (final e in raw) e.toString()];
+    if (keys.length != 9) return null;
+    return keys;
   }
 
   static Set<int> _notesFromMap(Map<String, dynamic> map) {

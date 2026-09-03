@@ -4,10 +4,13 @@ import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
 import '../models/game_palette.dart';
+import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../services/preferences_service.dart';
+import '../services/sound_service.dart';
 import '../sudoku/sudoku_board.dart';
+import 'settings_provider.dart';
 
 enum IroenZoomPhase { off, pickingQuadrant, zoomed }
 
@@ -18,6 +21,8 @@ class IroenProvider extends ChangeNotifier {
   static const int _detailSize = IroenState.detailSize;
 
   final PreferencesService _prefs;
+  final SettingsProvider _settings;
+  final SoundService _sounds;
 
   late List<List<int>> _detail;
   (int, int)? _selected;
@@ -29,8 +34,13 @@ class IroenProvider extends ChangeNotifier {
   List<IroenMosaic> _gallery = [];
   String? _activeMosaicId;
 
-  IroenProvider({required PreferencesService preferences})
-      : _prefs = preferences {
+  IroenProvider({
+    required PreferencesService preferences,
+    required SettingsProvider settings,
+    required SoundService sounds,
+  })  : _prefs = preferences,
+        _settings = settings,
+        _sounds = sounds {
     _loadFromPrefs();
   }
 
@@ -290,6 +300,7 @@ class IroenProvider extends ChangeNotifier {
     }
 
     _setValueAt(row, col, value);
+    _playPlacementConfirm(value);
     _selected = null;
     _persist();
     notifyListeners();
@@ -318,11 +329,22 @@ class IroenProvider extends ChangeNotifier {
       }
     }
     if (changed) {
+      if (!allMatch) _playPlacementConfirm(value);
       _persist();
       notifyListeners();
     } else {
       _undoStack.removeLast();
     }
+  }
+
+  void _playPlacementConfirm(int value) {
+    if (!_settings.soundEnabled) return;
+    final palette = _settings.palette;
+    final sources = IroMix.sourcePalettes;
+    final source = palette == GamePalette.iro && value >= 1 && value <= 9
+        ? sources[(value - 1) % sources.length]
+        : palette;
+    unawaited(_sounds.playPlacementConfirm(source, value));
   }
 
   void clearSelectedCell() {
