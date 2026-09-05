@@ -39,6 +39,14 @@ class StatsProvider extends ChangeNotifier {
 
   bool get isIroenUnlocked => devMode || _stats.isIroenUnlocked;
 
+  void notifyDevModeChanged() => notifyListeners();
+
+  void replaceFromPrefs() {
+    _stats = _prefs.loadStats();
+    _lastXpAward = null;
+    notifyListeners();
+  }
+
   bool get isDailyChallengeUnlocked =>
       devMode || _stats.isDailyChallengeUnlocked;
 
@@ -48,8 +56,6 @@ class StatsProvider extends ChangeNotifier {
       devMode || _stats.isPocketGraffitiUnlocked;
 
   bool get isPocketDailyUnlocked => devMode || _stats.isPocketDailyUnlocked;
-
-  void notifyDevModeChanged() => notifyListeners();
 
   Future<void> recordGameStarted() async {
     _stats = _stats.copyWith(gamesPlayed: _stats.gamesPlayed + 1);
@@ -120,6 +126,9 @@ class StatsProvider extends ChangeNotifier {
     return _writeQueue;
   }
 
+  /// Completes every in-flight stats write so a later Load cannot be overwritten.
+  Future<void> flushWrites() => _writeQueue.catchError((_) {});
+
   String _todayKey() {
     final now = DateTime.now();
     final y = now.year.toString().padLeft(4, '0');
@@ -144,6 +153,7 @@ class StatsProvider extends ChangeNotifier {
     bool pocket = false,
     bool graffiti = false,
     bool suppressSpeedAndFlawless = false,
+    int playerFills = 0,
   }) {
     final first = isFirstWinOfDay;
     final lastPalette = _prefs.getXpLastWinPalette();
@@ -173,6 +183,7 @@ class StatsProvider extends ChangeNotifier {
       lucky: PlayerXp.rollLucky(careerBefore),
       suppressSpeedAndFlawless: suppressSpeedAndFlawless,
       iro: palette == GamePalette.iro && !daily && !graffiti,
+      playerFills: playerFills,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;
@@ -181,6 +192,24 @@ class StatsProvider extends ChangeNotifier {
       unawaited(_prefs.setXpLastWinPalette(palette.storageKey));
     }
     return award;
+  }
+
+  void _awardGraffitiLossXp({required bool pocket}) {
+    final award = PlayerXp.graffitiGoodEffort(
+      previousTotal: _stats.totalXp,
+      pocket: pocket,
+    );
+    _stats = _stats.copyWith(totalXp: award.newTotal);
+    _lastXpAward = award;
+  }
+
+  void _awardGraffitiDrawXp({required bool pocket}) {
+    final award = PlayerXp.graffitiDrawer(
+      previousTotal: _stats.totalXp,
+      pocket: pocket,
+    );
+    _stats = _stats.copyWith(totalXp: award.newTotal);
+    _lastXpAward = award;
   }
 
   int get _careerWins =>
@@ -301,6 +330,7 @@ class StatsProvider extends ChangeNotifier {
     required GamePalette palette,
     bool noteless = false,
     bool pocket = false,
+    int playerFills = 0,
   }) async {
     _stats = switch (result) {
       GraffitiMatchResult.win =>
@@ -330,7 +360,12 @@ class StatsProvider extends ChangeNotifier {
         noteless: noteless,
         graffiti: true,
         pocket: pocket,
+        playerFills: playerFills,
       );
+    } else if (result == GraffitiMatchResult.loss) {
+      _awardGraffitiLossXp(pocket: pocket);
+    } else if (result == GraffitiMatchResult.draw) {
+      _awardGraffitiDrawXp(pocket: pocket);
     } else {
       _lastXpAward = null;
     }

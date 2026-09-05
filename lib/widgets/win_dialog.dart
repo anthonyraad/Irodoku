@@ -268,9 +268,12 @@ class _GraffitiResultDialogState extends State<_GraffitiResultDialog> {
     final rematchEnabled = game.rematchAvailable && !waiting;
     final xp = stats.lastXpAward;
     final showXp =
-        outcome == GraffitiOutcome.win &&
         xp != null &&
-        (xp.sourceLabel == 'Graffiti' || xp.sourceLabel == '[Graffiti]');
+        (xp.sourceLabel == 'Graffiti' || xp.sourceLabel == '[Graffiti]') &&
+        (outcome == GraffitiOutcome.win ||
+            outcome == GraffitiOutcome.lose ||
+            outcome == GraffitiOutcome.defeat ||
+            outcome == GraffitiOutcome.draw);
 
     final title = switch (outcome) {
       GraffitiOutcome.win => 'Victory',

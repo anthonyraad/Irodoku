@@ -60,6 +60,17 @@ abstract final class PlayerXp {
   static const pocketDailyBaseXp = 50;
   /// Pocket [Graffiti] uses Graffiti rules with a smaller finish.
   static const pocketGraffitiBaseXp = 50;
+  /// Win bonus for filling many cells yourself (givens do not count).
+  static const graffitiVandalXp = 12;
+  static const pocketGraffitiVandalXp = 6;
+  static const graffitiVandalMinFills = 34;
+  static const pocketGraffitiVandalMinFills = 17;
+  /// Consolation XP on a Graffiti loss (Defeat screen).
+  static const graffitiGoodEffortXp = 10;
+  static const pocketGraffitiGoodEffortXp = 5;
+  /// Consolation XP on a Graffiti draw (Draw screen).
+  static const graffitiDrawerXp = 30;
+  static const pocketGraffitiDrawerXp = 15;
   static const pocketFastThreshold = Duration(minutes: 2);
   static const pocketLazyThreshold = Duration(minutes: 3);
   static const pocketLazyXp = -6;
@@ -94,9 +105,8 @@ abstract final class PlayerXp {
   static const easyLazyThreshold = Duration(minutes: 15);
   static const easyLazyXp = -12;
 
-  /// Graffiti has no ladder tier — treated as Medium for base; Speedy is under 5:00.
+  /// Graffiti has no ladder tier — treated as Medium for base XP.
   static const graffitiDifficulty = Difficulty.medium;
-  static const graffitiFastThreshold = Duration(minutes: 5);
 
   static Duration fastThreshold(Difficulty difficulty) => switch (difficulty) {
         Difficulty.easy => const Duration(minutes: 5),
@@ -172,6 +182,7 @@ abstract final class PlayerXp {
     bool lucky = false,
     bool suppressSpeedAndFlawless = false,
     bool iro = false,
+    int playerFills = 0,
   }) {
     final pocketDaily = pocket && daily;
     final base = pocketDaily
@@ -185,13 +196,11 @@ abstract final class PlayerXp {
                     : baseXp(difficulty);
     final flawless = mistakes == 0 && !suppressSpeedAndFlawless;
     final sloppy = !graffiti && pocket ? mistakes == 1 : mistakes == 2;
-    final fast = suppressSpeedAndFlawless
-        ? false
-        : graffiti
-            ? elapsed < graffitiFastThreshold
-            : pocket
-                ? elapsed < pocketFastThreshold
-                : elapsed < fastThreshold(difficulty);
+    final fast = !graffiti &&
+        !suppressSpeedAndFlawless &&
+        (pocket
+            ? elapsed < pocketFastThreshold
+            : elapsed < fastThreshold(difficulty));
     final lazyXp = pocket && !daily && !graffiti && elapsed > pocketLazyThreshold
         ? pocketLazyXp
         : !pocket &&
@@ -207,6 +216,14 @@ abstract final class PlayerXp {
     final fastXp = fast ? (base * fastModifier).floor() : 0;
     final notelessXp =
         (!pocket || graffiti) && noteless ? (base * notelessModifier).floor() : 0;
+    final vandalMin =
+        pocket ? pocketGraffitiVandalMinFills : graffitiVandalMinFills;
+    final vandal = graffiti && playerFills >= vandalMin;
+    final vandalXp = !vandal
+        ? 0
+        : pocket
+            ? pocketGraffitiVandalXp
+            : graffitiVandalXp;
     final wetPaintXp = !daily && !chromatic && !pocket && !graffiti && wetPaint
         ? (base * wetPaintModifier).floor()
         : 0;
@@ -229,6 +246,7 @@ abstract final class PlayerXp {
         fastXp +
         lazyXp +
         notelessXp +
+        vandalXp +
         wetPaintXp +
         firstOfDay +
         streak +
@@ -261,6 +279,7 @@ abstract final class PlayerXp {
       chromaticLabel: pocket ? '[Chromatic]' : 'Chromatic',
       wetPaint: wetPaintXp > 0,
       noteless: notelessXp > 0,
+      vandal: vandal,
       achievedXp: artistryXp,
       flawlessXp: flawlessXp,
       sloppyXp: sloppyXp,
@@ -268,6 +287,7 @@ abstract final class PlayerXp {
       lazyXp: lazyXp,
       wetPaintXp: wetPaintXp,
       notelessXp: notelessXp,
+      vandalXp: vandalXp,
       earned: earned,
       previousTotal: previousTotal,
       newTotal: previousTotal + earned,
@@ -281,6 +301,54 @@ abstract final class PlayerXp {
   static bool rollLucky(int careerWinsBefore, {double? roll}) {
     if (careerWinsBefore < luckyMinPriorWins) return false;
     return (roll ?? math.Random().nextDouble()) < luckyChance;
+  }
+
+  /// Flat consolation XP for a Graffiti / [Graffiti] loss. No Lucky or Iro.
+  static XpAward graffitiGoodEffort({
+    required int previousTotal,
+    required bool pocket,
+  }) {
+    final xp = pocket ? pocketGraffitiGoodEffortXp : graffitiGoodEffortXp;
+    return XpAward(
+      baseXp: xp,
+      difficulty: graffitiDifficulty,
+      sourceLabel: pocket ? '[Graffiti]' : 'Graffiti',
+      flawless: false,
+      fast: false,
+      firstWinOfDay: false,
+      streak: false,
+      chromatic: false,
+      flawlessXp: 0,
+      fastXp: 0,
+      earned: xp,
+      previousTotal: previousTotal,
+      newTotal: previousTotal + xp,
+      goodEffort: true,
+    );
+  }
+
+  /// Flat consolation XP for a Graffiti / [Graffiti] draw. No Lucky or Iro.
+  static XpAward graffitiDrawer({
+    required int previousTotal,
+    required bool pocket,
+  }) {
+    final xp = pocket ? pocketGraffitiDrawerXp : graffitiDrawerXp;
+    return XpAward(
+      baseXp: xp,
+      difficulty: graffitiDifficulty,
+      sourceLabel: pocket ? '[Graffiti]' : 'Graffiti',
+      flawless: false,
+      fast: false,
+      firstWinOfDay: false,
+      streak: false,
+      chromatic: false,
+      flawlessXp: 0,
+      fastXp: 0,
+      earned: xp,
+      previousTotal: previousTotal,
+      newTotal: previousTotal + xp,
+      drawer: true,
+    );
   }
 }
 
@@ -301,6 +369,7 @@ class XpAward {
   final String chromaticLabel;
   final bool wetPaint;
   final bool noteless;
+  final bool vandal;
   final int achievedXp;
   final int flawlessXp;
   final int sloppyXp;
@@ -308,12 +377,15 @@ class XpAward {
   final int lazyXp;
   final int wetPaintXp;
   final int notelessXp;
+  final int vandalXp;
   final int earned;
   final int previousTotal;
   final int newTotal;
   final bool lucky;
   final bool iro;
   final int iroXp;
+  final bool goodEffort;
+  final bool drawer;
 
   const XpAward({
     required this.baseXp,
@@ -332,6 +404,7 @@ class XpAward {
     this.chromaticLabel = 'Chromatic',
     this.wetPaint = false,
     this.noteless = false,
+    this.vandal = false,
     this.achievedXp = 0,
     required this.flawlessXp,
     this.sloppyXp = 0,
@@ -339,12 +412,15 @@ class XpAward {
     this.lazyXp = 0,
     this.wetPaintXp = 0,
     this.notelessXp = 0,
+    this.vandalXp = 0,
     required this.earned,
     required this.previousTotal,
     required this.newTotal,
     this.lucky = false,
     this.iro = false,
     this.iroXp = 0,
+    this.goodEffort = false,
+    this.drawer = false,
   });
 
   int get previousLevel => PlayerXp.levelFor(previousTotal);
@@ -352,20 +428,25 @@ class XpAward {
   bool get leveledUp => newLevel > previousLevel;
 
   /// Receipt lines that sum to [earned].
-  List<({String label, int xp})> get breakdown => [
-        (label: '$sourceLabel finish', xp: baseXp),
-        if (flawless) (label: 'Flawless', xp: flawlessXp),
-        if (sloppy) (label: 'Sloppy', xp: sloppyXp),
-        if (fast) (label: 'Speedy', xp: fastXp),
-        if (lazy) (label: 'Lazy', xp: lazyXp),
-        if (noteless) (label: 'Freestyle', xp: notelessXp),
-        if (wetPaint) (label: 'Wet paint', xp: wetPaintXp),
-        if (chromatic) (label: chromaticLabel, xp: chromaticXp),
-        if (achievedXp > 0) (label: 'Artistry', xp: achievedXp),
-        if (firstWinOfDay)
-          (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
-        if (streak) (label: streakLabel, xp: streakXp),
-        if (lucky) (label: 'Lucky', xp: PlayerXp.luckyXp),
-        if (iro) (label: 'Iro', xp: iroXp),
-      ];
+  List<({String label, int xp})> get breakdown {
+    if (goodEffort) return [(label: 'Good effort', xp: earned)];
+    if (drawer) return [(label: 'Drawer', xp: earned)];
+    return [
+      (label: '$sourceLabel finish', xp: baseXp),
+      if (flawless) (label: 'Flawless', xp: flawlessXp),
+      if (sloppy) (label: 'Sloppy', xp: sloppyXp),
+      if (fast) (label: 'Speedy', xp: fastXp),
+      if (lazy) (label: 'Lazy', xp: lazyXp),
+      if (noteless) (label: 'Freestyle', xp: notelessXp),
+      if (vandal) (label: 'Vandal', xp: vandalXp),
+      if (wetPaint) (label: 'Wet paint', xp: wetPaintXp),
+      if (chromatic) (label: chromaticLabel, xp: chromaticXp),
+      if (achievedXp > 0) (label: 'Artistry', xp: achievedXp),
+      if (firstWinOfDay)
+        (label: 'First of day', xp: PlayerXp.firstWinOfDayBonus),
+      if (streak) (label: streakLabel, xp: streakXp),
+      if (lucky) (label: 'Lucky', xp: PlayerXp.luckyXp),
+      if (iro) (label: 'Iro', xp: iroXp),
+    ];
+  }
 }

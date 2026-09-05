@@ -346,6 +346,42 @@ void main() {
     );
   });
 
+  test('Iroen unlock counts every win mode, not losses or draws', () {
+    expect(const GameStats().isIroenUnlocked, isFalse);
+    expect(const GameStats(gamesWon: 100).isIroenUnlocked, isTrue);
+    expect(
+      const GameStats(pocketWins: 40, pocketChromaticWins: 60).isIroenUnlocked,
+      isTrue,
+    );
+    expect(
+      const GameStats(gamesWon: 50, pocketWins: 30, pocketChromaticWins: 20)
+          .isIroenUnlocked,
+      isTrue,
+    );
+    expect(
+      const GameStats(gamesWon: 99, pocketDailyWins: 1).isIroenUnlocked,
+      isTrue,
+    );
+    expect(
+      const GameStats(gamesWon: 99, graffitiWins: 1).isIroenUnlocked,
+      isTrue,
+    );
+    expect(
+      const GameStats(gamesWon: 99, pocketGraffitiWins: 1).isIroenUnlocked,
+      isTrue,
+    );
+    expect(const GameStats(gamesWon: 99).isIroenUnlocked, isFalse);
+    expect(
+      const GameStats(
+        gamesWon: 99,
+        graffitiLosses: 10,
+        graffitiDraws: 10,
+        pocketGraffitiLosses: 10,
+      ).isIroenUnlocked,
+      isFalse,
+    );
+  });
+
   test('Pocket Daily unlocks after a Pocket win', () {
     expect(const GameStats().isPocketDailyUnlocked, isFalse);
     expect(
@@ -612,7 +648,7 @@ void main() {
     expect(onThreshold.earned, 31);
   });
 
-  test('Graffiti Speedy is under 5:00', () {
+  test('Graffiti has no Speedy bonus', () {
     final under = PlayerXp.compute(
       difficulty: PlayerXp.graffitiDifficulty,
       mistakes: 1,
@@ -622,24 +658,137 @@ void main() {
       sourceLabel: 'Graffiti',
       graffiti: true,
     );
-    final onThreshold = PlayerXp.compute(
+    expect(under.baseXp, 100);
+    expect(under.fast, isFalse);
+    expect(under.fastXp, 0);
+    expect(under.earned, 100);
+    expect(under.breakdown, [(label: 'Graffiti finish', xp: 100)]);
+  });
+
+  test('Graffiti loss Good effort is +10; Pocket [Graffiti] is +5', () {
+    final graffiti = PlayerXp.graffitiGoodEffort(
+      previousTotal: 100,
+      pocket: false,
+    );
+    final pocket = PlayerXp.graffitiGoodEffort(
+      previousTotal: 100,
+      pocket: true,
+    );
+    expect(graffiti.goodEffort, isTrue);
+    expect(graffiti.earned, 10);
+    expect(graffiti.newTotal, 110);
+    expect(graffiti.lucky, isFalse);
+    expect(graffiti.iro, isFalse);
+    expect(graffiti.breakdown, [(label: 'Good effort', xp: 10)]);
+    expect(pocket.sourceLabel, '[Graffiti]');
+    expect(pocket.earned, 5);
+    expect(pocket.breakdown, [(label: 'Good effort', xp: 5)]);
+  });
+
+  test('Graffiti draw Drawer is +30; Pocket [Graffiti] is +15', () {
+    final graffiti = PlayerXp.graffitiDrawer(
+      previousTotal: 100,
+      pocket: false,
+    );
+    final pocket = PlayerXp.graffitiDrawer(
+      previousTotal: 100,
+      pocket: true,
+    );
+    expect(graffiti.drawer, isTrue);
+    expect(graffiti.earned, 30);
+    expect(graffiti.newTotal, 130);
+    expect(graffiti.lucky, isFalse);
+    expect(graffiti.iro, isFalse);
+    expect(graffiti.breakdown, [(label: 'Drawer', xp: 30)]);
+    expect(pocket.sourceLabel, '[Graffiti]');
+    expect(pocket.earned, 15);
+    expect(pocket.breakdown, [(label: 'Drawer', xp: 15)]);
+  });
+
+  test('Graffiti Vandal is +12 at 34 fills; Pocket [Graffiti] is +6 at 17', () {
+    final graffitiMiss = PlayerXp.compute(
       difficulty: PlayerXp.graffitiDifficulty,
       mistakes: 1,
-      elapsed: const Duration(minutes: 5),
+      elapsed: const Duration(minutes: 10),
       firstWinOfDay: false,
       previousTotal: 0,
       sourceLabel: 'Graffiti',
       graffiti: true,
+      playerFills: 33,
     );
-    expect(under.baseXp, 100);
-    expect(under.fast, isTrue);
-    expect(under.fastXp, 25);
-    expect(under.earned, 125);
-    expect(onThreshold.fast, isFalse);
-    expect(onThreshold.earned, 100);
+    final graffitiHit = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 10),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: 'Graffiti',
+      graffiti: true,
+      playerFills: 34,
+    );
+    final pocketMiss = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 10),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: '[Graffiti]',
+      graffiti: true,
+      pocket: true,
+      playerFills: 16,
+    );
+    final pocketHit = PlayerXp.compute(
+      difficulty: PlayerXp.graffitiDifficulty,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 10),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      sourceLabel: '[Graffiti]',
+      graffiti: true,
+      pocket: true,
+      playerFills: 17,
+    );
+    expect(graffitiMiss.vandal, isFalse);
+    expect(graffitiMiss.earned, 100);
+    expect(graffitiHit.vandal, isTrue);
+    expect(graffitiHit.vandalXp, 12);
+    expect(graffitiHit.earned, 112);
+    expect(
+      graffitiHit.breakdown,
+      [
+        (label: 'Graffiti finish', xp: 100),
+        (label: 'Vandal', xp: 12),
+      ],
+    );
+    expect(pocketMiss.vandal, isFalse);
+    expect(pocketMiss.earned, 50);
+    expect(pocketHit.vandal, isTrue);
+    expect(pocketHit.vandalXp, 6);
+    expect(pocketHit.earned, 56);
+    expect(
+      pocketHit.breakdown,
+      [
+        (label: '[Graffiti] finish', xp: 50),
+        (label: 'Vandal', xp: 6),
+      ],
+    );
   });
 
-  test('Pocket [Graffiti] is a flat 50 base with Graffiti Speedy and Freestyle', () {
+  test('Vandal never applies outside Graffiti', () {
+    final award = PlayerXp.compute(
+      difficulty: Difficulty.medium,
+      mistakes: 1,
+      elapsed: const Duration(minutes: 10),
+      firstWinOfDay: false,
+      previousTotal: 0,
+      playerFills: 40,
+    );
+    expect(award.vandal, isFalse);
+    expect(award.vandalXp, 0);
+    expect(award.earned, 100);
+  });
+
+  test('Pocket [Graffiti] is a flat 50 base with Freestyle; no Speedy', () {
     final award = PlayerXp.compute(
       difficulty: PlayerXp.graffitiDifficulty,
       mistakes: 0,
@@ -653,8 +802,8 @@ void main() {
     );
     expect(award.baseXp, 50);
     expect(award.sourceLabel, '[Graffiti]');
-    expect(award.fast, isTrue);
-    expect(award.fastXp, 12);
+    expect(award.fast, isFalse);
+    expect(award.fastXp, 0);
     expect(award.noteless, isTrue);
     expect(award.notelessXp, 20);
     expect(award.sloppy, isFalse);
@@ -664,7 +813,6 @@ void main() {
       [
         (label: '[Graffiti] finish', xp: 50),
         (label: 'Flawless', xp: 12),
-        (label: 'Speedy', xp: 12),
         (label: 'Freestyle', xp: 20),
       ],
     );

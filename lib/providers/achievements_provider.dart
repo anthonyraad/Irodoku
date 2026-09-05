@@ -29,6 +29,9 @@ class AchievementsProvider extends ChangeNotifier {
   int _unlockSoundEpoch = 0;
   /// 0-based rows completed since the last XP grant (live unlocks only).
   final List<int> _pendingCompletedRows = [];
+  Future<void> _writeQueue = Future.value();
+  int _loadGeneration = 0;
+  bool _applyingRemote = false;
 
   AchievementsProvider(this._prefs)
       : _progress = _prefs.loadAchievements(),
@@ -71,7 +74,37 @@ class AchievementsProvider extends ChangeNotifier {
     await _prefs.saveSeenAchievementIds(_seenIds);
   }
 
-  Future<void> persist() => _prefs.saveAchievements(_progress);
+  Future<void> persist() {
+    _writeQueue = _writeQueue.catchError((_) {}).then((_) {
+      return _prefs.saveAchievements(_progress);
+    });
+    return _writeQueue;
+  }
+
+  Future<void> flushWrites() => _writeQueue.catchError((_) {});
+
+  /// Invalidates in-flight reconcile so it cannot overwrite a Load.
+  Future<void> prepareForRemoteApply() async {
+    _loadGeneration++;
+    _applyingRemote = true;
+    await flushWrites();
+  }
+
+  void cancelRemoteApply() {
+    _applyingRemote = false;
+  }
+
+  Future<void> replaceFromPrefs() async {
+    await flushWrites();
+    _loadGeneration++;
+    final generation = _loadGeneration;
+    _progress = _prefs.loadAchievements();
+    _seenIds = _prefs.loadSeenAchievementIds();
+    _applyingRemote = false;
+    await reconcileFromExistingStats();
+    if (generation != _loadGeneration) return;
+    notifyListeners();
+  }
 
   /// Toast label; locked cells with countable progress append `(current/target)`.
   String toastLabel(Achievement achievement) {
@@ -131,7 +164,11 @@ class AchievementsProvider extends ChangeNotifier {
   /// Unlocks achievements that can be proven from already-instrumented data
   /// (lifetime stats, best times, palette streaks, achievement counters).
   Future<void> reconcileFromExistingStats() async {
+    final generation = _loadGeneration;
+    bool current() => !_applyingRemote && generation == _loadGeneration;
+
     final stats = _prefs.loadStats();
+    if (!current()) return;
     final beforeUnlocked = Set<String>.from(_progress.unlockedIds);
     final priorWins = Map<GamePalette, int>.from(_progress.winsByPalette);
     final winsByPalette = Map<GamePalette, int>.from(priorWins);
@@ -152,6 +189,7 @@ class AchievementsProvider extends ChangeNotifier {
       _progress.chromaticGamesWon,
       stats.chromaticGamesWon,
     );
+    if (!current()) return;
     _progress = _progress.copyWith(
       winsByPalette: winsByPalette,
       chromaticGamesWon: chromaticGamesWon,
@@ -168,6 +206,7 @@ class AchievementsProvider extends ChangeNotifier {
     _addBestTimeAchievements(ids, stats);
 
     // Silent: retroactive unlocks shouldn't fanfare on launch.
+    if (!current()) return;
     _unlockMany(ids, announce: false);
 
     final unlockedChanged = !setEquals(_progress.unlockedIds, beforeUnlocked);
@@ -176,8 +215,10 @@ class AchievementsProvider extends ChangeNotifier {
       return;
     }
 
+    if (!current()) return;
     notifyListeners();
     await persist();
+    if (!current()) return;
     if (needsR4Persist || needsR7c7Persist) {
       await _prefs.saveSeenAchievementIds(_seenIds);
     }

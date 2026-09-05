@@ -631,6 +631,7 @@ class GraffitiProvider extends ChangeNotifier {
         palette: activePalette,
         noteless: !_usedNotes,
         pocket: _pocket,
+        playerFills: _myCorrect,
       ),
     );
   }

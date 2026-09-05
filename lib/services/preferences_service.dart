@@ -9,6 +9,7 @@ import '../models/game_stats.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../models/paused_game.dart';
+import '../models/progress_backup.dart';
 
 class PreferencesService {
   static const _keyDifficulty = 'difficulty';
@@ -651,5 +652,73 @@ class PreferencesService {
 
   Future<void> saveSeenAchievementIds(Set<String> ids) async {
     await _prefs.setStringList(_keyAchievementsSeen, ids.toList()..sort());
+  }
+
+  ProgressBackup captureProgressBackup() {
+    return ProgressBackup(
+      stats: loadStats(),
+      achievements: loadAchievements(),
+      seenAchievementIds: loadSeenAchievementIds(),
+      dailyLastCompleted: getDailyLastCompletedDay(),
+      dailyLastFailed: getDailyLastFailedDay(),
+      dailyStreak: getDailyStreak(),
+      dailyBestStreak: getDailyBestStreak(),
+      pocketDailyLastCompleted: getPocketDailyLastCompletedDay(),
+      pocketDailyStreak: getPocketDailyStreak(),
+      pocketDailyBestStreak: getPocketDailyBestStreak(),
+      xpLastAwardDay: getXpLastAwardDay(),
+      xpLastWinPalette: getXpLastWinPalette(),
+      pocketSwipeDiscovered: getPocketSwipeDiscovered(),
+      iroen: loadIroenState(),
+      iroenGallery: loadIroenGallery(),
+      iroenActiveMosaicId: getIroenActiveMosaicId(),
+    );
+  }
+
+  Future<void> applyProgressBackup(ProgressBackup backup) async {
+    final previous = captureProgressBackup();
+    try {
+      await _writeProgressBackup(backup);
+    } catch (_) {
+      try {
+        await _writeProgressBackup(previous);
+      } catch (_) {}
+      rethrow;
+    }
+  }
+
+  Future<void> _writeProgressBackup(ProgressBackup backup) async {
+    await saveStats(backup.stats);
+    await saveAchievements(backup.achievements);
+    await saveSeenAchievementIds(backup.seenAchievementIds);
+    await _setOptionalString(_keyDailyLastCompleted, backup.dailyLastCompleted);
+    await _setOptionalString(_keyDailyLastFailed, backup.dailyLastFailed);
+    await _prefs.setInt(_keyDailyStreak, backup.dailyStreak);
+    await _prefs.setInt(_keyDailyBestStreak, backup.dailyBestStreak);
+    await _setOptionalString(
+      _keyPocketDailyLastCompleted,
+      backup.pocketDailyLastCompleted,
+    );
+    await _prefs.setInt(_keyPocketDailyStreak, backup.pocketDailyStreak);
+    await _prefs.setInt(_keyPocketDailyBestStreak, backup.pocketDailyBestStreak);
+    await _setOptionalString(_keyXpLastAwardDay, backup.xpLastAwardDay);
+    await _setOptionalString(_keyXpLastWinPalette, backup.xpLastWinPalette);
+    await setPocketSwipeDiscovered(backup.pocketSwipeDiscovered);
+    final iroen = backup.iroen;
+    if (iroen == null) {
+      await _prefs.remove(_keyIroenState);
+    } else {
+      await saveIroenState(iroen);
+    }
+    await saveIroenGallery(backup.iroenGallery);
+    await setIroenActiveMosaicId(backup.iroenActiveMosaicId);
+  }
+
+  Future<void> _setOptionalString(String key, String? value) async {
+    if (value == null || value.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, value);
+    }
   }
 }

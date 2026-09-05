@@ -16,15 +16,36 @@ import '../providers/stats_provider.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/palette_sweep_mask.dart';
+import '../widgets/progress_sync_dialog.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/typing_title.dart';
 
 /// Standalone Settings page: difficulty, sound, dark mode, and palette.
-class AppSettingsScreen extends StatelessWidget {
+class AppSettingsScreen extends StatefulWidget {
   const AppSettingsScreen({super.key});
 
   @override
+  State<AppSettingsScreen> createState() => _AppSettingsScreenState();
+}
+
+class _AppSettingsScreenState extends State<AppSettingsScreen> {
+  SettingsProvider? _settings;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _settings = context.read<SettingsProvider>();
+  }
+
+  @override
+  void dispose() {
+    _settings?.hideSync();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final showSync = context.watch<SettingsProvider>().syncVisible;
     return Theme(
       data: IrodokuTheme.settingsTheme(Theme.of(context)),
       child: Scaffold(
@@ -32,24 +53,46 @@ class AppSettingsScreen extends StatelessWidget {
           leading: const MenuBackButton(),
           title: const TypingTitle(text: 'Settings'),
         ),
-        body: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+        body: Column(
           children: [
-            const ConfigSettingsPanel(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: MenuActionButton(
-                label: 'How to Play',
-                onPressed: () => showHowToPlayDialog(context),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                children: [
+                  const ConfigSettingsPanel(),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: MenuActionButton(
+                      label: 'How to Play',
+                      onPressed: () => showHowToPlayDialog(context),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: MenuActionButton(
+                      label: 'Controls',
+                      onPressed: () => showControlsHelpDialog(context),
+                    ),
+                  ),
+                ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: MenuActionButton(
-                label: 'Controls',
-                onPressed: () => showControlsHelpDialog(context),
+            if (showSync)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 168,
+                      child: MenuActionButton(
+                        label: 'Sync',
+                        onPressed: () => showProgressSyncDialog(context),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -84,7 +127,7 @@ Future<void> showHowToPlayDialog(BuildContext context) {
             ),
             const TextSpan(
               text:
-                  ' is Sudoku played with colors. A 9×9 board is divided into nine 3×3 boxes.\n\nEach row, column, and box must contain each of the nine colors exactly once. Some colors start filled; the player fills the rest.\n\n',
+                  ' is Sudoku played with colors. A 9×9 board is divided into nine 3×3 boxes.\n\nEach row, column, and box must contain each of the 9 colors exactly once. Some colors start filled; the player fills the rest.\n\n',
             ),
             TextSpan(text: 'Tap a cell, then tap a color', style: bold),
             const TextSpan(
@@ -107,7 +150,7 @@ Future<void> showHowToPlayDialog(BuildContext context) {
             TextSpan(text: 'Pocket Irodoku', style: bold),
             const TextSpan(
               text:
-                  ' is played with a 6×6 board that is divided into six 2×3 boxes.\n\nEach row, column, and box must contain each of the 6 colors exactly once. Otherwise, the same Irodoku rules and controls apply.\n\nAccess Pocket mode for Irodoku, Graffiti, and more by ',
+                  ' is played with a 6×6 board that is divided into six 2×3 boxes.\n\nEach row, column, and box must contain each of the 6 colors exactly once.\n\nAccess Pocket mode for Irodoku, Graffiti, and more by ',
             ),
             TextSpan(
               text: 'swiping right on the Irodoku button',

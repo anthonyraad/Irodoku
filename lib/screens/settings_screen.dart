@@ -618,7 +618,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   void _showIroenLockedSnackBar(BuildContext context, GameStats stats) {
     const need = GameStats.iroenUnlockWinsRequired;
-    final have = stats.gamesWon;
+    final have = stats.iroenUnlockWins;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(

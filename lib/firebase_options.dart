@@ -4,13 +4,23 @@ import 'package:flutter/foundation.dart'
 
 /// Firebase options for Graffiti multiplayer (shared word-multiplayer project).
 ///
-/// The web API key is baked in (normal for Firebase client apps). Restrict it in
-/// Google Cloud (HTTP referrers / Android apps) and rely on Auth + RTDB rules.
-/// Optional override: `--dart-define=FIREBASE_API_KEY=...`
+/// The web API key and Google Web client ID are baked in (normal for Firebase
+/// client apps). Restrict them in Google Cloud (Android package + SHA) and
+/// rely on Auth + RTDB rules. Optional overrides:
+/// `--dart-define=FIREBASE_API_KEY=...`
+/// `--dart-define=GOOGLE_WEB_CLIENT_ID=...`
 class DefaultFirebaseOptions {
   static const String _apiKey = String.fromEnvironment(
     'FIREBASE_API_KEY',
     defaultValue: 'AIzaSyCdRvBtNt6JVbEmqJmCfdZD0a-zUIXHICs',
+  );
+
+  /// OAuth 2.0 Web client ID from Firebase Console → Authentication → Google.
+  /// Required for Google Sign-In on Android without `google-services.json`.
+  static const String googleWebClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue:
+        '529750390715-uhu1evfpqg583p8djibcbaqde0em50cs.apps.googleusercontent.com',
   );
 
   static bool get hasApiKey => _apiKey.isNotEmpty;

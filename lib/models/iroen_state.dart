@@ -1,6 +1,13 @@
 import 'cell.dart';
 import '../sudoku/sudoku_board.dart';
 
+int _asInt(dynamic value, [int fallback = 0]) {
+  if (value is int) return value;
+  if (value is num) return value.round();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
 class IroenState {
   static const int detailSize = 27;
 
@@ -16,10 +23,10 @@ class IroenState {
   }
 
   factory IroenState.fromJson(Map<String, dynamic> json) {
-    final version = json['version'] as int? ?? 1;
+    final version = _asInt(json['version'], 1);
     if (version >= 2) {
       final detailRaw = (json['detail'] as List<dynamic>? ?? const [])
-          .map((e) => e as int? ?? 0)
+          .map((e) => _asInt(e))
           .toList();
       if (detailRaw.length != detailSize * detailSize) {
         throw const FormatException('Invalid Iroen detail payload');

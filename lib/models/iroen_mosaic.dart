@@ -69,17 +69,24 @@ class IroenMosaic {
 
   factory IroenMosaic.fromJson(Map<String, dynamic> json) {
     final detailRaw = (json['detail'] as List<dynamic>? ?? const [])
-        .map((e) => e as int? ?? 0)
+        .map(_mosaicInt)
         .toList();
     if (detailRaw.length != IroenState.detailSize * IroenState.detailSize) {
       throw const FormatException('Invalid Iroen mosaic detail');
     }
     return IroenMosaic(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? 'Mosaic',
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Mosaic',
       detail: detailRaw,
-      updatedAtMs: json['updatedAtMs'] as int? ?? 0,
-      palette: GamePalette.fromStorageKey(json['palette'] as String?),
+      updatedAtMs: _mosaicInt(json['updatedAtMs']),
+      palette: GamePalette.fromStorageKey(json['palette']?.toString()),
     );
   }
+}
+
+int _mosaicInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.round();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }

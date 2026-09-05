@@ -266,6 +266,8 @@ class GameProvider extends ChangeNotifier {
     return _prefs.getPocketDailyLastCompletedDay() == today;
   }
 
+  void notifyProgressReloaded() => notifyListeners();
+
   /// Won today's Daily — review only; losses can still be retried.
   bool get isDailyFinishedToday => isDailyCompletedToday;
 

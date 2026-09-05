@@ -10,6 +10,8 @@ import 'stats_provider.dart';
 class SettingsProvider extends ChangeNotifier {
   static const _devModeToggleCount = 20;
   static const _devModeToggleWindow = Duration(seconds: 8);
+  static const _syncRevealToggleCount = 8;
+  static const _syncRevealToggleWindow = Duration(seconds: 4);
 
   final PreferencesService _prefs;
   final StatsProvider _stats;
@@ -25,6 +27,9 @@ class SettingsProvider extends ChangeNotifier {
   bool _pocketSwipeDiscovered;
   int _darkModeToggleStreak = 0;
   DateTime? _lastDarkModeToggle;
+  int _soundToggleStreak = 0;
+  DateTime? _lastSoundToggle;
+  bool _syncVisible = false;
 
   SettingsProvider(
     this._prefs, {
@@ -45,10 +50,26 @@ class SettingsProvider extends ChangeNotifier {
     _clampChromaticToUnlocked();
   }
 
+  void applyAfterProgressLoad() {
+    _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered();
+    ensureDifficultyUnlocked(_stats.stats);
+    ensurePaletteUnlocked(_stats.stats);
+    _clampChromaticToUnlocked();
+    notifyListeners();
+  }
+
   Difficulty get difficulty => _difficulty;
   bool get darkMode => _darkMode;
   bool get devMode => _devMode;
   bool get soundEnabled => _soundEnabled;
+  /// Hidden until Sound is toggled rapidly 8 times on this Settings visit.
+  bool get syncVisible => _syncVisible;
+
+  void hideSync() {
+    _syncVisible = false;
+    _soundToggleStreak = 0;
+    _lastSoundToggle = null;
+  }
   /// XL is temporarily forced on (Settings toggle hidden). Prefs + [setXlPicker]
   /// remain so the compact picker can be restored later.
   bool get xlPicker => true;
@@ -95,6 +116,21 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> setSoundEnabled(bool enabled) async {
     if (_soundEnabled == enabled) return;
+
+    if (!_syncVisible) {
+      final now = DateTime.now();
+      if (_lastSoundToggle == null ||
+          now.difference(_lastSoundToggle!) > _syncRevealToggleWindow) {
+        _soundToggleStreak = 0;
+      }
+      _lastSoundToggle = now;
+      _soundToggleStreak++;
+      if (_soundToggleStreak >= _syncRevealToggleCount) {
+        _soundToggleStreak = 0;
+        _syncVisible = true;
+      }
+    }
+
     _soundEnabled = enabled;
     notifyListeners();
     await _prefs.setSoundEnabled(enabled);

@@ -33,6 +33,7 @@ class IroenProvider extends ChangeNotifier {
   (int, int)? _zoomBox;
   List<IroenMosaic> _gallery = [];
   String? _activeMosaicId;
+  Future<void> _persistFuture = Future.value();
 
   IroenProvider({
     required PreferencesService preferences,
@@ -43,6 +44,18 @@ class IroenProvider extends ChangeNotifier {
         _sounds = sounds {
     _loadFromPrefs();
   }
+
+  void reloadFromPrefs() {
+    _selected = null;
+    _exitBulkNoteSelect();
+    _undoStack.clear();
+    _zoomPhase = IroenZoomPhase.off;
+    _zoomBox = null;
+    _loadFromPrefs();
+    notifyListeners();
+  }
+
+  Future<void> flushWrites() => _persistFuture.catchError((_) {});
 
   List<IroenMosaic> get gallery => List.unmodifiable(_gallery);
   String? get activeMosaicId => _activeMosaicId;
@@ -436,7 +449,9 @@ class IroenProvider extends ChangeNotifier {
   }
 
   void _persist() {
-    unawaited(_prefs.saveIroenState(IroenState(detail: _flatDetail())));
+    _persistFuture = _persistFuture.catchError((_) {}).then((_) {
+      return _prefs.saveIroenState(IroenState(detail: _flatDetail()));
+    });
   }
 
   List<int> _flatDetail() => [

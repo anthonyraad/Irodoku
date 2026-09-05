@@ -93,6 +93,10 @@ class GameStats {
   int get pocketGamesWon =>
       pocketWins + pocketChromaticWins + pocketDailyWins;
 
+  /// All recorded wins: Classic 9×9, Pocket modes, and both Graffiti modes.
+  int get iroenUnlockWins =>
+      gamesWon + pocketGamesWon + graffitiWins + pocketGraffitiWins;
+
   /// Display form e.g. `15-17 (2)`.
   String get graffitiRecordLabel =>
       '$graffitiWins-$graffitiLosses ($graffitiDraws)';
@@ -142,7 +146,7 @@ class GameStats {
     return winsFor(prerequisite) >= Difficulty.unlockWinsRequired;
   }
 
-  bool get isIroenUnlocked => gamesWon >= iroenUnlockWinsRequired;
+  bool get isIroenUnlocked => iroenUnlockWins >= iroenUnlockWinsRequired;
 
   bool get isDailyChallengeUnlocked =>
       winsFor(Difficulty.medium) >= dailyChallengeUnlockMediumWins;
