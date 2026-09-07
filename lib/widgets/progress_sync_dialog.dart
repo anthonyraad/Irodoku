@@ -289,5 +289,14 @@ void _snack(BuildContext context, String message) {
 
 String _errorMessage(Object e) {
   if (e is ProgressSyncException) return e.message;
+  final text = e.toString();
+  final api = RegExp(r'ApiException:\s*(\d+)').firstMatch(text)?.group(1);
+  if (api == '10' ||
+      api == '8' ||
+      api == '13' ||
+      api == '12500' ||
+      text.contains('DEVELOPER_ERROR')) {
+    return 'Google Sign-In is not set up for this install (error $api). Add the Play app signing SHA-1 in Firebase.';
+  }
   return 'Sync failed. Check your connection and try again.';
 }

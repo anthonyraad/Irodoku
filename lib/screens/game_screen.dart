@@ -7,6 +7,7 @@ import '../core/irodoku_page_route.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
+import '../providers/iroen_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/chromatic_palette_transition.dart';
@@ -112,6 +113,19 @@ class _GameScreenState extends State<GameScreen> {
     await game.retryFromDefeat();
   }
 
+  /// Title-tap shimmer after Victory Close — skipped if they started a new game.
+  Future<void> _playWinTitleShimmer() async {
+    // Let the dialog finish fading so the board is fully visible.
+    await Future<void>.delayed(const Duration(milliseconds: 240));
+    if (!mounted) return;
+    final game = context.read<GameProvider>();
+    if (!game.isWon || game.isGenerating || game.isPaused) return;
+    game.clearCelebration();
+    game.triggerColorCycle(
+      savedMosaics: context.read<IroenProvider>().gallery,
+    );
+  }
+
   void _maybeShowResult(GameProvider game) {
     // Home and Daily routes share one provider — only the matching route
     // should present win/loss dialogs.
@@ -135,7 +149,7 @@ class _GameScreenState extends State<GameScreen> {
           showNewGame: !widget.isDailyRoute,
           onNewGame: _onNewGame,
           xp: includeXp ? context.read<StatsProvider>().lastXpAward : null,
-        );
+        ).then((_) => _playWinTitleShimmer());
       });
     } else if (game.isLost && !_resultDialogShown) {
       _resultDialogShown = true;
@@ -212,7 +226,9 @@ class _GameScreenState extends State<GameScreen> {
                 style: titleStyle,
                 textAlign: TextAlign.center,
                 playToken: _titlePlayToken,
-                onTap: game.triggerColorCycle,
+                onTap: () => game.triggerColorCycle(
+                  savedMosaics: context.read<IroenProvider>().gallery,
+                ),
               ),
               actions: [
                 IconButton(

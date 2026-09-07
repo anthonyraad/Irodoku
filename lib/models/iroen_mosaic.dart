@@ -31,6 +31,18 @@ class IroenMosaic {
     ];
   }
 
+  /// True 3×3 Iroen detail for sudoku cell ([row], [col]), row-major.
+  List<int> subValuesAt(int row, int col) {
+    const size = IroenState.detailSize;
+    final baseRow = row * 3;
+    final baseCol = col * 3;
+    return [
+      for (var dr = 0; dr < 3; dr++)
+        for (var dc = 0; dc < 3; dc++)
+          detail[(baseRow + dr) * size + (baseCol + dc)],
+    ];
+  }
+
   int _blockRepresentative(int row, int col, int size) {
     final baseRow = row * 3;
     final baseCol = col * 3;

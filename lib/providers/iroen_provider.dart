@@ -17,7 +17,7 @@ enum IroenZoomPhase { off, pickingQuadrant, zoomed }
 /// Free-form 9×9 coloring with optional 3× zoom per sudoku box.
 class IroenProvider extends ChangeNotifier {
   static const int _maxUndo = 60;
-  static const int _maxGallery = 12;
+  static const int _maxGallery = 16;
   static const int _detailSize = IroenState.detailSize;
 
   final PreferencesService _prefs;

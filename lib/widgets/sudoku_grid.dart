@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/bulk_note_rainbow_border.dart';
 import '../core/celebration_colors.dart';
 import '../core/color_cycle.dart';
+import '../core/mosaic_shimmer.dart';
 import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
@@ -62,6 +63,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
         if (status == AnimationStatus.completed) {
           _colorCycleController.value = 0;
         }
+        _syncGlassMotion();
       });
     widget.game.addListener(_onGameChanged);
     _syncUnitBorders();
@@ -91,9 +93,15 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   }
 
   void _syncGlassMotion({bool forceOff = false}) {
+    final mosaic = widget.game.colorCycleMosaic;
+    final mosaicNeedsMotion = mosaic != null &&
+        _colorCycleController.isAnimating &&
+        (mosaic.palette == GamePalette.glass ||
+            mosaic.palette == GamePalette.sky);
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sky);
+            widget.palette == GamePalette.sky ||
+            mosaicNeedsMotion);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
       _holdingGlassMotion = true;
@@ -105,6 +113,12 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
 
   void _onGameChanged() {
     // GameScreen's Consumer rebuilds this widget; only drive local animations here.
+    if (widget.game.isGenerating && _colorCycleController.isAnimating) {
+      _colorCycleController
+        ..stop()
+        ..value = 0;
+      _syncGlassMotion();
+    }
     _maybeStartCelebration();
     _maybeStartColorCycle();
     _syncUnitBorders();
@@ -133,20 +147,34 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     if (_colorCycleController.isAnimating) {
       _colorCycleController.stop();
     }
+    _colorCycleController.duration = widget.game.colorCycleMosaic != null
+        ? MosaicShimmer.duration
+        : _colorCycleDuration;
     _colorCycleController.forward(from: 0);
+    _syncGlassMotion();
   }
 
   double? _cellColorCyclePhase(int row, int col) {
     // Only while animating — a completed controller sits at 1.0, which used to
     // keep cells stuck on solid representative colors after the shimmer.
     if (!_colorCycleController.isAnimating) return null;
-    final filter = widget.game.colorCycleFilterValue;
-    if (filter != null) {
-      final cell = widget.game.cellAt(row, col);
-      if (cell.value != filter) return null;
+    final mosaic = widget.game.colorCycleMosaic;
+    if (mosaic == null) {
+      final filter = widget.game.colorCycleFilterValue;
+      if (filter != null) {
+        final cell = widget.game.cellAt(row, col);
+        if (cell.value != filter) return null;
+      }
     }
-    final global = Curves.easeInOut.transform(_colorCycleController.value);
-    return ColorCycle.staggeredPhase(global, row, col);
+    final raw = _colorCycleController.value;
+    if (mosaic != null) return raw;
+    final global = Curves.easeInOut.transform(raw);
+    return ColorCycle.staggeredPhase(
+      global,
+      row,
+      col,
+      spread: ColorCycle.staggerSpread,
+    );
   }
 
   double _cellProgress(int stagger) {
@@ -319,6 +347,9 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         celebrationShimmer: celebrationShimmer,
                         colorCyclePhase: _cellColorCyclePhase(row, col),
                         colorCycleSteps: game.colorCycleSteps,
+                        mosaicSubValues:
+                            game.colorCycleMosaic?.subValuesAt(row, col),
+                        mosaicPalette: game.colorCycleMosaic?.palette,
                         row: row,
                         col: col,
                         pocket: game.isPocket,

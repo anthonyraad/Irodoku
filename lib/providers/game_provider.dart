@@ -9,7 +9,9 @@ import '../models/cell.dart';
 import '../models/daily_irodoku.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
+import '../core/mosaic_shimmer.dart';
 import '../models/iro_mix.dart';
+import '../models/iroen_mosaic.dart';
 import '../models/palette_swatch.dart';
 import '../models/note_clear_wave.dart';
 import '../models/paused_game.dart';
@@ -87,6 +89,9 @@ class GameProvider extends ChangeNotifier {
   int _colorCycleSteps = 4;
   /// When non-null, only cells with this committed value join the sweep.
   int? _colorCycleFilterValue;
+  /// Won 9×9 title tap: morph into this saved mosaic instead of a palette sweep.
+  IroenMosaic? _colorCycleMosaic;
+  String? _lastMosaicCycleId;
   bool _noteMode = false;
   bool _bulkNoteSelect = false;
   final Set<int> _bulkSelected = {};
@@ -199,6 +204,8 @@ class GameProvider extends ChangeNotifier {
   int get colorCycleSteps => _colorCycleSteps;
   /// `null` = all filled cells (title tap); otherwise only that color value.
   int? get colorCycleFilterValue => _colorCycleFilterValue;
+  /// Set for a won-board mosaic shimmer; null for the usual palette cycle.
+  IroenMosaic? get colorCycleMosaic => _colorCycleMosaic;
   bool get noteMode => _noteMode;
   bool get bulkNoteSelect => _bulkNoteSelect;
   NoteClearWave? get noteClearWave => _noteClearWave;
@@ -379,15 +386,45 @@ class GameProvider extends ChangeNotifier {
 
   /// Palette sweep on filled cells. Title tap uses all colors; cell tap can
   /// limit to [onlyValue] (1–9).
-  void triggerColorCycle({int? onlyValue}) {
+  ///
+  /// On a fully completed 9×9 (Classic / Chromatic / Daily), pass [savedMosaics]
+  /// from the Iroen gallery. If Iroen is unlocked and any mosaic is non-empty,
+  /// the board morphs into one at random instead of the palette sweep.
+  void triggerColorCycle({
+    int? onlyValue,
+    List<IroenMosaic>? savedMosaics,
+  }) {
     if (_isGenerating || _isPaused || _isLost) return;
     if (!_hasActiveGame && !_isWon) return;
     if (_celebration != null) return;
-    final half = gridSize ~/ 2;
-    _colorCycleSteps = half + Random().nextInt(2); // 4 or 5 of 9 colors
-    _colorCycleFilterValue = onlyValue;
+    _colorCycleMosaic = onlyValue == null
+        ? _mosaicForTitleShimmer(savedMosaics)
+        : null;
+    if (_colorCycleMosaic != null) {
+      _lastMosaicCycleId = _colorCycleMosaic!.id;
+      _colorCycleFilterValue = null;
+    } else {
+      final half = gridSize ~/ 2;
+      _colorCycleSteps = half + Random().nextInt(2); // 4 or 5 of 9 colors
+      _colorCycleFilterValue = onlyValue;
+    }
     _colorCycleSeq++;
     notifyListeners();
+  }
+
+  IroenMosaic? _mosaicForTitleShimmer(List<IroenMosaic>? savedMosaics) {
+    if (!MosaicShimmer.shouldAnimate(
+      isWon: _isWon,
+      isPocket: _isPocket,
+      iroenUnlocked: _stats.isIroenUnlocked,
+      mosaics: savedMosaics,
+    )) {
+      return null;
+    }
+    return MosaicShimmer.pickRandom(
+      savedMosaics!,
+      excludingId: _lastMosaicCycleId,
+    );
   }
 
   /// Restores a paused / parked game if one exists; otherwise starts a new puzzle.
@@ -743,6 +780,7 @@ class GameProvider extends ChangeNotifier {
     _noteMode = false;
     _undoStack.clear();
     _colorCycleFilterValue = null;
+    _colorCycleMosaic = null;
     for (var r = 0; r < gridSize; r++) {
       for (var c = 0; c < gridSize; c++) {
         final cell = _cells[r][c];
@@ -977,6 +1015,8 @@ class GameProvider extends ChangeNotifier {
     }
     _completedUnits = {};
     _celebration = null;
+    _colorCycleFilterValue = null;
+    _colorCycleMosaic = null;
     _noteMode = false;
     _undoStack.clear();
     _resetAchievementSession();

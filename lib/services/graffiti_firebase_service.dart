@@ -60,13 +60,9 @@ class GraffitiFirebaseService {
         if (kIsWeb) {
           await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
         } else if (defaultTargetPlatform == TargetPlatform.android) {
-          try {
-            await Firebase.initializeApp();
-          } catch (_) {
-            await Firebase.initializeApp(
-              options: DefaultFirebaseOptions.android,
-            );
-          }
+          await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.android,
+          );
         } else {
           await Firebase.initializeApp(
             options: DefaultFirebaseOptions.currentPlatform,

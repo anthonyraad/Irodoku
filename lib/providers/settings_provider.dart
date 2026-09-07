@@ -10,7 +10,7 @@ import 'stats_provider.dart';
 class SettingsProvider extends ChangeNotifier {
   static const _devModeToggleCount = 20;
   static const _devModeToggleWindow = Duration(seconds: 8);
-  static const _syncRevealToggleCount = 8;
+  static const _syncRevealToggleCount = 10;
   static const _syncRevealToggleWindow = Duration(seconds: 4);
 
   final PreferencesService _prefs;
@@ -62,7 +62,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get darkMode => _darkMode;
   bool get devMode => _devMode;
   bool get soundEnabled => _soundEnabled;
-  /// Hidden until Sound is toggled rapidly 8 times on this Settings visit.
+  /// Hidden until Sound is toggled rapidly 10 times on this Settings visit.
   bool get syncVisible => _syncVisible;
 
   void hideSync() {

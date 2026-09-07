@@ -9,13 +9,19 @@ abstract final class ColorCycle {
   static const double staggerSpread = 0.16;
 
   /// Maps board position to a 0–1 phase lag for a soft diagonal wave.
-  static double staggeredPhase(double globalT, int row, int col) {
+  static double staggeredPhase(
+    double globalT,
+    int row,
+    int col, {
+    double spread = staggerSpread,
+  }) {
     if (globalT <= 0) return 0;
     if (globalT >= 1) return 1;
 
-    final delay = ((row * 9 + col) / 81) * staggerSpread;
+    final lag = spread.clamp(0.0, 0.9);
+    final delay = ((row * 9 + col) / 81) * lag;
     if (globalT <= delay) return 0;
-    return ((globalT - delay) / (1 - staggerSpread)).clamp(0.0, 1.0);
+    return ((globalT - delay) / (1 - lag)).clamp(0.0, 1.0);
   }
 
   /// Cycles [colorValue] through [stepCount] palette steps and back (t=0/1 → original).

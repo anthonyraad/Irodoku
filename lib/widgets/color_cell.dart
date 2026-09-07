@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/color_cycle.dart';
+import '../core/mosaic_shimmer.dart';
 import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
@@ -34,6 +35,9 @@ class ColorCell extends StatefulWidget {
   /// 0–1 local phase for the title-tap palette sweep; null when inactive.
   final double? colorCyclePhase;
   final int colorCycleSteps;
+  /// Won-board mosaic shimmer: 9 Iroen sub-values for this cell (row-major).
+  final List<int>? mosaicSubValues;
+  final GamePalette? mosaicPalette;
   /// Board position; used with [noteClearWave] for outward dismiss stagger.
   final int? row;
   final int? col;
@@ -59,6 +63,8 @@ class ColorCell extends StatefulWidget {
     this.celebrationShimmer = 0,
     this.colorCyclePhase,
     this.colorCycleSteps = 4,
+    this.mosaicSubValues,
+    this.mosaicPalette,
     this.row,
     this.col,
     this.pocket = false,
@@ -312,10 +318,11 @@ class _ColorCellState extends State<ColorCell>
 
   Listenable _painterRepaint(
     PaletteSwatch? committed,
-    Map<int, PaletteSwatch>? notes,
-  ) {
+    Map<int, PaletteSwatch>? notes, [
+    List<PaletteSwatch?>? mosaicTiles,
+  ]) {
     final listenables = <Listenable>[_revealController, _noteDismissController];
-    if (_swatchAnimates(committed, notes) ||
+    if (_swatchAnimates(committed, notes, mosaicTiles) ||
         _departingNoteSwatches.values.any((s) => s.animated)) {
       listenables.add(OrganicSwatchMotion.listenable);
     }
@@ -333,9 +340,24 @@ class _ColorCellState extends State<ColorCell>
     final celebrating = widget.celebrationSwatch != null;
     final primary = Theme.of(context).colorScheme.primary;
     final colorCyclePhase = widget.colorCyclePhase;
+    final mosaicEmptyFill = IrodokuTheme.emptyCellFill(brightness);
+    final mosaicActive = !celebrating &&
+        colorCyclePhase != null &&
+        widget.mosaicSubValues != null &&
+        widget.mosaicPalette != null &&
+        cell.value != 0 &&
+        !cell.hasNotes;
+    final mosaicMix = mosaicActive
+        ? MosaicShimmer.mixAmount(
+            colorCyclePhase,
+            row: widget.row ?? 0,
+            col: widget.col ?? 0,
+          )
+        : 0.0;
+    const givenWashAlpha = 0.08;
 
     PaletteSwatch swatchFor(int value) =>
-        colorCyclePhase != null
+        colorCyclePhase != null && !mosaicActive
             ? ColorCycle.displaySwatch(
                 value,
                 colorCyclePhase,
@@ -347,8 +369,30 @@ class _ColorCellState extends State<ColorCell>
 
     PaletteSwatch? committedSwatch;
     Map<int, PaletteSwatch>? noteSwatches;
+    List<PaletteSwatch?>? mosaicTiles;
+    List<double>? mosaicAmounts;
     if (celebrating) {
       committedSwatch = widget.celebrationSwatch;
+    } else if (mosaicActive) {
+      committedSwatch = _swatchFor(cell.value);
+      mosaicAmounts = [
+        for (var i = 0; i < 9; i++)
+          MosaicShimmer.tileAmount(
+            colorCyclePhase,
+            i,
+            row: widget.row ?? 0,
+            col: widget.col ?? 0,
+          ),
+      ];
+      mosaicTiles = MosaicShimmer.tiles(
+        original: committedSwatch,
+        subValues: widget.mosaicSubValues!,
+        mosaicPalette: widget.mosaicPalette!,
+        emptyFill: mosaicEmptyFill,
+        cellPhase: colorCyclePhase,
+        row: widget.row ?? 0,
+        col: widget.col ?? 0,
+      );
     } else if (cell.value != 0 && !cell.hasNotes) {
       committedSwatch = swatchFor(cell.value);
     } else if (_departingCommittedSwatch != null) {
@@ -378,7 +422,7 @@ class _ColorCellState extends State<ColorCell>
 
     Color? committedOutline;
     Map<int, Color>? noteOutlines;
-    if (!celebrating) {
+    if (!celebrating && mosaicTiles == null) {
       if (cell.value != 0 && !cell.hasNotes) {
         committedOutline =
             IrodokuPalette.outlineForSlot(
@@ -406,7 +450,8 @@ class _ColorCellState extends State<ColorCell>
       }
     }
 
-    final paintListenables = _painterRepaint(committedSwatch, noteSwatches);
+    final paintListenables =
+        _painterRepaint(committedSwatch, noteSwatches, mosaicTiles);
 
     final body = Stack(
       fit: StackFit.expand,
@@ -425,7 +470,9 @@ class _ColorCellState extends State<ColorCell>
                     };
               return CustomPaint(
                 painter: _CellPainter(
-                  emptyFill: emptyFill,
+                  emptyFill: mosaicActive
+                      ? Color.lerp(emptyFill, mosaicEmptyFill, mosaicMix)!
+                      : emptyFill,
                   notes: celebrating
                       ? const <int>{}
                       : {
@@ -437,10 +484,12 @@ class _ColorCellState extends State<ColorCell>
                   committedSwatch: committedSwatch,
                   committedOutline: committedOutline,
                   noteOutlines: noteOutlines,
+                  mosaicTiles: mosaicTiles,
+                  mosaicAmounts: mosaicAmounts,
                   // Givens never bloom (and may reuse State left at reveal 0).
                   // Locked correct fills still bloom — lock is set on the same
                   // frame as placement, so forcing 1 here would skip the animation.
-                  fillReveal: committedSwatch == null
+                  fillReveal: committedSwatch == null || mosaicTiles != null
                       ? 1
                       : cell.isGiven
                           ? 1
@@ -448,18 +497,25 @@ class _ColorCellState extends State<ColorCell>
                   selectionHighlight: widget.isSelected && !celebrating
                       ? IrodokuTheme.selectedCellHighlight(brightness, primary)
                       : null,
-                  relatedWash:
-                      widget.isRelated && !widget.isSelected && !celebrating
-                          ? IrodokuTheme.relatedCellOverlay(brightness)
-                          : null,
-                  sameColorWash:
-                      widget.isSameColor && !widget.isSelected && !celebrating
-                          ? IrodokuTheme.sameColorOverlay(brightness)
-                          : null,
+                  relatedWash: mosaicTiles == null &&
+                          widget.isRelated &&
+                          !widget.isSelected &&
+                          !celebrating
+                      ? IrodokuTheme.relatedCellOverlay(brightness)
+                      : null,
+                  sameColorWash: mosaicTiles == null &&
+                          widget.isSameColor &&
+                          !widget.isSelected &&
+                          !celebrating
+                      ? IrodokuTheme.sameColorOverlay(brightness)
+                      : null,
                   givenWash: (cell.isGiven || cell.isLocked) &&
                           cell.value != 0 &&
-                          !celebrating
-                      ? Colors.black.withValues(alpha: 0.08)
+                          !celebrating &&
+                          givenWashAlpha * (1 - mosaicMix) > 0.001
+                      ? Colors.black.withValues(
+                          alpha: givenWashAlpha * (1 - mosaicMix),
+                        )
                       : null,
                   celebrationShimmer:
                       celebrating && widget.celebrationShimmer > 0
@@ -515,9 +571,14 @@ class _ColorCellState extends State<ColorCell>
 
 bool _swatchAnimates(
   PaletteSwatch? committed,
-  Map<int, PaletteSwatch>? notes,
-) {
+  Map<int, PaletteSwatch>? notes, [
+  List<PaletteSwatch?>? mosaicTiles,
+]) {
   if (committed?.animated == true) return true;
+  if (mosaicTiles != null &&
+      mosaicTiles.any((swatch) => swatch?.animated == true)) {
+    return true;
+  }
   final noteSwatches = notes;
   if (noteSwatches == null) return false;
   return noteSwatches.values.any((swatch) => swatch.animated);
@@ -534,6 +595,8 @@ class _CellPainter extends CustomPainter {
   final PaletteSwatch? committedSwatch;
   final Color? committedOutline;
   final Map<int, Color>? noteOutlines;
+  final List<PaletteSwatch?>? mosaicTiles;
+  final List<double>? mosaicAmounts;
   /// 0–1 center bloom for committed fill; 1 = fully visible.
   final double fillReveal;
   final Color? selectionHighlight;
@@ -551,6 +614,8 @@ class _CellPainter extends CustomPainter {
     required this.committedSwatch,
     required this.committedOutline,
     required this.noteOutlines,
+    this.mosaicTiles,
+    this.mosaicAmounts,
     required this.fillReveal,
     required this.selectionHighlight,
     required this.relatedWash,
@@ -574,8 +639,11 @@ class _CellPainter extends CustomPainter {
 
     final reveal = fillReveal.clamp(0.0, 1.0);
     final revealing = committedSwatch != null && reveal < 1;
+    final tiles = mosaicTiles;
 
-    if (committedSwatch != null) {
+    if (tiles != null && tiles.length == 9) {
+      _paintMosaicTiles(canvas, size, tiles);
+    } else if (committedSwatch != null) {
       if (revealing) {
         canvas.save();
         canvas.clipPath(CircleRevealClipper.pathFor(size, reveal));
@@ -621,7 +689,9 @@ class _CellPainter extends CustomPainter {
       canvas.drawRect(rect, Paint()..color = selectionHighlight!);
     }
 
-    if (committedSwatch != null && committedOutline != null) {
+    if (committedSwatch != null &&
+        committedOutline != null &&
+        mosaicTiles == null) {
       if (revealing) {
         canvas.save();
         canvas.clipPath(CircleRevealClipper.pathFor(size, reveal));
@@ -635,6 +705,28 @@ class _CellPainter extends CustomPainter {
         rect,
         Paint()..color = Colors.white.withValues(alpha: celebrationShimmer),
       );
+    }
+  }
+
+  void _paintMosaicTiles(
+    Canvas canvas,
+    Size size,
+    List<PaletteSwatch?> tiles,
+  ) {
+    final tileW = size.width / 3;
+    final tileH = size.height / 3;
+    // Overlap so flush 27×27 tiles don't show subpixel seams.
+    const overlap = 0.6;
+    for (var i = 0; i < 9; i++) {
+      final swatch = tiles[i];
+      if (swatch == null) continue;
+      final row = i ~/ 3;
+      final col = i % 3;
+      final left = col * tileW;
+      final top = row * tileH;
+      final right = col == 2 ? size.width : (col + 1) * tileW + overlap;
+      final bottom = row == 2 ? size.height : (row + 1) * tileH + overlap;
+      drawSwatchRect(canvas, Rect.fromLTRB(left, top, right, bottom), swatch);
     }
   }
 
@@ -677,6 +769,8 @@ class _CellPainter extends CustomPainter {
         committedSwatch != oldDelegate.committedSwatch ||
         committedOutline != oldDelegate.committedOutline ||
         noteOutlines != oldDelegate.noteOutlines ||
+        mosaicTiles != oldDelegate.mosaicTiles ||
+        mosaicAmounts != oldDelegate.mosaicAmounts ||
         fillReveal != oldDelegate.fillReveal ||
         selectionHighlight != oldDelegate.selectionHighlight ||
         relatedWash != oldDelegate.relatedWash ||
