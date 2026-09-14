@@ -8,6 +8,8 @@ class IroenMosaic {
   final List<int> detail;
   final int updatedAtMs;
   final GamePalette palette;
+  /// Picker values 1–9 whose palette texture is stripped to a solid fill.
+  final Set<int> flatSlots;
 
   const IroenMosaic({
     required this.id,
@@ -15,9 +17,10 @@ class IroenMosaic {
     required this.detail,
     required this.updatedAtMs,
     this.palette = GamePalette.standard,
+    this.flatSlots = const {},
   });
 
-  IroenState get asState => IroenState(detail: detail);
+  IroenState get asState => IroenState(detail: detail, flatSlots: flatSlots);
 
   bool get isEmpty => detail.every((value) => value == 0);
 
@@ -61,6 +64,7 @@ class IroenMosaic {
     List<int>? detail,
     int? updatedAtMs,
     GamePalette? palette,
+    Set<int>? flatSlots,
   }) {
     return IroenMosaic(
       id: id ?? this.id,
@@ -68,6 +72,7 @@ class IroenMosaic {
       detail: detail ?? this.detail,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
       palette: palette ?? this.palette,
+      flatSlots: flatSlots ?? this.flatSlots,
     );
   }
 
@@ -77,6 +82,7 @@ class IroenMosaic {
         'detail': detail,
         'updatedAtMs': updatedAtMs,
         'palette': palette.storageKey,
+        if (flatSlots.isNotEmpty) 'flatSlots': (flatSlots.toList()..sort()),
       };
 
   factory IroenMosaic.fromJson(Map<String, dynamic> json) {
@@ -92,6 +98,7 @@ class IroenMosaic {
       detail: detailRaw,
       updatedAtMs: _mosaicInt(json['updatedAtMs']),
       palette: GamePalette.fromStorageKey(json['palette']?.toString()),
+      flatSlots: IroenState.parseFlatSlots(json['flatSlots']),
     );
   }
 }

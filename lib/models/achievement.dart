@@ -70,7 +70,7 @@ class Achievement {
     Achievement(
       row: 1,
       col: 8,
-      title: 'Win 3 consecutive Hard games with no mistakes',
+      title: 'Win back-to-back Hard games with no mistakes',
     ),
     // Row 3 — 1-1
     Achievement(row: 2, col: 0, title: 'Win 3 games with 1-1 palette'),
@@ -156,7 +156,7 @@ class Achievement {
     Achievement(
       row: 6,
       col: 4,
-      title: 'Win 3 consecutive Expert games with no mistakes',
+      title: 'Win back-to-back Expert games with no mistakes',
     ),
     Achievement(row: 6, col: 5, title: 'Win a Master game with Glass palette'),
     Achievement(

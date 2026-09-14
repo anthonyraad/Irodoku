@@ -215,18 +215,38 @@ abstract final class IrodokuPalette {
     (i) => PaletteSwatch.celShade(world11Colors[i], swirlSeed: 300 + i),
   );
 
-  static List<PaletteSwatch> swatchesFor(GamePalette palette) => switch (palette) {
-        GamePalette.standard => _solidSwatches(defaultColors),
-        GamePalette.rainbow => rainbowSwatches,
-        GamePalette.world11 => world11Swatches,
-        GamePalette.neon => neonSwatches,
-        GamePalette.pkmn => pkmnSwatches,
-        GamePalette.pkmn2 => pkmn2Swatches,
-        GamePalette.glass => glassSwatches,
-        GamePalette.sky => skySwatches,
-        GamePalette.greyscale => _solidSwatches(greyscaleColors),
-        GamePalette.iro => _iroShowcaseSwatches(),
-      };
+  static List<PaletteSwatch> swatchesFor(
+    GamePalette palette, {
+    Set<int> flatSlots = const {},
+  }) {
+    final base = switch (palette) {
+      GamePalette.standard => _solidSwatches(defaultColors),
+      GamePalette.rainbow => rainbowSwatches,
+      GamePalette.world11 => world11Swatches,
+      GamePalette.neon => neonSwatches,
+      GamePalette.pkmn => pkmnSwatches,
+      GamePalette.pkmn2 => pkmn2Swatches,
+      GamePalette.glass => glassSwatches,
+      GamePalette.sky => skySwatches,
+      GamePalette.greyscale => _solidSwatches(greyscaleColors),
+      GamePalette.iro => _iroShowcaseSwatches(),
+    };
+    return flattenSlots(base, flatSlots);
+  }
+
+  /// Replaces textured slots (values 1–9) with a solid representative color.
+  static List<PaletteSwatch> flattenSlots(
+    List<PaletteSwatch> swatches,
+    Set<int> values,
+  ) {
+    if (values.isEmpty) return swatches;
+    return [
+      for (var i = 0; i < swatches.length; i++)
+        values.contains(i + 1)
+            ? PaletteSwatch.solid(swatches[i].representative)
+            : swatches[i],
+    ];
+  }
 
   static List<PaletteSwatch> _iroShowcaseSwatches() {
     final palettes = GamePalette.menuValues;

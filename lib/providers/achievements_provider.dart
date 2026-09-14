@@ -141,7 +141,7 @@ class AchievementsProvider extends ChangeNotifier {
     return switch (id) {
       'r2c7' => (p.cellsErased, 100),
       'r2c8' => (_calendarStreak(p.winDayKeys), 3),
-      'r2c9' => (p.consecutiveHardNoMistake, 3),
+      'r2c9' => (p.consecutiveHardNoMistake, 2),
       'r3c7' => (_prefs.loadStats().pocketGamesWon, 30),
       'r4c9' => (p.consecutivePocketFastWins, 3),
       'r7c7' => (p.pocketNoMistakeWins, 100),
@@ -150,7 +150,7 @@ class AchievementsProvider extends ChangeNotifier {
           5,
         ),
       'r5c7' => (p.notesTaken, 1000),
-      'r7c5' => (p.consecutiveExpertNoMistake, 3),
+      'r7c5' => (p.consecutiveExpertNoMistake, 2),
       'r8c7' => (
           math.min(_prefs.getDailyBestStreak(), 30),
           30,
@@ -249,8 +249,8 @@ class AchievementsProvider extends ChangeNotifier {
     if (_progress.cellsErased >= 100) ids.add('r2c7');
     if (stats.pocketGamesWon >= 30) ids.add('r3c7');
     if (_progress.notesTaken >= 1000) ids.add('r5c7');
-    if (_progress.consecutiveHardNoMistake >= 3) ids.add('r2c9');
-    if (_progress.consecutiveExpertNoMistake >= 3) ids.add('r7c5');
+    if (_progress.consecutiveHardNoMistake >= 2) ids.add('r2c9');
+    if (_progress.consecutiveExpertNoMistake >= 2) ids.add('r7c5');
     if (_progress.chromaticGamesWon >= 30) ids.add('r8c8');
     if (_progress.masterNoMistakeWins >= 30) ids.add('r8c9');
     if (_progress.consecutivePocketFastWins >= 3) ids.add('r4c9');
@@ -621,7 +621,7 @@ class AchievementsProvider extends ChangeNotifier {
     }
     if (_progress.cellsErased >= 100) ids.add('r2c7');
     if (_calendarStreak(winDays) >= 3) ids.add('r2c8');
-    if (consecutiveHardNoMistake >= 3) ids.add('r2c9');
+    if (consecutiveHardNoMistake >= 2) ids.add('r2c9');
 
     // 1-1 row
     if (mistakes == 2) ids.add('r3c4');
@@ -689,7 +689,7 @@ class AchievementsProvider extends ChangeNotifier {
 
     // Glass row
     if (difficulty == Difficulty.medium && !ctx.usedNotes) ids.add('r7c4');
-    if (consecutiveExpertNoMistake >= 3) ids.add('r7c5');
+    if (consecutiveExpertNoMistake >= 2) ids.add('r7c5');
     if (difficulty == Difficulty.master && palette == GamePalette.glass) {
       ids.add('r7c6');
     }

@@ -59,9 +59,12 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   }
 
   void _syncGlassMotion({bool forceOff = false}) {
+    final swatches = IrodokuPalette.swatchesFor(
+      widget.palette,
+      flatSlots: widget.iroen.flatSlots,
+    );
     final needs = !forceOff &&
-        (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sky);
+        swatches.any((swatch) => swatch.animated);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
       _holdingGlassMotion = true;
@@ -72,7 +75,10 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   }
 
   void _onIroenChanged() {
-    if (mounted) _syncUnitBorders();
+    if (mounted) {
+      _syncUnitBorders();
+      _syncGlassMotion();
+    }
   }
 
   void _syncUnitBorders() {
@@ -160,6 +166,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
     final selectedValue =
         selected == null ? 0 : iroen.cellAt(selected.$1, selected.$2).value;
     final useMosaic = !iroen.isZoomedIn;
+    final displaySwatches = iroen.displaySwatchesFor(widget.palette);
 
     return Column(
       children: List.generate(SudokuBoard.size, (row) {
@@ -190,6 +197,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
                   ? _IroenMosaicCell(
                       subValues: iroen.mosaicAt(row, col),
                       palette: widget.palette,
+                      displaySwatches: displaySwatches,
                       isSelected: isSelected,
                       isRelated: isRelated,
                       isSameColor: isSameColor,
@@ -206,6 +214,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
                       cell: cell,
                       isSelected: isSelected,
                       palette: widget.palette,
+                      displaySwatches: displaySwatches,
                       bulkNoteSelect: iroen.bulkNoteSelect,
                       isRelated: isRelated,
                       isSameColor: isSameColor,
@@ -251,6 +260,7 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
 class _IroenMosaicCell extends StatefulWidget {
   final List<int> subValues;
   final GamePalette palette;
+  final List<PaletteSwatch> displaySwatches;
   final bool isSelected;
   final bool isRelated;
   final bool isSameColor;
@@ -262,6 +272,7 @@ class _IroenMosaicCell extends StatefulWidget {
   const _IroenMosaicCell({
     required this.subValues,
     required this.palette,
+    required this.displaySwatches,
     required this.isSelected,
     required this.isRelated,
     required this.isSameColor,
@@ -336,6 +347,7 @@ class _IroenMosaicCellState extends State<_IroenMosaicCell> {
           painter: _MosaicPainter(
             subValues: widget.subValues,
             palette: widget.palette,
+            displaySwatches: widget.displaySwatches,
             emptyFill: emptyFill,
             selectionHighlight: widget.isSelected
                 ? IrodokuTheme.selectedCellHighlight(brightness, primary)
@@ -346,8 +358,7 @@ class _IroenMosaicCellState extends State<_IroenMosaicCell> {
             sameColorWash: widget.isSameColor && !widget.isSelected
                 ? IrodokuTheme.sameColorOverlay(brightness)
                 : null,
-            repaint: widget.palette == GamePalette.glass ||
-                    widget.palette == GamePalette.sky
+            repaint: widget.displaySwatches.any((swatch) => swatch.animated)
                 ? OrganicSwatchMotion.listenable
                 : null,
           ),
@@ -398,6 +409,7 @@ class _IroenMosaicCellState extends State<_IroenMosaicCell> {
 class _MosaicPainter extends CustomPainter {
   final List<int> subValues;
   final GamePalette palette;
+  final List<PaletteSwatch> displaySwatches;
   final Color emptyFill;
   final Color? selectionHighlight;
   final Color? relatedWash;
@@ -406,6 +418,7 @@ class _MosaicPainter extends CustomPainter {
   _MosaicPainter({
     required this.subValues,
     required this.palette,
+    required this.displaySwatches,
     required this.emptyFill,
     required this.selectionHighlight,
     required this.relatedWash,
@@ -433,7 +446,8 @@ class _MosaicPainter extends CustomPainter {
       for (var col = 0; col < 3; col++) {
         final value = subValues[row * 3 + col];
         if (value == 0) continue;
-        final color = IrodokuPalette.swatchForValue(value, palette);
+        final color = IrodokuPalette.swatchFromList(value, displaySwatches) ??
+            IrodokuPalette.swatchForValue(value, palette);
         if (color == null) continue;
         drawSwatchRect(
           canvas,
@@ -452,6 +466,7 @@ class _MosaicPainter extends CustomPainter {
   bool shouldRepaint(covariant _MosaicPainter oldDelegate) {
     return oldDelegate.subValues != subValues ||
         oldDelegate.palette != palette ||
+        oldDelegate.displaySwatches != displaySwatches ||
         oldDelegate.selectionHighlight != selectionHighlight ||
         oldDelegate.relatedWash != relatedWash ||
         oldDelegate.sameColorWash != sameColorWash;

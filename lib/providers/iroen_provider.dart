@@ -7,6 +7,8 @@ import '../models/game_palette.dart';
 import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
+import '../models/palette_swatch.dart';
+import '../core/palette.dart';
 import '../services/preferences_service.dart';
 import '../services/sound_service.dart';
 import '../sudoku/sudoku_board.dart';
@@ -33,6 +35,7 @@ class IroenProvider extends ChangeNotifier {
   (int, int)? _zoomBox;
   List<IroenMosaic> _gallery = [];
   String? _activeMosaicId;
+  final Set<int> _flatSlots = {};
   Future<void> _persistFuture = Future.value();
 
   IroenProvider({
@@ -59,6 +62,20 @@ class IroenProvider extends ChangeNotifier {
 
   List<IroenMosaic> get gallery => List.unmodifiable(_gallery);
   String? get activeMosaicId => _activeMosaicId;
+  /// Picker values 1–9 currently shown as solids (no palette texture).
+  Set<int> get flatSlots => Set.unmodifiable(_flatSlots);
+
+  List<PaletteSwatch> displaySwatchesFor(GamePalette palette) =>
+      IrodokuPalette.swatchesFor(palette, flatSlots: _flatSlots);
+
+  /// Swipe left on a picker color to strip its texture; swipe right to restore.
+  void setSlotFlat(int value, {required bool flat}) {
+    if (value < 1 || value > 9) return;
+    final changed = flat ? _flatSlots.add(value) : _flatSlots.remove(value);
+    if (!changed) return;
+    _persist();
+    notifyListeners();
+  }
 
   bool get _hasActiveGallerySlot =>
       _activeMosaicId != null &&
@@ -410,6 +427,9 @@ class IroenProvider extends ChangeNotifier {
       ..addAll(snap.bulkSelected);
     _zoomPhase = snap.zoomPhase;
     _zoomBox = snap.zoomBox;
+    _flatSlots
+      ..clear()
+      ..addAll(snap.flatSlots);
     _persist();
     notifyListeners();
   }
@@ -423,6 +443,7 @@ class IroenProvider extends ChangeNotifier {
         bulkSelected: {..._bulkSelected},
         zoomPhase: _zoomPhase,
         zoomBox: _zoomBox,
+        flatSlots: {..._flatSlots},
       ),
     );
     if (_undoStack.length > _maxUndo) {
@@ -443,6 +464,9 @@ class IroenProvider extends ChangeNotifier {
     final saved = _prefs.loadIroenState();
     if (saved != null) {
       _applyDetail(saved.detail);
+      _flatSlots
+        ..clear()
+        ..addAll(saved.flatSlots);
     } else {
       _resetGrid();
     }
@@ -450,7 +474,9 @@ class IroenProvider extends ChangeNotifier {
 
   void _persist() {
     _persistFuture = _persistFuture.catchError((_) {}).then((_) {
-      return _prefs.saveIroenState(IroenState(detail: _flatDetail()));
+      return _prefs.saveIroenState(
+        IroenState(detail: _flatDetail(), flatSlots: {..._flatSlots}),
+      );
     });
   }
 
@@ -486,6 +512,7 @@ class IroenProvider extends ChangeNotifier {
     _zoomBox = null;
     _exitBulkNoteSelect();
     _undoStack.clear();
+    _flatSlots.clear();
   }
 
   /// Saves the current canvas into the gallery.
@@ -505,6 +532,7 @@ class IroenProvider extends ChangeNotifier {
         detail: flat,
         updatedAtMs: now,
         palette: palette,
+        flatSlots: {..._flatSlots},
       );
       _gallery = [..._gallery]..[activeIndex] = updated;
       await _prefs.saveIroenGallery(_gallery);
@@ -519,6 +547,7 @@ class IroenProvider extends ChangeNotifier {
       detail: flat,
       updatedAtMs: now,
       palette: palette,
+      flatSlots: {..._flatSlots},
     );
     _gallery = [..._gallery, mosaic];
     _activeMosaicId = mosaic.id;
@@ -538,6 +567,7 @@ class IroenProvider extends ChangeNotifier {
       detail: _flatDetail(),
       updatedAtMs: now,
       palette: palette,
+      flatSlots: {..._flatSlots},
     );
     _gallery = [..._gallery, mosaic];
     _activeMosaicId = mosaic.id;
@@ -559,6 +589,9 @@ class IroenProvider extends ChangeNotifier {
 
     _pushUndo();
     _applyDetail(mosaic.detail);
+    _flatSlots
+      ..clear()
+      ..addAll(mosaic.flatSlots);
     _selected = null;
     _zoomPhase = IroenZoomPhase.off;
     _zoomBox = null;
@@ -611,6 +644,7 @@ class _IroenUndoSnapshot {
   final Set<int> bulkSelected;
   final IroenZoomPhase zoomPhase;
   final (int, int)? zoomBox;
+  final Set<int> flatSlots;
 
   const _IroenUndoSnapshot({
     required this.detail,
@@ -619,5 +653,6 @@ class _IroenUndoSnapshot {
     required this.bulkSelected,
     required this.zoomPhase,
     required this.zoomBox,
+    required this.flatSlots,
   });
 }

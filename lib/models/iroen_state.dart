@@ -12,13 +12,19 @@ class IroenState {
   static const int detailSize = 27;
 
   final List<int> detail;
+  /// Picker values 1–9 whose palette texture is stripped to a solid fill.
+  final Set<int> flatSlots;
 
-  const IroenState({required this.detail});
+  const IroenState({
+    required this.detail,
+    this.flatSlots = const {},
+  });
 
   Map<String, Object?> toJson() {
     return {
       'version': 2,
       'detail': detail,
+      if (flatSlots.isNotEmpty) 'flatSlots': (flatSlots.toList()..sort()),
     };
   }
 
@@ -31,7 +37,10 @@ class IroenState {
       if (detailRaw.length != detailSize * detailSize) {
         throw const FormatException('Invalid Iroen detail payload');
       }
-      return IroenState(detail: detailRaw);
+      return IroenState(
+        detail: detailRaw,
+        flatSlots: parseFlatSlots(json['flatSlots']),
+      );
     }
 
     final cellMaps = (json['cells'] as List<dynamic>? ?? const []);
@@ -67,6 +76,14 @@ class IroenState {
       }
     }
     return IroenState(detail: detail);
+  }
+
+  static Set<int> parseFlatSlots(dynamic raw) {
+    if (raw is! List) return const {};
+    return {
+      for (final item in raw)
+        if (_asInt(item) >= 1 && _asInt(item) <= 9) _asInt(item),
+    };
   }
 
   static Set<int> _notesFromMap(Map<String, dynamic> map) {

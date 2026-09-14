@@ -115,10 +115,16 @@ class IroenScreen extends StatelessWidget {
                               swatchSize: swatchSize,
                               xlMode: xlPicker,
                               palette: settings.palette,
+                              displaySwatches:
+                                  iroen.displaySwatchesFor(settings.palette),
                               visible: true,
                               onColorSelected: iroen.applyPickerColor,
                               onNoteAdded: (_) {},
                               onNoteRemoved: (_) {},
+                              onSwipeLeft: (value) =>
+                                  iroen.setSlotFlat(value, flat: true),
+                              onSwipeRight: (value) =>
+                                  iroen.setSlotFlat(value, flat: false),
                             ),
                           ],
                         ),

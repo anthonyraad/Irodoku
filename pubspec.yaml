@@ -1,7 +1,7 @@
 name: irodoku
 description: A color-based Sudoku puzzle game.
 publish_to: 'none'
-version: 1.0.30+35
+version: 1.0.32+37
 
 environment:
   sdk: ^3.9.0

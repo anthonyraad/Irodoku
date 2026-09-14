@@ -38,6 +38,8 @@ class ColorCell extends StatefulWidget {
   /// Won-board mosaic shimmer: 9 Iroen sub-values for this cell (row-major).
   final List<int>? mosaicSubValues;
   final GamePalette? mosaicPalette;
+  /// Mosaic slots (1–9) to paint as solids during the shimmer.
+  final Set<int> mosaicFlatSlots;
   /// Board position; used with [noteClearWave] for outward dismiss stagger.
   final int? row;
   final int? col;
@@ -65,6 +67,7 @@ class ColorCell extends StatefulWidget {
     this.colorCycleSteps = 4,
     this.mosaicSubValues,
     this.mosaicPalette,
+    this.mosaicFlatSlots = const {},
     this.row,
     this.col,
     this.pocket = false,
@@ -392,6 +395,7 @@ class _ColorCellState extends State<ColorCell>
         cellPhase: colorCyclePhase,
         row: widget.row ?? 0,
         col: widget.col ?? 0,
+        flatSlots: widget.mosaicFlatSlots,
       );
     } else if (cell.value != 0 && !cell.hasNotes) {
       committedSwatch = swatchFor(cell.value);

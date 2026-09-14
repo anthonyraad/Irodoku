@@ -350,6 +350,8 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         mosaicSubValues:
                             game.colorCycleMosaic?.subValuesAt(row, col),
                         mosaicPalette: game.colorCycleMosaic?.palette,
+                        mosaicFlatSlots:
+                            game.colorCycleMosaic?.flatSlots ?? const {},
                         row: row,
                         col: col,
                         pocket: game.isPocket,

@@ -57,6 +57,8 @@ class ColorPicker extends StatelessWidget {
   final ValueChanged<int> onColorSelected;
   final ValueChanged<int> onNoteAdded;
   final ValueChanged<int> onNoteRemoved;
+  final ValueChanged<int>? onSwipeLeft;
+  final ValueChanged<int>? onSwipeRight;
   final bool visible;
   final bool xlMode;
   final bool pocket;
@@ -75,6 +77,8 @@ class ColorPicker extends StatelessWidget {
     required this.onColorSelected,
     required this.onNoteAdded,
     required this.onNoteRemoved,
+    this.onSwipeLeft,
+    this.onSwipeRight,
     required this.visible,
     required this.palette,
     this.displaySwatches,
@@ -196,6 +200,10 @@ class ColorPicker extends StatelessWidget {
       onTap: () => onColorSelected(value),
       onSwipeDown: () => onNoteAdded(value),
       onSwipeUp: () => onNoteRemoved(value),
+      onSwipeLeft:
+          onSwipeLeft == null ? null : () => onSwipeLeft!(value),
+      onSwipeRight:
+          onSwipeRight == null ? null : () => onSwipeRight!(value),
     );
   }
 }
@@ -268,6 +276,8 @@ class _ColorSwatch extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onSwipeDown;
   final VoidCallback onSwipeUp;
+  final VoidCallback? onSwipeLeft;
+  final VoidCallback? onSwipeRight;
 
   const _ColorSwatch({
     required this.swatch,
@@ -276,6 +286,8 @@ class _ColorSwatch extends StatefulWidget {
     required this.onTap,
     required this.onSwipeDown,
     required this.onSwipeUp,
+    this.onSwipeLeft,
+    this.onSwipeRight,
   });
 
   @override
@@ -304,8 +316,23 @@ class _ColorSwatchState extends State<_ColorSwatch> {
 
     if (event is PointerMoveEvent) {
       if (_resolved) return;
-      final dy = event.position.dy - _startGlobal!.dy;
-      if (dy >= _swipeThreshold) {
+      final delta = event.position - _startGlobal!;
+      final dx = delta.dx;
+      final dy = delta.dy;
+      if (dx.abs() < _swipeThreshold && dy.abs() < _swipeThreshold) return;
+      final horizontalEnabled =
+          widget.onSwipeLeft != null || widget.onSwipeRight != null;
+      // Game pickers have no horizontal handlers — keep the old vertical-only
+      // note swipe so a slight sideways drift still counts as up/down.
+      if (horizontalEnabled && dx.abs() > dy.abs()) {
+        if (dx <= -_swipeThreshold && widget.onSwipeLeft != null) {
+          _resolved = true;
+          widget.onSwipeLeft!();
+        } else if (dx >= _swipeThreshold && widget.onSwipeRight != null) {
+          _resolved = true;
+          widget.onSwipeRight!();
+        }
+      } else if (dy >= _swipeThreshold) {
         _resolved = true;
         widget.onSwipeDown();
       } else if (dy <= -_swipeThreshold) {

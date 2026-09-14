@@ -148,8 +148,10 @@ abstract final class MosaicShimmer {
     required double cellPhase,
     int row = 0,
     int col = 0,
+    Set<int> flatSlots = const {},
   }) {
-    final mosaicSwatches = IrodokuPalette.swatchesFor(mosaicPalette);
+    final mosaicSwatches =
+        IrodokuPalette.swatchesFor(mosaicPalette, flatSlots: flatSlots);
     final empty = PaletteSwatch.solid(emptyFill);
     return [
       for (var i = 0; i < 9; i++)
