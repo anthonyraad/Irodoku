@@ -382,6 +382,11 @@ void main() {
     );
   });
 
+  test('Graffiti and Pocket [Graffiti] are unlocked with no win requirement', () {
+    expect(const GameStats().isGraffitiUnlocked, isTrue);
+    expect(const GameStats().isPocketGraffitiUnlocked, isTrue);
+  });
+
   test('Pocket Daily unlocks after a Pocket win', () {
     expect(const GameStats().isPocketDailyUnlocked, isFalse);
     expect(

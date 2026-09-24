@@ -96,8 +96,10 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     final mosaic = widget.game.colorCycleMosaic;
     final mosaicNeedsMotion = mosaic != null &&
         _colorCycleController.isAnimating &&
-        (mosaic.palette == GamePalette.glass ||
-            mosaic.palette == GamePalette.sky);
+        IrodokuPalette.swatchesFor(
+          mosaic.palette,
+          flatSlots: mosaic.flatSlots,
+        ).any((swatch) => swatch.animated);
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
             widget.palette == GamePalette.sky ||

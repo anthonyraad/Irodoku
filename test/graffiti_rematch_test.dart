@@ -28,11 +28,12 @@ void main() {
     );
   });
 
-  test('lockout grows 5s, 10s, then caps at 15s', () {
+  test('lockout grows 3s, 5s, 7s, then caps at 10s', () {
     expect(GraffitiFirebaseService.lockoutSecondsForMistake(0), 0);
-    expect(GraffitiFirebaseService.lockoutSecondsForMistake(1), 5);
-    expect(GraffitiFirebaseService.lockoutSecondsForMistake(2), 10);
-    expect(GraffitiFirebaseService.lockoutSecondsForMistake(3), 15);
-    expect(GraffitiFirebaseService.lockoutSecondsForMistake(8), 15);
+    expect(GraffitiFirebaseService.lockoutSecondsForMistake(1), 3);
+    expect(GraffitiFirebaseService.lockoutSecondsForMistake(2), 5);
+    expect(GraffitiFirebaseService.lockoutSecondsForMistake(3), 7);
+    expect(GraffitiFirebaseService.lockoutSecondsForMistake(4), 10);
+    expect(GraffitiFirebaseService.lockoutSecondsForMistake(8), 10);
   });
 }

@@ -189,7 +189,7 @@ class _GameScreenState extends State<GameScreen> {
             !game.isGameOver;
 
         final titleText = widget.isDailyRoute
-            ? (game.isPocket ? '[Daily Challenge]' : 'Daily Challenge')
+            ? (game.isPocket ? '[Daily Iro]' : 'Daily Iro')
             : game.isPocket && settings.chromatic
                 ? '[Chromatic]'
                 : game.isPocket

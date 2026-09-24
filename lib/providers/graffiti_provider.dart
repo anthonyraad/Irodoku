@@ -13,6 +13,7 @@ import '../services/graffiti_firebase_service.dart';
 import '../services/sound_service.dart';
 import '../sudoku/sudoku_board.dart';
 import '../sudoku/sudoku_generator.dart';
+import 'achievements_provider.dart';
 import 'settings_provider.dart';
 import 'stats_provider.dart';
 
@@ -60,14 +61,17 @@ class GraffitiProvider extends ChangeNotifier {
   GraffitiProvider({
     required SettingsProvider settings,
     required StatsProvider stats,
+    required AchievementsProvider achievements,
     SoundService? sounds,
   }) : _settings = settings,
        _stats = stats,
+       _achievements = achievements,
        _ownsSounds = sounds == null,
        _sounds = sounds ?? SoundService();
 
   final SettingsProvider _settings;
   final StatsProvider _stats;
+  final AchievementsProvider _achievements;
   final SoundService _sounds;
   final bool _ownsSounds;
 
@@ -634,6 +638,9 @@ class GraffitiProvider extends ChangeNotifier {
         playerFills: _myCorrect,
       ),
     );
+    if (_pocket && result == GraffitiMatchResult.win) {
+      unawaited(_achievements.onPocketGraffitiWon(mistakes: _myMistakes));
+    }
   }
 
   Future<void> _hostStartGame() async {

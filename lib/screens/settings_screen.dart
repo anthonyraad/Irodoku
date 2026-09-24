@@ -235,16 +235,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                     stats: stats,
                     pocket: true,
                   ),
-                  onGraffiti: () => _onGraffitiPressed(
-                    context,
-                    unlocked: graffitiUnlocked,
-                    stats: stats,
-                  ),
-                  onPocketGraffiti: () => _onPocketGraffitiPressed(
-                    context,
-                    unlocked: pocketGraffitiUnlocked,
-                    stats: stats,
-                  ),
+                  onGraffiti: () => _onGraffitiPressed(context),
+                  onPocketGraffiti: () => _onPocketGraffitiPressed(context),
                   onChromatic: () => _onChromaticPressed(
                     context,
                     game,
@@ -453,15 +445,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _onGraffitiPressed(
-    BuildContext context, {
-    required bool unlocked,
-    required GameStats stats,
-  }) async {
-    if (!unlocked) {
-      _showGraffitiLockedSnackBar(context, stats);
-      return;
-    }
+  Future<void> _onGraffitiPressed(BuildContext context) async {
     _hideTitleIcons();
     await Navigator.of(context).push(
       IrodokuPageRoute(builder: (_) => const GraffitiScreen()),
@@ -470,56 +454,13 @@ class _SettingsScreenState extends State<SettingsScreen>
     _scheduleTitleIcons();
   }
 
-  Future<void> _onPocketGraffitiPressed(
-    BuildContext context, {
-    required bool unlocked,
-    required GameStats stats,
-  }) async {
-    if (!unlocked) {
-      _showPocketGraffitiLockedSnackBar(context, stats);
-      return;
-    }
+  Future<void> _onPocketGraffitiPressed(BuildContext context) async {
     _hideTitleIcons();
     await Navigator.of(context).push(
       IrodokuPageRoute(builder: (_) => const GraffitiScreen(pocket: true)),
     );
     if (!mounted) return;
     _scheduleTitleIcons();
-  }
-
-  void _showGraffitiLockedSnackBar(BuildContext context, GameStats stats) {
-    const need = GameStats.graffitiUnlockEasyWins;
-    final have = stats.winsFor(Difficulty.easy);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: SizedBox(
-            width: double.infinity,
-            child: Text.rich(
-              TextSpan(
-                style: Theme.of(context).snackBarTheme.contentTextStyle ??
-                    TextStyle(
-                      color: Theme.of(context).colorScheme.onInverseSurface,
-                    ),
-                children: [
-                  TextSpan(text: 'Win $need '),
-                  const TextSpan(
-                    text: 'Easy',
-                    style: TextStyle(
-                      color: Colors.lightBlueAccent,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  TextSpan(text: ' game ($have/$need)'),
-                ],
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      );
   }
 
   void _showPocketGraffitiLockedSnackBar(
@@ -775,8 +716,8 @@ class _PlayModeGridState extends State<_PlayModeGrid>
     final graffitiLabel =
         widget.pocketGraffitiUnlocked && _pocket ? '[Graffiti]' : 'Graffiti';
     final dailyLabel = widget.pocketDailyUnlocked && _pocket
-        ? '[Daily Challenge]'
-        : 'Daily Challenge';
+        ? '[Daily Iro]'
+        : 'Daily Iro';
     final graffitiUnlocked =
         _pocket ? widget.pocketGraffitiUnlocked : widget.graffitiUnlocked;
     final dailyUnlocked =

@@ -107,7 +107,7 @@ class Achievement {
     Achievement(
       row: 4,
       col: 3,
-      title: 'Win the Daily Challenge 5 days in a row',
+      title: 'Win Daily Iro 5 days in a row',
     ),
     Achievement(
       row: 4,
@@ -196,7 +196,7 @@ class Achievement {
     Achievement(
       row: 7,
       col: 6,
-      title: 'Win the Daily Challenge 30 days in a row',
+      title: 'Win Daily Iro 30 days in a row',
     ),
     Achievement(row: 7, col: 7, title: 'Win 30 Chromatic games'),
     Achievement(row: 7, col: 8, title: 'Win 30 Master games with no mistakes'),

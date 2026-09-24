@@ -473,7 +473,8 @@ class AchievementsProvider extends ChangeNotifier {
     await persist();
   }
 
-  /// Pocket and Pocket [Chromatic] wins both count toward r3c7 / r4c9 / r7c7.
+  /// Pocket, Pocket [Chromatic], and Pocket [Daily] count toward r3c7 / r4c9 / r7c7.
+  /// Flawless Pocket [Graffiti] only counts toward r7c7 via [onPocketGraffitiWon].
   static const _pocketFastLimit = Duration(minutes: 1, seconds: 30);
 
   Future<void> onPocketGamesWon({
@@ -500,6 +501,19 @@ class AchievementsProvider extends ChangeNotifier {
       if (pocketNoMistakeWins >= 100) 'r7c7',
     };
     _unlockMany(ids, announceDelay: _winAchievementSoundDelay);
+    notifyListeners();
+    await persist();
+  }
+
+  /// Flawless Pocket [Graffiti] wins increment the r7c7 no-mistake counter only.
+  Future<void> onPocketGraffitiWon({required int mistakes}) async {
+    if (mistakes != 0) return;
+    final pocketNoMistakeWins = _progress.pocketNoMistakeWins + 1;
+    _progress = _progress.copyWith(pocketNoMistakeWins: pocketNoMistakeWins);
+    _unlockMany(
+      {if (pocketNoMistakeWins >= 100) 'r7c7'},
+      announceDelay: _winAchievementSoundDelay,
+    );
     notifyListeners();
     await persist();
   }

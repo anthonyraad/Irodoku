@@ -21,12 +21,13 @@ class GraffitiFirebaseService {
   static String appTagFor({required bool pocket}) =>
       pocket ? pocketAppTag : appTag;
 
-  /// 1st mistake: 5s, 2nd: 10s, 3rd and later: 15s.
+  /// 1st mistake: 3s, 2nd: 5s, 3rd: 7s, 4th and later: 10s.
   static int lockoutSecondsForMistake(int mistakeNumber) {
     if (mistakeNumber <= 0) return 0;
-    if (mistakeNumber == 1) return 5;
-    if (mistakeNumber == 2) return 10;
-    return 15;
+    if (mistakeNumber == 1) return 3;
+    if (mistakeNumber == 2) return 5;
+    if (mistakeNumber == 3) return 7;
+    return 10;
   }
 
   static int gridSizeOf(List<dynamic> values) {

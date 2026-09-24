@@ -7,10 +7,7 @@ class GameStats {
   /// Medium wins required before Daily Challenge unlocks.
   static const int dailyChallengeUnlockMediumWins = 1;
 
-  /// Easy wins required before Graffiti unlocks.
-  static const int graffitiUnlockEasyWins = 1;
-
-  /// Pocket wins required before [Graffiti] / [Daily Challenge] unlock.
+  /// Pocket wins required before Pocket [Daily Challenge] unlocks.
   static const int graffitiUnlockPocketWins = 1;
 
   final int currentStreak;
@@ -93,7 +90,8 @@ class GameStats {
   int get pocketGamesWon =>
       pocketWins + pocketChromaticWins + pocketDailyWins;
 
-  /// All recorded wins: Classic 9×9, Pocket modes, and both Graffiti modes.
+  /// All recorded wins: Classic 9×9 (including Daily Challenge), Pocket modes
+  /// (including Pocket Daily), and both Graffiti modes.
   int get iroenUnlockWins =>
       gamesWon + pocketGamesWon + graffitiWins + pocketGraffitiWins;
 
@@ -151,11 +149,9 @@ class GameStats {
   bool get isDailyChallengeUnlocked =>
       winsFor(Difficulty.medium) >= dailyChallengeUnlockMediumWins;
 
-  bool get isGraffitiUnlocked =>
-      winsFor(Difficulty.easy) >= graffitiUnlockEasyWins;
+  bool get isGraffitiUnlocked => true;
 
-  bool get isPocketGraffitiUnlocked =>
-      pocketWins >= graffitiUnlockPocketWins;
+  bool get isPocketGraffitiUnlocked => true;
 
   bool get isPocketDailyUnlocked =>
       pocketWins >= graffitiUnlockPocketWins;

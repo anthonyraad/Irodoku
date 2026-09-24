@@ -60,6 +60,7 @@ class IrodokuApp extends StatelessWidget {
           create: (context) => GraffitiProvider(
             settings: context.read<SettingsProvider>(),
             stats: context.read<StatsProvider>(),
+            achievements: context.read<AchievementsProvider>(),
             sounds: context.read<SoundService>(),
           ),
         ),
