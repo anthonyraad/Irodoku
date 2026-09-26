@@ -32,6 +32,8 @@ class PaletteSwatch {
   final double intensity;
   /// Multiplier on motion clock when [animated] (1.0 = Glass default).
   final double motionSpeed;
+  /// Sky A slot 1 only: a darker edge so the near-white fill stays visible.
+  final bool outlined;
 
   const PaletteSwatch({
     required this.start,
@@ -43,10 +45,11 @@ class PaletteSwatch {
     this.animated = false,
     this.intensity = 1.0,
     this.motionSpeed = 1.0,
+    this.outlined = false,
   });
 
-  factory PaletteSwatch.solid(Color color) =>
-      PaletteSwatch(start: color, stop: color);
+  factory PaletteSwatch.solid(Color color, {bool outlined = false}) =>
+      PaletteSwatch(start: color, stop: color, outlined: outlined);
 
   factory PaletteSwatch.organic({
     required Color start,
@@ -189,6 +192,7 @@ class PaletteSwatch {
       intensity: a.intensity + (b.intensity - a.intensity) * clamped,
       motionSpeed:
           a.motionSpeed + (b.motionSpeed - a.motionSpeed) * clamped,
+      outlined: clamped < 0.5 ? a.outlined : b.outlined,
     );
   }
 }

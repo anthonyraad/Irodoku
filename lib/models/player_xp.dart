@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'difficulty.dart';
+import 'game_palette.dart';
 import 'game_stats.dart';
 
 /// Prestige XP: stored as [totalXp]; level / progress are derived.
@@ -120,6 +121,23 @@ abstract final class PlayerXp {
   static int xpToReach(int level) {
     if (level < 1) return 100;
     return (100 * math.pow(level, 1.1)).round();
+  }
+
+  /// Menu palettes whose B-side becomes available crossing [fromXp] → [toXp].
+  static List<GamePalette> bSidesUnlockedByLevelUp({
+    required int fromXp,
+    required int toXp,
+    required bool Function(GamePalette) paletteUnlocked,
+  }) {
+    final from = levelFor(fromXp);
+    final to = levelFor(toXp);
+    if (to <= from) return const [];
+    return [
+      for (final palette in GamePalette.menuValues)
+        if (palette.bSideUnlockLevel case final need?
+            when paletteUnlocked(palette) && from < need && to >= need)
+          palette,
+    ];
   }
 
   static int levelFor(int totalXp) {

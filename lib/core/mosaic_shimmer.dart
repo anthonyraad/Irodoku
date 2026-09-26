@@ -149,9 +149,13 @@ abstract final class MosaicShimmer {
     int row = 0,
     int col = 0,
     Set<int> flatSlots = const {},
+    bool mosaicBSide = false,
   }) {
-    final mosaicSwatches =
-        IrodokuPalette.swatchesFor(mosaicPalette, flatSlots: flatSlots);
+    final mosaicSwatches = IrodokuPalette.swatchesFor(
+      mosaicPalette,
+      bSide: mosaicBSide,
+      flatSlots: flatSlots,
+    );
     final empty = PaletteSwatch.solid(emptyFill);
     return [
       for (var i = 0; i < 9; i++)

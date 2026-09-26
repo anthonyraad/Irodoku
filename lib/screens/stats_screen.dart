@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/typing_title.dart';
@@ -222,7 +223,8 @@ class _PalettePreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final line = IrodokuTheme.thinGridLine(IrodokuTheme.boardBrightness);
-    final swatches = IrodokuPalette.swatchesFor(palette);
+    final settings = context.watch<SettingsProvider>();
+    final swatches = settings.swatchesFor(palette);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -240,11 +242,11 @@ class _PalettePreviewRow extends StatelessWidget {
                     decoration: swatches[i].boxDecoration(
                       border: Border.all(
                         color:
-                            IrodokuPalette.outlineForValue(i + 1, palette) ??
+                            IrodokuPalette.outlineForSwatch(swatches[i]) ??
                             line,
-                        width: IrodokuPalette.outlineForValue(i + 1, palette) !=
+                        width: IrodokuPalette.outlineForSwatch(swatches[i]) !=
                                 null
-                            ? 1.5
+                            ? 1.0
                             : 0.6,
                       ),
                     ),

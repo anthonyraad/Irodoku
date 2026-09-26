@@ -2,6 +2,7 @@ import 'achievements_progress.dart';
 import 'difficulty.dart';
 import 'game_palette.dart';
 import 'game_stats.dart';
+import 'iro_mix.dart';
 import 'iroen_mosaic.dart';
 import 'iroen_state.dart';
 
@@ -179,6 +180,8 @@ class ProgressBackup {
   final String? xpLastAwardDay;
   final String? xpLastWinPalette;
   final bool pocketSwipeDiscovered;
+  final Set<GamePalette> paletteBSides;
+  final IroMix? iroMix;
   final IroenState? iroen;
   final List<IroenMosaic> iroenGallery;
   final String? iroenActiveMosaicId;
@@ -198,6 +201,8 @@ class ProgressBackup {
     this.xpLastAwardDay,
     this.xpLastWinPalette,
     this.pocketSwipeDiscovered = false,
+    this.paletteBSides = const {},
+    this.iroMix,
     this.iroen,
     this.iroenGallery = const [],
     this.iroenActiveMosaicId,
@@ -218,6 +223,11 @@ class ProgressBackup {
         'xpLastAwardDay': xpLastAwardDay,
         'xpLastWinPalette': xpLastWinPalette,
         'pocketSwipeDiscovered': pocketSwipeDiscovered,
+        'paletteBSides': [
+          for (final palette in paletteBSides)
+            if (palette.hasBSide) palette.storageKey,
+        ]..sort(),
+        if (iroMix != null) 'iroMix': iroMix!.toKeys(),
         'iroen': iroen?.toJson(),
         'iroenGallery': [for (final mosaic in iroenGallery) mosaic.toJson()],
         'iroenActiveMosaicId': iroenActiveMosaicId,
@@ -257,6 +267,16 @@ class ProgressBackup {
       xpLastAwardDay: _asString(json['xpLastAwardDay']),
       xpLastWinPalette: _asString(json['xpLastWinPalette']),
       pocketSwipeDiscovered: json['pocketSwipeDiscovered'] == true,
+      paletteBSides: {
+        if (json['paletteBSides'] is List)
+          for (final key in json['paletteBSides'] as List)
+            for (final palette in GamePalette.values)
+              if (palette.hasBSide && palette.storageKey == key.toString())
+                palette,
+      },
+      iroMix: IroMix.fromKeys(
+        json['iroMix'] is List ? json['iroMix'] as List : null,
+      ),
       iroen: iroenRaw is Map ? IroenState.fromJson(_asJsonMap(iroenRaw)) : null,
       iroenGallery: [
         if (galleryRaw is List)

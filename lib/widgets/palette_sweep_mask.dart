@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/palette.dart';
 import '../providers/settings_provider.dart';
 
 /// Slides [colors] across [child], bookended by [ink] so the sweep eases
@@ -158,9 +157,8 @@ class PaletteSweepFillText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = IrodokuPalette.colorsFor(
-      context.watch<SettingsProvider>().palette,
-    );
+    final settings = context.watch<SettingsProvider>();
+    final colors = settings.colorsFor(settings.palette);
     return AnimatedBuilder(
       animation: progress,
       builder: (context, _) {

@@ -413,6 +413,7 @@ class _MosaicCard extends StatelessWidget {
                         painter: _MosaicThumbPainter(
                           values: mosaic.overviewValues(),
                           palette: mosaic.palette,
+                          bSide: mosaic.bSide,
                           flatSlots: mosaic.flatSlots,
                           emptyFill: IrodokuTheme.emptyCellFill(
                             IrodokuTheme.boardBrightness,
@@ -444,6 +445,7 @@ class _MosaicCard extends StatelessWidget {
 class _MosaicThumbPainter extends CustomPainter {
   final List<int> values;
   final GamePalette palette;
+  final bool bSide;
   final Set<int> flatSlots;
   final Color emptyFill;
   final Color line;
@@ -451,6 +453,7 @@ class _MosaicThumbPainter extends CustomPainter {
   const _MosaicThumbPainter({
     required this.values,
     required this.palette,
+    this.bSide = false,
     this.flatSlots = const {},
     required this.emptyFill,
     required this.line,
@@ -460,7 +463,11 @@ class _MosaicThumbPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cell = size.width / 9;
     canvas.drawRect(Offset.zero & size, Paint()..color = emptyFill);
-    final swatches = IrodokuPalette.swatchesFor(palette, flatSlots: flatSlots);
+    final swatches = IrodokuPalette.swatchesFor(
+      palette,
+      bSide: bSide,
+      flatSlots: flatSlots,
+    );
 
     for (var i = 0; i < values.length && i < 81; i++) {
       final value = values[i];

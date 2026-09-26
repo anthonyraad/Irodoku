@@ -128,6 +128,9 @@ class GameProvider extends ChangeNotifier {
   /// Daily-only display palette — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
 
+  /// Last applied A/B side for pause snapshots. Live display follows settings.
+  bool _sessionBSide = false;
+
   /// Compiled Iro mashup for this board (Classic / Pocket / Chromatic hops).
   IroMix? _iroMix;
 
@@ -182,6 +185,7 @@ class GameProvider extends ChangeNotifier {
       (_) => List.generate(SudokuBoard.size, (_) => const Cell()),
     );
     _achievements.bindAudio(settings: settings, sounds: _sounds);
+    _settings.addListener(_onSettingsChanged);
   }
 
   List<List<Cell>> get cells => _cells;
@@ -231,17 +235,77 @@ class GameProvider extends ChangeNotifier {
       _iroMix != null ? GamePalette.iro : (_sessionPalette ?? _settings.palette);
 
   List<PaletteSwatch>? get displaySwatches {
-    final full = _iroMix?.swatches;
+    final full = _iroMix?.swatches ??
+        (activePalette == GamePalette.iro
+            ? _settings.swatchesFor(GamePalette.iro)
+            : IrodokuPalette.swatchesFor(
+                activePalette,
+                bSide: _settings.bSideEnabled(activePalette),
+              ));
     if (!_isPocket) return full;
-    final source = full ?? IrodokuPalette.swatchesFor(activePalette);
-    return IrodokuPalette.pocketWindow(source, pocketSwatchOffset);
+    return IrodokuPalette.pocketWindow(full, pocketSwatchOffset);
+  }
+
+  void _onSettingsChanged() {
+    final adopted = _adoptConfigIroMix();
+    if (_applyLiveBSides() || adopted) notifyListeners();
+  }
+
+  /// Attach the saved Config Iro mix only when this board is supposed to be Iro.
+  /// Chromatic hops and in-progress non-Iro games must keep their session colors.
+  bool _adoptConfigIroMix() {
+    if (_isDaily) return false;
+    final config = _settings.iroMix;
+    if (config == null) return false;
+    if (_sessionPalette != null && _sessionPalette != GamePalette.iro) {
+      return false;
+    }
+    if (_iroMix == null) {
+      if (_settings.palette != GamePalette.iro) return false;
+      if (_hasInteracted && !isGameOver) return false;
+    }
+    if (_iroMix?.key == config.key) return false;
+    _iroMix = config;
+    return true;
+  }
+
+  void _syncSessionBSide() {
+    _applyLiveBSides();
+  }
+
+  /// Applies the current Config A/B choices to the live board / Iro mix.
+  /// Returns true when the visible colors changed.
+  bool _applyLiveBSides() {
+    var changed = false;
+    if (_iroMix != null) {
+      final next = _iroMix!.withBSides(_settings.bSideEnabled);
+      if (next.key != _iroMix!.key) {
+        _iroMix = next;
+        changed = true;
+      }
+      if (_sessionBSide) {
+        _sessionBSide = false;
+        changed = true;
+      }
+    } else {
+      final next = _settings.bSideEnabled(activePalette);
+      if (next != _sessionBSide) {
+        _sessionBSide = next;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   String? get iroMixKey {
     final mix = _iroMix?.key;
     final offset = pocketSwatchOffset;
-    if (offset == 0) return mix;
-    return '${mix ?? activePalette.storageKey}:w$offset';
+    final liveB = _iroMix == null && _settings.bSideEnabled(activePalette);
+    if (mix == null && offset == 0 && !liveB) return null;
+    final base = mix ?? activePalette.storageKey;
+    final tagged = liveB ? '$base:b' : base;
+    if (offset == 0) return tagged;
+    return '$tagged:w$offset';
   }
 
   List<GamePalette>? get iroSources {
@@ -775,6 +839,7 @@ class GameProvider extends ChangeNotifier {
     _exitBulkNoteSelect();
     _elapsed = Duration.zero;
     _sessionPalette = _iroMix != null ? GamePalette.iro : null;
+    _syncSessionBSide();
     _celebration = null;
     _noteClearWave = null;
     _noteMode = false;
@@ -1013,6 +1078,7 @@ class GameProvider extends ChangeNotifier {
           ? DailyIrodoku.pocketForDate().palette
           : DailyIrodoku.forDate().palette;
     }
+    _syncSessionBSide();
     _completedUnits = {};
     _celebration = null;
     _colorCycleFilterValue = null;
@@ -1127,6 +1193,7 @@ class GameProvider extends ChangeNotifier {
       isPocket: _isPocket,
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
+      sessionBSide: _sessionBSide,
       iroSources: _iroMix?.toKeys(),
       pocketSwatchOffset: pocketSwatchOffset,
       usedNotes: _usedNotes,
@@ -1702,6 +1769,7 @@ class GameProvider extends ChangeNotifier {
     if (_dailyDayKey != null && _dailyDayKey != challenge.dayKey) return;
     if (_sessionPalette == challenge.secondPalette) return;
     _sessionPalette = challenge.secondPalette;
+    _syncSessionBSide();
     notifyListeners();
   }
 
@@ -1716,7 +1784,10 @@ class GameProvider extends ChangeNotifier {
         : DailyIrodoku.paletteSwitchUnitThreshold;
     final units = _successfullyCompletedUnits();
     if (units.length >= threshold) {
-      _sessionPalette = challenge.secondPalette;
+      if (_sessionPalette != challenge.secondPalette) {
+        _sessionPalette = challenge.secondPalette;
+        _syncSessionBSide();
+      }
     } else {
       _sessionPalette ??= challenge.palette;
     }
@@ -1732,7 +1803,8 @@ class GameProvider extends ChangeNotifier {
     if (!_settings.chromatic) return;
     if (_settings.palette == GamePalette.iro) {
       _sessionPalette = GamePalette.iro;
-      _iroMix = IroMix.random();
+      _settings.rerollIroMix();
+      _iroMix = _settings.iroMix;
       _rollPocketSwatchOffset();
       notifyListeners();
       return;
@@ -1744,6 +1816,7 @@ class GameProvider extends ChangeNotifier {
     if (options.isEmpty) return;
     _sessionPalette = options[Random().nextInt(options.length)];
     _iroMix = null;
+    _syncSessionBSide();
     _rollPocketSwatchOffset();
     notifyListeners();
   }
@@ -1770,7 +1843,8 @@ class GameProvider extends ChangeNotifier {
       return;
     }
     if (_settings.palette == GamePalette.iro) {
-      _iroMix = IroMix.random();
+      _settings.rerollIroMix();
+      _iroMix = _settings.iroMix;
       if (_settings.chromatic) {
         _sessionPalette = GamePalette.iro;
       }
@@ -1779,11 +1853,17 @@ class GameProvider extends ChangeNotifier {
     }
   }
 
-  /// After a Config palette change with no live board, drop a stale Iro mix.
+  /// After a Config palette change, attach or drop the shared Iro mix.
   void syncIroMixToConfigPalette() {
-    if (_hasActiveGame && !isGameOver) return;
     if (_isDaily) return;
-    if (_settings.palette == GamePalette.iro) return;
+    if (_hasActiveGame && _hasInteracted && !isGameOver) return;
+    if (_settings.palette == GamePalette.iro) {
+      final mix = _settings.iroMix;
+      if (mix == null || _iroMix?.key == mix.key) return;
+      _iroMix = mix;
+      notifyListeners();
+      return;
+    }
     if (_iroMix == null) return;
     _iroMix = null;
     notifyListeners();
@@ -2568,6 +2648,7 @@ class GameProvider extends ChangeNotifier {
       isPocket: held.isPocket,
       dailyDayKey: held.dailyDayKey,
       sessionPalette: held.sessionPalette,
+      sessionBSide: held.sessionBSide,
       iroSources: held.iroMix?.toKeys(),
       pocketSwatchOffset: held.pocketSwatchOffset,
       usedNotes: held.usedNotes,
@@ -2611,6 +2692,7 @@ class GameProvider extends ChangeNotifier {
       isPocket: paused.isPocket,
       dailyDayKey: paused.dailyDayKey,
       sessionPalette: sessionPalette,
+      sessionBSide: paused.sessionBSide,
       iroMix: IroMix.fromKeys(paused.iroSources),
       pocketSwatchOffset: paused.pocketSwatchOffset,
       firstFillColor: null,
@@ -2652,7 +2734,9 @@ class GameProvider extends ChangeNotifier {
     _isPocket = paused.isPocket;
     _dailyDayKey = paused.dailyDayKey;
     _sessionPalette = sessionPalette;
+    _sessionBSide = paused.sessionBSide;
     _iroMix = IroMix.fromKeys(paused.iroSources);
+    _applyLiveBSides();
     _pocketSwatchOffset = IrodokuPalette.normalizePocketSwatchOffset(
       paused.pocketSwatchOffset,
     );
@@ -2711,6 +2795,7 @@ class GameProvider extends ChangeNotifier {
       isPocket: _isPocket,
       dailyDayKey: _dailyDayKey,
       sessionPalette: _sessionPalette,
+      sessionBSide: _sessionBSide,
       iroMix: _iroMix,
       pocketSwatchOffset: _pocketSwatchOffset,
       firstFillColor: _firstFillColor,
@@ -2767,7 +2852,10 @@ class GameProvider extends ChangeNotifier {
     _isPocket = held.isPocket;
     _dailyDayKey = held.dailyDayKey;
     _sessionPalette = held.sessionPalette;
+    _sessionBSide = held.sessionBSide;
     _iroMix = held.iroMix;
+    _applyLiveBSides();
+    if (!_hasInteracted) _adoptConfigIroMix();
     _pocketSwatchOffset = IrodokuPalette.normalizePocketSwatchOffset(
       held.pocketSwatchOffset,
     );
@@ -2831,6 +2919,7 @@ class GameProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _settings.removeListener(_onSettingsChanged);
     _timer?.cancel();
     if (_ownsSounds) unawaited(_sounds.dispose());
     super.dispose();
@@ -2879,6 +2968,7 @@ class _HeldGameSession {
   final bool isPocket;
   final String? dailyDayKey;
   final GamePalette? sessionPalette;
+  final bool sessionBSide;
   final IroMix? iroMix;
   final int pocketSwatchOffset;
   final int? firstFillColor;
@@ -2921,6 +3011,7 @@ class _HeldGameSession {
     required this.isPocket,
     required this.dailyDayKey,
     required this.sessionPalette,
+    this.sessionBSide = false,
     this.iroMix,
     this.pocketSwatchOffset = 0,
     required this.firstFillColor,

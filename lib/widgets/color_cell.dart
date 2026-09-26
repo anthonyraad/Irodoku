@@ -21,10 +21,6 @@ class ColorCell extends StatefulWidget {
   final GamePalette palette;
   /// When set, used for fills instead of [palette] lookups.
   final List<PaletteSwatch>? displaySwatches;
-  /// Per-slot source palettes for Iro mixes (outlines / SFX).
-  final List<GamePalette>? swatchSources;
-  /// Pocket 4–9 window: added to board values for near-white outline checks.
-  final int swatchSlotOffset;
   final bool bulkNoteSelect;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -38,6 +34,7 @@ class ColorCell extends StatefulWidget {
   /// Won-board mosaic shimmer: 9 Iroen sub-values for this cell (row-major).
   final List<int>? mosaicSubValues;
   final GamePalette? mosaicPalette;
+  final bool mosaicBSide;
   /// Mosaic slots (1–9) to paint as solids during the shimmer.
   final Set<int> mosaicFlatSlots;
   /// Board position; used with [noteClearWave] for outward dismiss stagger.
@@ -52,8 +49,6 @@ class ColorCell extends StatefulWidget {
     required this.isSelected,
     required this.palette,
     this.displaySwatches,
-    this.swatchSources,
-    this.swatchSlotOffset = 0,
     this.bulkNoteSelect = false,
     this.isRelated = false,
     this.isSameColor = false,
@@ -67,6 +62,7 @@ class ColorCell extends StatefulWidget {
     this.colorCycleSteps = 4,
     this.mosaicSubValues,
     this.mosaicPalette,
+    this.mosaicBSide = false,
     this.mosaicFlatSlots = const {},
     this.row,
     this.col,
@@ -195,12 +191,7 @@ class _ColorCellState extends State<ColorCell>
   void _queueDepartingNotes(Set<int> removed) {
     for (final value in removed) {
       _departingNoteSwatches[value] = _swatchFor(value);
-      final outline = IrodokuPalette.outlineForSlot(
-        value,
-        widget.palette,
-        widget.swatchSources,
-        widget.swatchSlotOffset,
-      );
+      final outline = IrodokuPalette.outlineForSwatch(_swatchFor(value));
       if (outline != null) {
         _departingNoteOutlines[value] = outline;
       } else {
@@ -212,12 +203,7 @@ class _ColorCellState extends State<ColorCell>
   void _beginDepartingCommitted(int value) {
     _departingCommittedSwatch = _swatchFor(value);
     _departingCommittedOutline =
-        IrodokuPalette.outlineForSlot(
-          value,
-          widget.palette,
-          widget.swatchSources,
-          widget.swatchSlotOffset,
-        );
+        IrodokuPalette.outlineForSwatch(_swatchFor(value));
     _revealController.duration = _noteDismissDuration;
     _revealController.reverse(from: 1);
   }
@@ -396,6 +382,7 @@ class _ColorCellState extends State<ColorCell>
         row: widget.row ?? 0,
         col: widget.col ?? 0,
         flatSlots: widget.mosaicFlatSlots,
+        mosaicBSide: widget.mosaicBSide,
       );
     } else if (cell.value != 0 && !cell.hasNotes) {
       committedSwatch = swatchFor(cell.value);
@@ -429,24 +416,14 @@ class _ColorCellState extends State<ColorCell>
     if (!celebrating && mosaicTiles == null) {
       if (cell.value != 0 && !cell.hasNotes) {
         committedOutline =
-            IrodokuPalette.outlineForSlot(
-              cell.value,
-              widget.palette,
-              widget.swatchSources,
-              widget.swatchSlotOffset,
-            );
+            IrodokuPalette.outlineForSwatch(_swatchFor(cell.value));
       } else if (_departingCommittedSwatch != null) {
         committedOutline = _departingCommittedOutline;
       }
       if (noteSwatches != null) {
         noteOutlines = {
           for (final value in noteSwatches.keys)
-            if ((IrodokuPalette.outlineForSlot(
-                      value,
-                      widget.palette,
-                      widget.swatchSources,
-                      widget.swatchSlotOffset,
-                    ) ??
+            if ((IrodokuPalette.outlineForSwatch(_swatchFor(value)) ??
                     _departingNoteOutlines[value])
                 case final outline?)
               value: outline,
@@ -589,7 +566,7 @@ bool _swatchAnimates(
 }
 
 class _CellPainter extends CustomPainter {
-  static const _outlineWidth = 1.5;
+  static const _outlineWidth = 1.0;
 
   final Color emptyFill;
   final Set<int> notes;

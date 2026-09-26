@@ -50,6 +50,36 @@ enum GamePalette {
     );
   }
 
+  /// Player level that unlocks this palette's B-side. Null = no B-side.
+  int? get bSideUnlockLevel => switch (this) {
+        GamePalette.standard => 15,
+        GamePalette.rainbow => 20,
+        GamePalette.world11 => 25,
+        GamePalette.neon => 30,
+        GamePalette.pkmn => 35,
+        GamePalette.pkmn2 => 40,
+        GamePalette.glass => 45,
+        GamePalette.sky => 50,
+        _ => null,
+      };
+
+  bool get hasBSide => bSideUnlockLevel != null;
+
+  /// Highest B-side unlocked at [level]. Null below 15; Sky from 50 on.
+  static GamePalette? latestBSideForLevel(int level) {
+    GamePalette? latest;
+    var latestNeed = -1;
+    for (final palette in menuValues) {
+      final need = palette.bSideUnlockLevel;
+      if (need == null || level < need) continue;
+      if (need > latestNeed) {
+        latest = palette;
+        latestNeed = need;
+      }
+    }
+    return latest;
+  }
+
   /// Palettes shown in the Settings dropdown for everyone (Greyscale and Iro
   /// are gated separately).
   bool get visibleInMenu =>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,11 +9,12 @@ import '../core/theme.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
-import '../models/iro_mix.dart';
+import '../models/palette_swatch.dart';
 import '../providers/achievements_provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
+import '../widgets/dice_new_game_button.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/palette_sweep_mask.dart';
@@ -103,8 +105,9 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
 Future<void> showHowToPlayDialog(BuildContext context) {
   final baseStyle = Theme.of(context).textTheme.bodyMedium;
   final bold = baseStyle?.copyWith(fontWeight: FontWeight.w700);
-  final palette = context.read<SettingsProvider>().palette;
-  final paletteColors = IrodokuPalette.colorsFor(palette);
+  final settings = context.read<SettingsProvider>();
+  final palette = settings.palette;
+  final paletteColors = settings.colorsFor(palette);
 
   Widget irodokuLabel() => _PaletteSweepLabel(
         text: 'Irodoku',
@@ -608,56 +611,9 @@ class ConfigSettingsPanel extends StatelessWidget {
                 onChanged: settings.setDarkMode,
               ),
             ],
-            ListTile(
-              title: const Text('Palette'),
-              trailing: DropdownButtonHideUnderline(
-                child: DropdownButton<GamePalette>(
-                  value: settings.palette,
-                  alignment: AlignmentDirectional.centerEnd,
-                  items: [
-                    for (final palette in GamePalette.menuValues)
-                      DropdownMenuItem(
-                        value: palette,
-                        child: _LockedMenuItem(
-                          label: palette.label,
-                          unlocked: statsProvider.isPaletteUnlocked(palette),
-                        ),
-                      ),
-                    if (settings.isIroUnlocked)
-                      const DropdownMenuItem(
-                        value: GamePalette.iro,
-                        child: Text('Iro'),
-                      ),
-                  ],
-                  selectedItemBuilder: (context) => [
-                    for (final palette in GamePalette.menuValues)
-                      Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: Text(palette.label),
-                      ),
-                    if (settings.isIroUnlocked)
-                      const Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: Text('Iro'),
-                      ),
-                  ],
-                  onChanged: (palette) {
-                    if (palette == null) return;
-                    if (palette == GamePalette.iro) {
-                      if (!settings.isIroUnlocked) return;
-                    } else if (!statsProvider.isPaletteUnlocked(palette)) {
-                      _showPaletteLockedSnackBar(context, palette);
-                      return;
-                    }
-                    if (palette == settings.palette) return;
-                    _onPaletteChosen(context, settings, palette);
-                  },
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-              child: _PalettePreviewRow(palette: settings.palette),
+            _PaletteBlock(
+              settings: settings,
+              statsProvider: statsProvider,
             ),
           ],
         );
@@ -1042,6 +998,291 @@ class _BlockySwitch extends StatelessWidget {
   }
 }
 
+/// Palette row + preview. Iro remorphs when the saved mix key changes.
+class _PaletteBlock extends StatelessWidget {
+  final SettingsProvider settings;
+  final StatsProvider statsProvider;
+
+  const _PaletteBlock({
+    required this.settings,
+    required this.statsProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          title: const Text('Palette'),
+          trailing: _PaletteTrailing(
+            settings: settings,
+            statsProvider: statsProvider,
+            onRemixIro: () => settings.rerollIroMix(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          child: _PalettePreviewRow(
+            palette: settings.palette,
+            bSide: settings.bSideEnabled(settings.palette),
+            iroMixKey: settings.iroMix?.key,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Palette dropdown plus a reserved A/B or Iro-dice slot.
+class _PaletteTrailing extends StatefulWidget {
+  final SettingsProvider settings;
+  final StatsProvider statsProvider;
+  final VoidCallback onRemixIro;
+
+  const _PaletteTrailing({
+    required this.settings,
+    required this.statsProvider,
+    required this.onRemixIro,
+  });
+
+  @override
+  State<_PaletteTrailing> createState() => _PaletteTrailingState();
+}
+
+class _PaletteTrailingState extends State<_PaletteTrailing>
+    with SingleTickerProviderStateMixin {
+  static const _sideSize = 28.0;
+  static const _sideGap = 12.0;
+  static const _labelWidth = 80.0;
+  static const _borderWidth = 2.5;
+  static const _radius = BorderRadius.all(Radius.circular(2));
+
+  late final AnimationController _shake;
+  var _diceNumber = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _shake = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 210),
+    );
+  }
+
+  @override
+  void dispose() {
+    _shake.dispose();
+    super.dispose();
+  }
+
+  void _toggleSide() {
+    final settings = widget.settings;
+    final palette = settings.palette;
+    if (!settings.isBSideUnlocked(palette)) return;
+    settings.setBSideEnabled(palette, !settings.bSideEnabled(palette));
+    _shake.forward(from: 0);
+  }
+
+  void _rerollIro() {
+    playIgMenuSound(context);
+    setState(() => _diceNumber = math.Random().nextInt(6) + 1);
+    _shake.forward(from: 0);
+    widget.onRemixIro();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = widget.settings;
+    final statsProvider = widget.statsProvider;
+    final iroSelected = settings.palette == GamePalette.iro;
+    final reserveSide = iroSelected ||
+        settings.isIroUnlocked ||
+        GamePalette.menuValues.any(settings.isBSideUnlocked);
+    final showSide = settings.isBSideUnlocked(settings.palette);
+    final bSide = settings.bSideEnabled(settings.palette);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (reserveSide) ...[
+          SizedBox(
+            width: _sideSize,
+            height: _sideSize,
+            child: iroSelected
+                ? _PaletteIroDice(
+                    number: _diceNumber,
+                    shake: _shake,
+                    onTap: _rerollIro,
+                  )
+                : showSide
+                    ? _PaletteSideButton(
+                        bSide: bSide,
+                        shake: _shake,
+                        borderWidth: _borderWidth,
+                        radius: _radius,
+                        onTap: _toggleSide,
+                      )
+                    : null,
+          ),
+          const SizedBox(width: _sideGap),
+        ],
+        DropdownButtonHideUnderline(
+          child: DropdownButton<GamePalette>(
+            value: settings.palette,
+            alignment: AlignmentDirectional.centerEnd,
+            items: [
+              for (final palette in GamePalette.menuValues)
+                DropdownMenuItem(
+                  value: palette,
+                  child: _LockedMenuItem(
+                    label: palette.label,
+                    unlocked: statsProvider.isPaletteUnlocked(palette),
+                  ),
+                ),
+              if (settings.isIroUnlocked)
+                const DropdownMenuItem(
+                  value: GamePalette.iro,
+                  child: Text('Iro'),
+                ),
+            ],
+            selectedItemBuilder: (context) => [
+              for (final palette in GamePalette.menuValues)
+                SizedBox(
+                  width: _labelWidth,
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: Text(palette.label),
+                    ),
+                  ),
+                ),
+              if (settings.isIroUnlocked)
+                const SizedBox(
+                  width: _labelWidth,
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Text('Iro'),
+                  ),
+                ),
+            ],
+            onChanged: (palette) {
+              if (palette == null) return;
+              if (palette == GamePalette.iro) {
+                if (!settings.isIroUnlocked) return;
+              } else if (!statsProvider.isPaletteUnlocked(palette)) {
+                _showPaletteLockedSnackBar(context, palette);
+                return;
+              }
+              if (palette == settings.palette) return;
+              _onPaletteChosen(context, settings, palette);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaletteIroDice extends StatelessWidget {
+  final int number;
+  final Animation<double> shake;
+  final VoidCallback onTap;
+
+  const _PaletteIroDice({
+    required this.number,
+    required this.shake,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurface;
+    return Semantics(
+      button: true,
+      label: 'Reroll Iro',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedBuilder(
+          animation: shake,
+          builder: (context, child) {
+            final t = shake.value;
+            final dx = math.sin(t * math.pi * 5) * 4 * (1 - t);
+            final turns = math.sin(t * math.pi * 5) * 0.08 * (1 - t);
+            return Transform.translate(
+              offset: Offset(dx, 0),
+              child: Transform.rotate(angle: turns * math.pi * 2, child: child),
+            );
+          },
+          child: Center(
+            child: DiceFace(number: number, size: 22, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaletteSideButton extends StatelessWidget {
+  final bool bSide;
+  final Animation<double> shake;
+  final double borderWidth;
+  final BorderRadius radius;
+  final VoidCallback onTap;
+
+  const _PaletteSideButton({
+    required this.bSide,
+    required this.shake,
+    required this.borderWidth,
+    required this.radius,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ink = scheme.onSurface;
+    return Semantics(
+      button: true,
+      toggled: bSide,
+      label: bSide ? 'B-side' : 'A-side',
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bSide ? ink : scheme.surface,
+            borderRadius: radius,
+            border: Border.all(color: ink, width: borderWidth),
+          ),
+          child: AnimatedBuilder(
+            animation: shake,
+            builder: (context, child) {
+              final t = shake.value;
+              final dx = math.sin(t * math.pi * 5) * 4 * (1 - t);
+              return Transform.translate(offset: Offset(dx, 0), child: child);
+            },
+            child: Center(
+              child: Text(
+                bSide ? 'B' : 'A',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                  color: bSide ? scheme.surface : ink,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _LockedMenuItem extends StatelessWidget {
   final String label;
   final bool unlocked;
@@ -1080,77 +1321,134 @@ class _LockedMenuItem extends StatelessWidget {
 
 class _PalettePreviewRow extends StatefulWidget {
   final GamePalette palette;
+  final bool bSide;
+  final String? iroMixKey;
 
-  const _PalettePreviewRow({required this.palette});
+  const _PalettePreviewRow({
+    required this.palette,
+    this.bSide = false,
+    this.iroMixKey,
+  });
 
   @override
   State<_PalettePreviewRow> createState() => _PalettePreviewRowState();
 }
 
-class _PalettePreviewRowState extends State<_PalettePreviewRow> {
-  IroMix? _mix;
+class _PalettePreviewRowState extends State<_PalettePreviewRow>
+    with SingleTickerProviderStateMixin {
+  static const _morphDuration = Duration(milliseconds: 260);
+
+  late final AnimationController _morph;
+  List<PaletteSwatch> _from = const [];
+  List<PaletteSwatch> _to = const [];
+  var _depsReady = false;
 
   @override
   void initState() {
     super.initState();
-    _remixIfIro();
+    _morph = AnimationController(vsync: this, duration: _morphDuration)
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
+          setState(() {
+            _from = _to;
+            _morph.value = 0;
+          });
+        }
+      });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_depsReady) return;
+    _depsReady = true;
+    _to = _resolveSwatches();
+    _from = _to;
   }
 
   @override
   void didUpdateWidget(_PalettePreviewRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.palette != widget.palette) {
-      _remixIfIro();
+    if (oldWidget.palette == widget.palette &&
+        oldWidget.bSide == widget.bSide &&
+        oldWidget.iroMixKey == widget.iroMixKey) {
+      return;
     }
+    _from = _visibleSwatches();
+    _to = _resolveSwatches();
+    _morph.forward(from: 0);
   }
 
-  void _remixIfIro() {
-    _mix = widget.palette == GamePalette.iro ? IroMix.random() : null;
+  @override
+  void dispose() {
+    _morph.dispose();
+    super.dispose();
+  }
+
+  List<PaletteSwatch> _resolveSwatches() {
+    return context.read<SettingsProvider>().swatchesFor(widget.palette);
+  }
+
+  List<PaletteSwatch> _lerped(double rawT) {
+    final t = Curves.easeInOutCubic.transform(rawT.clamp(0.0, 1.0));
+    final from = _from;
+    final to = _to;
+    if (from.isEmpty) return to;
+    if (to.isEmpty) return from;
+    final n = math.max(from.length, to.length);
+    PaletteSwatch at(List<PaletteSwatch> list, int i) =>
+        list[i.clamp(0, list.length - 1)];
+    return [
+      for (var i = 0; i < n; i++) PaletteSwatch.lerp(at(from, i), at(to, i), t),
+    ];
+  }
+
+  List<PaletteSwatch> _visibleSwatches() {
+    if (_morph.isAnimating || _morph.value > 0) {
+      return _lerped(_morph.value);
+    }
+    return _to.isEmpty ? _resolveSwatches() : _to;
   }
 
   @override
   Widget build(BuildContext context) {
-    final palette = widget.palette;
     final line = IrodokuTheme.thinGridLine(IrodokuTheme.boardBrightness);
-    final mix = _mix;
-    final swatches = mix?.swatches ?? IrodokuPalette.swatchesFor(palette);
-    final sources = mix?.sources;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final swatchSize = constraints.maxWidth / 9;
-
-        return SizedBox(
-          height: swatchSize,
-          child: Row(
-            children: [
-              for (var i = 0; i < 9; i++)
-                SizedBox(
-                  width: swatchSize,
-                  height: swatchSize,
-                  child: DecoratedBox(
-                    decoration: swatches[i].boxDecoration(
-                      border: Border.all(
-                        color: IrodokuPalette.outlineForSlot(
-                              i + 1,
-                              palette,
-                              sources,
-                            ) ??
-                            line,
-                        width: IrodokuPalette.outlineForSlot(
-                                  i + 1,
-                                  palette,
-                                  sources,
-                                ) !=
-                                null
-                            ? 1.5
-                            : 0.6,
+    return AnimatedBuilder(
+      animation: _morph,
+      builder: (context, _) {
+        final swatches = _visibleSwatches();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final swatchSize = constraints.maxWidth / 9;
+            return SizedBox(
+              height: swatchSize,
+              child: Row(
+                children: [
+                  for (var i = 0; i < 9; i++)
+                    SizedBox(
+                      width: swatchSize,
+                      height: swatchSize,
+                      child: DecoratedBox(
+                        decoration: swatches[i].boxDecoration(
+                          border: Border.all(
+                            color:
+                                IrodokuPalette.outlineForSwatch(swatches[i]) ??
+                                    line,
+                            width: IrodokuPalette.outlineForSwatch(
+                                      swatches[i],
+                                    ) !=
+                                    null
+                                ? 1.0
+                                : 0.6,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-            ],
-          ),
+                ],
+              ),
+            );
+          },
         );
       },
     );

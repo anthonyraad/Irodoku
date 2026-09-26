@@ -15,6 +15,8 @@ class PausedGame {
 
   /// Live session palette (Chromatic hop / Daily), not the saved Config choice.
   final GamePalette? sessionPalette;
+  /// Frozen A/B side for [sessionPalette] / the Config palette on this board.
+  final bool sessionBSide;
   /// Iro slot sources for this board; null when not using an Iro mix.
   final List<String>? iroSources;
   /// Pocket: 0 = palette slots 1–6, 3 = slots 4–9. Ignored on 9×9 / Daily.
@@ -33,6 +35,7 @@ class PausedGame {
     this.isPocket = false,
     this.dailyDayKey,
     this.sessionPalette,
+    this.sessionBSide = false,
     this.iroSources,
     this.pocketSwatchOffset = 0,
     this.usedNotes = false,
@@ -49,6 +52,7 @@ class PausedGame {
       'isPocket': isPocket,
       'dailyDayKey': dailyDayKey,
       'sessionPalette': sessionPalette?.storageKey,
+      'sessionBSide': sessionBSide,
       'iroSources': iroSources,
       'pocketSwatchOffset': pocketSwatchOffset,
       'usedNotes': usedNotes,
@@ -119,6 +123,7 @@ class PausedGame {
       dailyDayKey: json['dailyDayKey'] as String?,
       sessionPalette:
           sessionKey == null ? null : GamePalette.fromStorageKey(sessionKey),
+      sessionBSide: json['sessionBSide'] == true,
       iroSources: _stringList(json['iroSources']),
       pocketSwatchOffset: _pocketSwatchOffsetFromJson(json['pocketSwatchOffset']),
       usedNotes: json['usedNotes'] as bool? ?? notesOnBoard,

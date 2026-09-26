@@ -380,6 +380,7 @@ class _GameBody extends StatelessWidget {
                             child: GraffitiGrid(
                               game: game,
                               palette: game.activePalette,
+                              displaySwatches: game.displaySwatches,
                             ),
                           ),
                           const SizedBox(height: toolbarGap),
@@ -444,6 +445,7 @@ class _GameBody extends StatelessWidget {
                                 xlMode: xlPicker && !pocketPicker,
                                 pocket: pocketPicker,
                                 palette: game.activePalette,
+                                displaySwatches: game.displaySwatches,
                                 onColorSelected: game.inputColor,
                                 onNoteAdded: game.addNote,
                                 onNoteRemoved: game.removeNote,

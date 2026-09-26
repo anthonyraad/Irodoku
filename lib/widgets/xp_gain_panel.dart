@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../core/palette.dart';
+import '../models/game_palette.dart';
 import '../models/player_xp.dart';
+import 'palette_sweep_mask.dart';
 
 const _bonusStartMs = 210;
 const _bonusStaggerMs = 80;
@@ -223,13 +226,21 @@ class XpLevelBar extends StatefulWidget {
   State<XpLevelBar> createState() => _XpLevelBarState();
 }
 
-class _XpLevelBarState extends State<XpLevelBar> {
+class _XpLevelBarState extends State<XpLevelBar>
+    with SingleTickerProviderStateMixin {
   late bool _xpTweenStarted;
   late bool _barTweenStarted;
+  late final AnimationController _bSideSweep;
 
   @override
   void initState() {
     super.initState();
+    _bSideSweep = AnimationController(
+      vsync: this,
+      duration: Duration(
+        milliseconds: PaletteSweepMask.duration.inMilliseconds * 2,
+      ),
+    );
     final delayed = widget.staggerPop;
     _xpTweenStarted = !delayed;
     _barTweenStarted = !delayed;
@@ -247,6 +258,39 @@ class _XpLevelBarState extends State<XpLevelBar> {
         },
       );
     }
+    _syncBSideSweep();
+  }
+
+  @override
+  void didUpdateWidget(covariant XpLevelBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.totalXp != widget.totalXp) _syncBSideSweep();
+  }
+
+  @override
+  void dispose() {
+    _bSideSweep.dispose();
+    super.dispose();
+  }
+
+  List<Color>? get _bSideSweepColors {
+    final palette = GamePalette.latestBSideForLevel(
+      PlayerXp.levelFor(widget.totalXp),
+    );
+    if (palette == null) return null;
+    return IrodokuPalette.colorsFor(palette, bSide: true);
+  }
+
+  void _syncBSideSweep() {
+    final colors = _bSideSweepColors;
+    if (colors == null || colors.length < 2) {
+      _bSideSweep
+        ..stop()
+        ..value = 0;
+      return;
+    }
+    if (_bSideSweep.isAnimating || _bSideSweep.isCompleted) return;
+    _bSideSweep.forward(from: 0);
   }
 
   Widget _pop({
@@ -349,19 +393,92 @@ class _XpLevelBarState extends State<XpLevelBar> {
             duration: const Duration(milliseconds: 700),
             curve: Curves.easeOutCubic,
             builder: (context, value, _) {
-              return ClipRRect(
-                borderRadius: const BorderRadius.all(Radius.circular(2)),
-                child: LinearProgressIndicator(
-                  value: value,
-                  minHeight: compact ? 6 : 8,
-                  backgroundColor: ink.withValues(alpha: 0.12),
-                  color: ink,
-                ),
+              return _XpProgressTrack(
+                value: value,
+                minHeight: compact ? 6 : 8,
+                ink: ink,
+                sweepColors: _bSideSweepColors,
+                sweep: _bSideSweep,
               );
             },
           ),
         ),
       ],
+    );
+  }
+}
+
+class _XpProgressTrack extends StatelessWidget {
+  final double value;
+  final double minHeight;
+  final Color ink;
+  final List<Color>? sweepColors;
+  final Animation<double> sweep;
+
+  const _XpProgressTrack({
+    required this.value,
+    required this.minHeight,
+    required this.ink,
+    required this.sweepColors,
+    required this.sweep,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = sweepColors;
+    final sweeping = colors != null && colors.length >= 2;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.all(Radius.circular(2)),
+      child: SizedBox(
+        height: minHeight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final fill = value.clamp(0.0, 1.0);
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(color: ink.withValues(alpha: 0.12)),
+                if (fill > 0)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: fill,
+                        child: SizedBox(
+                          width: width,
+                          height: minHeight,
+                          child: sweeping
+                              ? AnimatedBuilder(
+                                  animation: sweep,
+                                  builder: (context, _) {
+                                    final raw = sweep.value;
+                                    if (raw <= 0 || raw >= 1) {
+                                      return ColoredBox(color: ink);
+                                    }
+                                    return DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: PaletteSweepMask.gradient(
+                                          colors: colors,
+                                          ink: ink,
+                                          raw: raw,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : ColoredBox(color: ink),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }

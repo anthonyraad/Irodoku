@@ -17,11 +17,13 @@ import 'color_cell.dart';
 class GraffitiGrid extends StatefulWidget {
   final GraffitiProvider game;
   final GamePalette palette;
+  final List<PaletteSwatch>? displaySwatches;
 
   const GraffitiGrid({
     super.key,
     required this.game,
     required this.palette,
+    this.displaySwatches,
   });
 
   @override
@@ -96,9 +98,9 @@ class _GraffitiGridState extends State<GraffitiGrid>
   }
 
   void _syncGlassMotion({bool forceOff = false}) {
-    final needs = !forceOff &&
-        (widget.palette == GamePalette.glass ||
-            widget.palette == GamePalette.sky);
+    final swatches = widget.displaySwatches ??
+        IrodokuPalette.swatchesFor(widget.palette);
+    final needs = !forceOff && swatches.any((swatch) => swatch.animated);
     if (needs && !_holdingGlassMotion) {
       OrganicSwatchMotion.retain();
       _holdingGlassMotion = true;
@@ -269,13 +271,17 @@ class _GraffitiGridState extends State<GraffitiGrid>
                 final t = _cellProgress(stagger);
                 if (t > 0) {
                   final originalValue = celebration.originalValueFor(row, col);
-                  final original =
+                  final original = IrodokuPalette.swatchFromList(
+                        originalValue,
+                        widget.displaySwatches,
+                      ) ??
                       IrodokuPalette.swatchForValue(originalValue, palette)!;
                   celebrationSwatch = CelebrationColors.swatchFor(
                     t: t,
                     stagger: stagger,
                     original: original,
                     palette: palette,
+                    displaySwatches: widget.displaySwatches,
                   );
                   celebrationScale = CelebrationColors.scaleFor(t);
                   celebrationShimmer = CelebrationColors.shimmerFor(t);
@@ -301,6 +307,7 @@ class _GraffitiGridState extends State<GraffitiGrid>
                         isRelated: isRelated,
                         isSameColor: isSameColor,
                         palette: palette,
+                        displaySwatches: widget.displaySwatches,
                         bulkNoteSelect: game.bulkNoteSelect,
                         celebrationSwatch: celebrationSwatch,
                         celebrationScale: celebrationScale,

@@ -67,9 +67,6 @@ class ColorPicker extends StatelessWidget {
   final GamePalette palette;
   /// Optional live swatches (e.g. chromatic crossfade); falls back to [palette].
   final List<PaletteSwatch>? displaySwatches;
-  final List<GamePalette>? swatchSources;
-  /// Pocket 4–9 window: added to picker values for near-white outline checks.
-  final int swatchSlotOffset;
 
   const ColorPicker({
     super.key,
@@ -82,8 +79,6 @@ class ColorPicker extends StatelessWidget {
     required this.visible,
     required this.palette,
     this.displaySwatches,
-    this.swatchSources,
-    this.swatchSlotOffset = 0,
     this.xlMode = false,
     this.pocket = false,
     this.swatchWidth,
@@ -186,17 +181,12 @@ class ColorPicker extends StatelessWidget {
 
   Widget _buildSwatch({required int index, required Color line}) {
     final value = index + 1;
-    final outline = IrodokuPalette.outlineForSlot(
-      value,
-      palette,
-      swatchSources,
-      swatchSlotOffset,
-    );
     final swatches = displaySwatches ?? IrodokuPalette.swatchesFor(palette);
+    final outline = IrodokuPalette.outlineForSwatch(swatches[index]);
     return _ColorSwatch(
       swatch: swatches[index],
       borderColor: outline ?? line,
-      borderWidth: outline != null ? 1.5 : 0.6,
+      borderWidth: outline != null ? 1.0 : 0.6,
       onTap: () => onColorSelected(value),
       onSwipeDown: () => onNoteAdded(value),
       onSwipeUp: () => onNoteRemoved(value),

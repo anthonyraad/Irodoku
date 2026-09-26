@@ -6,8 +6,10 @@ import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
 import '../models/difficulty.dart';
+import '../core/palette.dart';
 import '../models/game_palette.dart';
 import '../models/note_clear_wave.dart';
+import '../models/palette_swatch.dart';
 import '../models/unit_celebration.dart';
 import '../services/graffiti_firebase_service.dart';
 import '../services/sound_service.dart';
@@ -91,6 +93,7 @@ class GraffitiProvider extends ChangeNotifier {
 
   /// Match palette shared via RTDB — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
+  bool _sessionBSide = false;
   bool _pocket = false;
 
   List<List<Cell>> _cells = List.generate(
@@ -153,6 +156,11 @@ class GraffitiProvider extends ChangeNotifier {
 
   /// Palette for this match (room-shared). Falls back to Config only before play.
   GamePalette get activePalette => _sessionPalette ?? _settings.palette;
+
+  bool get sessionBSide => _sessionBSide;
+
+  List<PaletteSwatch> get displaySwatches =>
+      IrodokuPalette.swatchesFor(activePalette);
 
   List<List<Cell>> get cells => _cells;
   int? get selectedRow => _selectedRow;
@@ -598,6 +606,7 @@ class GraffitiProvider extends ChangeNotifier {
     final key = data['palette']?.toString();
     if (key == null || key.isEmpty) return;
     _sessionPalette = GamePalette.fromStorageKey(key);
+    _sessionBSide = false;
   }
 
   void _playEndSoundOnce() {
@@ -1425,6 +1434,7 @@ class GraffitiProvider extends ChangeNotifier {
     _iWantRematch = false;
     _opponentWantsRematch = false;
     _sessionPalette = null;
+    _sessionBSide = false;
     _fillInFlight = false;
     _clearLockout();
     _cells = _emptyGrid();

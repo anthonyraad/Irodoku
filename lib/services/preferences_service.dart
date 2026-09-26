@@ -6,6 +6,7 @@ import '../models/achievements_progress.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../models/paused_game.dart';
@@ -18,6 +19,8 @@ class PreferencesService {
   static const _keyXlPicker = 'xl_picker';
   static const _keyChromatic = 'chromatic';
   static const _keyPalette = 'palette';
+  static const _keyPaletteBSides = 'palette_b_sides';
+  static const _keyIroMix = 'iro_mix';
   static const _keyCurrentStreak = 'stats_current_streak';
   static const _keyBestStreak = 'stats_best_streak';
   static const _keyGamesPlayed = 'stats_games_played';
@@ -234,6 +237,34 @@ class PreferencesService {
 
   Future<void> setPalette(GamePalette palette) async {
     await _prefs.setString(_keyPalette, palette.storageKey);
+  }
+
+  /// Storage keys whose B-side is currently selected.
+  Set<GamePalette> getPaletteBSides() {
+    final raw = _prefs.getStringList(_keyPaletteBSides) ?? const [];
+    return {
+      for (final key in raw)
+        for (final palette in GamePalette.values)
+          if (palette.storageKey == key && palette.hasBSide) palette,
+    };
+  }
+
+  IroMix? getIroMix() => IroMix.fromKeys(_prefs.getStringList(_keyIroMix));
+
+  Future<void> setIroMix(IroMix? mix) async {
+    if (mix == null) {
+      await _prefs.remove(_keyIroMix);
+      return;
+    }
+    await _prefs.setStringList(_keyIroMix, mix.toKeys());
+  }
+
+  Future<void> setPaletteBSides(Set<GamePalette> palettes) async {
+    final keys = [
+      for (final palette in palettes)
+        if (palette.hasBSide) palette.storageKey,
+    ]..sort();
+    await _prefs.setStringList(_keyPaletteBSides, keys);
   }
 
   GameStats loadStats() {
@@ -669,6 +700,8 @@ class PreferencesService {
       xpLastAwardDay: getXpLastAwardDay(),
       xpLastWinPalette: getXpLastWinPalette(),
       pocketSwipeDiscovered: getPocketSwipeDiscovered(),
+      paletteBSides: getPaletteBSides(),
+      iroMix: getIroMix(),
       iroen: loadIroenState(),
       iroenGallery: loadIroenGallery(),
       iroenActiveMosaicId: getIroenActiveMosaicId(),
@@ -704,6 +737,8 @@ class PreferencesService {
     await _setOptionalString(_keyXpLastAwardDay, backup.xpLastAwardDay);
     await _setOptionalString(_keyXpLastWinPalette, backup.xpLastWinPalette);
     await setPocketSwipeDiscovered(backup.pocketSwipeDiscovered);
+    await setPaletteBSides(backup.paletteBSides);
+    await setIroMix(backup.iroMix);
     final iroen = backup.iroen;
     if (iroen == null) {
       await _prefs.remove(_keyIroenState);

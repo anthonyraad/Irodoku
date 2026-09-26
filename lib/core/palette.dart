@@ -77,6 +77,102 @@ abstract final class IrodokuPalette {
     Color(0xFF7B3FF2), // Purple
   ];
 
+  static const List<Color> defaultBColors = [
+    Color(0xFFFF5D8F),
+    Color(0xFFFFB627),
+    Color(0xFF4ECDC4),
+    Color(0xFF6A4C93),
+    Color(0xFFFF6B35),
+    Color(0xFFD62839),
+    Color(0xFFB14DFF),
+    Color(0xFF468A64),
+    Color(0xFF3A86FF),
+  ];
+
+  static const List<Color> rainbowBColors = [
+    Color(0xFF33E69A),
+    Color(0xFF229EC3),
+    Color(0xFF455BED),
+    Color(0xFF5B22A0),
+    Color(0xFFE444CE),
+    Color(0xFF931021),
+    Color(0xFFDEB27C),
+    Color(0xFFB6C610),
+    Color(0xFF294570),
+  ];
+
+  static const List<Color> neonBColors = [
+    Color(0xFF6239AC),
+    Color(0xFF8697C6),
+    Color(0xFF69ED45),
+    Color(0xFF22A051),
+    Color(0xFF44DBE4),
+    Color(0xFF3B4BCE),
+    Color(0xFFAA7CDE),
+    Color(0xFFCF59B9),
+    Color(0xFFD6295E),
+  ];
+
+  static const List<Color> pkmnBColors = [
+    Color(0xFFB8860B),
+    Color(0xFFFF6B35),
+    Color(0xFF4A90E2),
+    Color(0xFFF4C430),
+    Color(0xFF2E8B57),
+    Color(0xFF40E0D0),
+    Color(0xFFC0392B),
+    Color(0xFF6A0DAD),
+    Color(0xFF2B2B2B),
+  ];
+
+  static const List<Color> pkmn2BColors = [
+    Color(0xFFA8C8E8),
+    Color(0xFF8B6F47),
+    Color(0xFFC9A876),
+    Color(0xFF6B4C93),
+    Color(0xFFE85D75),
+    Color(0xFF4A7A96),
+    Color(0xFFB0B8C4),
+    Color(0xFF4A9B6E),
+    Color(0xFF7B68A6),
+  ];
+
+  static const List<Color> glassBColors = [
+    Color(0xFFCFEAE3),
+    Color(0xFFA3D4D9),
+    Color(0xFF51B2D6),
+    Color(0xFF1B5DAC),
+    Color(0xFF98ACA9),
+    Color(0xFFF9E1B4),
+    Color(0xFFFFFDF7),
+    Color(0xFFFCFCFC),
+    Color(0xFFFCE8EC),
+  ];
+
+  static const List<Color> skyBColors = [
+    Color(0xFF32104F),
+    Color(0xFF54278F),
+    Color(0xFF8E5EA2),
+    Color(0xFFD45087),
+    Color(0xFFD62828),
+    Color(0xFFE85D04),
+    Color(0xFFFFB703),
+    Color(0xFFFFF77D),
+    Color(0xFFFFFBEF),
+  ];
+
+  static const List<Color> world11BColors = [
+    Color(0xFF1F5BFF),
+    Color(0xFFF79A1E),
+    Color(0xFFD7262E),
+    Color(0xFFF58FB5),
+    Color(0xFF2B2B3A),
+    Color(0xFFFFD400),
+    Color(0xFF37B24D),
+    Color(0xFF8E5BD6),
+    Color(0xFF9AA3AE),
+  ];
+
   static const List<Color> skyColors = [
     Color(0xFFF5F3FF),
     Color(0xFF73726F),
@@ -138,6 +234,12 @@ abstract final class IrodokuPalette {
     );
   });
 
+  static final List<PaletteSwatch> rainbowBSwatches = _organicFromColors(
+    rainbowBColors,
+    seedBase: 21,
+    intensity: 0.55,
+  );
+
   /// Same-hue light/dark companion for organic palettes (Rainbow, Glass).
   static Color _organicCompanion(Color color) {
     final hsl = HSLColor.fromColor(color);
@@ -182,13 +284,27 @@ abstract final class IrodokuPalette {
   );
 
   /// Same moving organic fill as Glass, with stronger warp and a slower drift.
-  static final List<PaletteSwatch> skySwatches = _organicFromColors(
-    skyColors,
-    seedBase: 800,
-    animated: true,
-    intensity: 1.85,
-    motionSpeed: 0.72,
-  );
+  static final List<PaletteSwatch> skySwatches = [
+    for (final (i, swatch) in _organicFromColors(
+      skyColors,
+      seedBase: 800,
+      animated: true,
+      intensity: 1.85,
+      motionSpeed: 0.72,
+    ).indexed)
+      i == 0
+          ? PaletteSwatch(
+              start: swatch.start,
+              stop: swatch.stop,
+              swirlSeed: swatch.swirlSeed,
+              style: swatch.style,
+              animated: swatch.animated,
+              intensity: swatch.intensity,
+              motionSpeed: swatch.motionSpeed,
+              outlined: true,
+            )
+          : swatch,
+  ];
 
   static List<PaletteSwatch> _solidSwatches(List<Color> colors) =>
       colors.map(PaletteSwatch.solid).toList();
@@ -215,19 +331,56 @@ abstract final class IrodokuPalette {
     (i) => PaletteSwatch.celShade(world11Colors[i], swirlSeed: 300 + i),
   );
 
+  static final List<PaletteSwatch> glassBSwatches = _organicFromColors(
+    glassBColors,
+    seedBase: 1600,
+    animated: true,
+  );
+
+  static final List<PaletteSwatch> skyBSwatches = _organicFromColors(
+    skyBColors,
+    seedBase: 1800,
+    animated: true,
+    intensity: 1.85,
+    motionSpeed: 0.72,
+  );
+
+  static final List<PaletteSwatch> neonBSwatches = List.generate(
+    neonBColors.length,
+    (i) => PaletteSwatch.neon(neonBColors[i], swirlSeed: 1400 + i),
+  );
+
+  static final List<PaletteSwatch> pkmnBSwatches = List.generate(
+    pkmnBColors.length,
+    (i) => PaletteSwatch.gloss(pkmnBColors[i], swirlSeed: 1500 + i),
+  );
+
+  static final List<PaletteSwatch> pkmn2BSwatches = List.generate(
+    pkmn2BColors.length,
+    (i) => PaletteSwatch.gloss(pkmn2BColors[i], swirlSeed: 1600 + i),
+  );
+
+  static final List<PaletteSwatch> world11BSwatches = List.generate(
+    world11BColors.length,
+    (i) => PaletteSwatch.celShade(world11BColors[i], swirlSeed: 1300 + i),
+  );
+
   static List<PaletteSwatch> swatchesFor(
     GamePalette palette, {
+    bool bSide = false,
     Set<int> flatSlots = const {},
   }) {
+    final useB = bSide && palette.hasBSide;
     final base = switch (palette) {
-      GamePalette.standard => _solidSwatches(defaultColors),
-      GamePalette.rainbow => rainbowSwatches,
-      GamePalette.world11 => world11Swatches,
-      GamePalette.neon => neonSwatches,
-      GamePalette.pkmn => pkmnSwatches,
-      GamePalette.pkmn2 => pkmn2Swatches,
-      GamePalette.glass => glassSwatches,
-      GamePalette.sky => skySwatches,
+      GamePalette.standard =>
+        _solidSwatches(useB ? defaultBColors : defaultColors),
+      GamePalette.rainbow => useB ? rainbowBSwatches : rainbowSwatches,
+      GamePalette.world11 => useB ? world11BSwatches : world11Swatches,
+      GamePalette.neon => useB ? neonBSwatches : neonSwatches,
+      GamePalette.pkmn => useB ? pkmnBSwatches : pkmnSwatches,
+      GamePalette.pkmn2 => useB ? pkmn2BSwatches : pkmn2Swatches,
+      GamePalette.glass => useB ? glassBSwatches : glassSwatches,
+      GamePalette.sky => useB ? skyBSwatches : skySwatches,
       GamePalette.greyscale => _solidSwatches(greyscaleColors),
       GamePalette.iro => _iroShowcaseSwatches(),
     };
@@ -243,7 +396,10 @@ abstract final class IrodokuPalette {
     return [
       for (var i = 0; i < swatches.length; i++)
         values.contains(i + 1)
-            ? PaletteSwatch.solid(swatches[i].representative)
+            ? PaletteSwatch.solid(
+                swatches[i].representative,
+                outlined: swatches[i].outlined,
+              )
             : swatches[i],
     ];
   }
@@ -256,18 +412,28 @@ abstract final class IrodokuPalette {
     ];
   }
 
-  static List<Color> colorsFor(GamePalette palette) =>
-      swatchesFor(palette).map((swatch) => swatch.representative).toList();
+  static List<Color> colorsFor(GamePalette palette, {bool bSide = false}) =>
+      swatchesFor(palette, bSide: bSide)
+          .map((swatch) => swatch.representative)
+          .toList();
 
   /// Value is 1–9. Returns null for empty (0).
-  static Color? colorForValue(int value, GamePalette palette) {
+  static Color? colorForValue(
+    int value,
+    GamePalette palette, {
+    bool bSide = false,
+  }) {
     if (value < 1 || value > 9) return null;
-    return swatchesFor(palette)[value - 1].representative;
+    return swatchesFor(palette, bSide: bSide)[value - 1].representative;
   }
 
-  static PaletteSwatch? swatchForValue(int value, GamePalette palette) {
+  static PaletteSwatch? swatchForValue(
+    int value,
+    GamePalette palette, {
+    bool bSide = false,
+  }) {
     if (value < 1 || value > 9) return null;
-    return swatchesFor(palette)[value - 1];
+    return swatchesFor(palette, bSide: bSide)[value - 1];
   }
 
   /// Swatch for [value] from an explicit 9-slot display list, if valid.
@@ -276,18 +442,19 @@ abstract final class IrodokuPalette {
     return swatches[value - 1];
   }
 
-  /// Near-white fills need an outline so they don't match empty cells.
+  /// Darker edge used only on Sky A-side slot 1.
   static const Color lightFillOutline = Color(0xFF444444);
 
-  static Color? outlineForValue(int value, GamePalette palette) {
-    if (palette == GamePalette.greyscale && value == 9) {
-      return lightFillOutline;
-    }
-    // Sky first slot (#F5F3FF) is near-white.
-    if (palette == GamePalette.sky && value == 1) {
-      return lightFillOutline;
-    }
-    return null;
+  static Color? outlineForSwatch(PaletteSwatch swatch) =>
+      swatch.outlined ? lightFillOutline : null;
+
+  static Color? outlineForValue(
+    int value,
+    GamePalette palette, {
+    bool bSide = false,
+  }) {
+    if (value < 1 || value > 9) return null;
+    return outlineForSwatch(swatchesFor(palette, bSide: bSide)[value - 1]);
   }
 
   /// Pocket high window: board values 1–6 map to palette slots 4–9.

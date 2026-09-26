@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../core/irodoku_page_route.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
+import '../models/player_xp.dart';
 import '../providers/game_provider.dart';
 import '../providers/iroen_provider.dart';
 import '../providers/settings_provider.dart';
@@ -141,6 +142,23 @@ class _GameScreenState extends State<GameScreen> {
           final unlocks = game.consumePendingPaletteUnlocks();
           for (final palette in unlocks) {
             _showPaletteUnlockedSnackBar(context, palette);
+          }
+          final award = context.read<StatsProvider>().lastXpAward;
+          if (award != null) {
+            final stats = context.read<StatsProvider>();
+            final bSides = {
+              ...PlayerXp.bSidesUnlockedByLevelUp(
+                fromXp: award.previousTotal,
+                toXp: award.newTotal,
+                paletteUnlocked: stats.isPaletteUnlocked,
+              ),
+              for (final palette in unlocks)
+                if (context.read<SettingsProvider>().isBSideUnlocked(palette))
+                  palette,
+            };
+            for (final palette in bSides) {
+              _showBSideUnlockedSnackBar(context, palette);
+            }
           }
         }
         showWinDialog(
@@ -452,9 +470,6 @@ class _GameScreenState extends State<GameScreen> {
                                               pocket: pocketPicker,
                                               palette: palette,
                                               displaySwatches: swatches,
-                                              swatchSources: game.iroSources,
-                                              swatchSlotOffset:
-                                                  game.pocketSwatchOffset,
                                               visible: true,
                                               onColorSelected:
                                                   game.applyPickerColor,
@@ -519,6 +534,38 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                   const TextSpan(text: ' unlocked!'),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+  }
+
+  void _showBSideUnlockedSnackBar(BuildContext context, GamePalette palette) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: SizedBox(
+            width: double.infinity,
+            child: Text.rich(
+              TextSpan(
+                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                    TextStyle(
+                      color: Theme.of(context).colorScheme.onInverseSurface,
+                    ),
+                children: [
+                  TextSpan(
+                    text: palette.label,
+                    style: const TextStyle(
+                      color: Colors.lightBlueAccent,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const TextSpan(text: ' B-side unlocked!'),
                 ],
               ),
               textAlign: TextAlign.center,

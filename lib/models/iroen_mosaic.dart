@@ -8,6 +8,8 @@ class IroenMosaic {
   final List<int> detail;
   final int updatedAtMs;
   final GamePalette palette;
+  /// Frozen A/B side for [palette] when this mosaic was saved.
+  final bool bSide;
   /// Picker values 1–9 whose palette texture is stripped to a solid fill.
   final Set<int> flatSlots;
 
@@ -17,6 +19,7 @@ class IroenMosaic {
     required this.detail,
     required this.updatedAtMs,
     this.palette = GamePalette.standard,
+    this.bSide = false,
     this.flatSlots = const {},
   });
 
@@ -64,6 +67,7 @@ class IroenMosaic {
     List<int>? detail,
     int? updatedAtMs,
     GamePalette? palette,
+    bool? bSide,
     Set<int>? flatSlots,
   }) {
     return IroenMosaic(
@@ -72,6 +76,7 @@ class IroenMosaic {
       detail: detail ?? this.detail,
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
       palette: palette ?? this.palette,
+      bSide: bSide ?? this.bSide,
       flatSlots: flatSlots ?? this.flatSlots,
     );
   }
@@ -82,6 +87,7 @@ class IroenMosaic {
         'detail': detail,
         'updatedAtMs': updatedAtMs,
         'palette': palette.storageKey,
+        if (bSide) 'bSide': true,
         if (flatSlots.isNotEmpty) 'flatSlots': (flatSlots.toList()..sort()),
       };
 
@@ -98,6 +104,7 @@ class IroenMosaic {
       detail: detailRaw,
       updatedAtMs: _mosaicInt(json['updatedAtMs']),
       palette: GamePalette.fromStorageKey(json['palette']?.toString()),
+      bSide: json['bSide'] == true,
       flatSlots: IroenState.parseFlatSlots(json['flatSlots']),
     );
   }

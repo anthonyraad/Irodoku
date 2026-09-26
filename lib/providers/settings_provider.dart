@@ -1,8 +1,15 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
+
+import '../core/palette.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../models/iro_mix.dart';
+import '../models/palette_swatch.dart';
+import '../models/player_xp.dart';
 import '../services/preferences_service.dart';
 import 'achievements_provider.dart';
 import 'stats_provider.dart';
@@ -24,6 +31,8 @@ class SettingsProvider extends ChangeNotifier {
   bool _xlPicker;
   bool _chromatic;
   GamePalette _palette;
+  Set<GamePalette> _paletteBSides;
+  IroMix? _iroMix;
   bool _pocketSwipeDiscovered;
   int _darkModeToggleStreak = 0;
   DateTime? _lastDarkModeToggle;
@@ -44,6 +53,8 @@ class SettingsProvider extends ChangeNotifier {
         _xlPicker = _prefs.getXlPicker(),
         _chromatic = _prefs.getChromatic(),
         _palette = _prefs.getPalette(),
+        _paletteBSides = _prefs.getPaletteBSides(),
+        _iroMix = _prefs.getIroMix(),
         _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered() {
     _clampDifficultyToUnlocked();
     _clampPaletteToUnlocked();
@@ -52,6 +63,8 @@ class SettingsProvider extends ChangeNotifier {
 
   void applyAfterProgressLoad() {
     _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered();
+    _paletteBSides = _prefs.getPaletteBSides();
+    _iroMix = _prefs.getIroMix()?.withBSides(bSideEnabled);
     ensureDifficultyUnlocked(_stats.stats);
     ensurePaletteUnlocked(_stats.stats);
     _clampChromaticToUnlocked();
@@ -75,6 +88,72 @@ class SettingsProvider extends ChangeNotifier {
   bool get xlPicker => true;
   bool get chromatic => _chromatic;
   GamePalette get palette => _palette;
+
+  bool isBSideUnlocked(GamePalette palette) {
+    final need = palette.bSideUnlockLevel;
+    if (need == null) return false;
+    if (_devMode) return true;
+    if (!_stats.isPaletteUnlocked(palette)) return false;
+    return PlayerXp.levelFor(_stats.stats.totalXp) >= need;
+  }
+
+  bool bSideEnabled(GamePalette palette) =>
+      isBSideUnlocked(palette) && _paletteBSides.contains(palette);
+
+  Future<void> setBSideEnabled(GamePalette palette, bool enabled) async {
+    if (!isBSideUnlocked(palette)) return;
+    final next = Set<GamePalette>.from(_paletteBSides);
+    if (enabled) {
+      next.add(palette);
+    } else {
+      next.remove(palette);
+    }
+    if (next.length == _paletteBSides.length &&
+        next.containsAll(_paletteBSides)) {
+      return;
+    }
+    _paletteBSides = next;
+    _syncIroMixBSides();
+    notifyListeners();
+    await _prefs.setPaletteBSides(_paletteBSides);
+  }
+
+  IroMix? get iroMix => _iroMix;
+
+  /// Display swatches for Config / Iroen / sweeps, including the saved Iro mix.
+  List<PaletteSwatch> swatchesFor(
+    GamePalette palette, {
+    Set<int> flatSlots = const {},
+  }) {
+    if (palette == GamePalette.iro) {
+      final mix = _iroMix ?? IroMix.showcase(bSideEnabled);
+      return IrodokuPalette.flattenSlots(mix.swatches, flatSlots);
+    }
+    return IrodokuPalette.swatchesFor(
+      palette,
+      bSide: bSideEnabled(palette),
+      flatSlots: flatSlots,
+    );
+  }
+
+  List<Color> colorsFor(GamePalette palette) =>
+      swatchesFor(palette).map((swatch) => swatch.representative).toList();
+
+  /// New random Iro mashup. Used by the Config dice and new Iro games.
+  void rerollIroMix({bool notify = true}) {
+    _iroMix = IroMix.random(null, bSideEnabled);
+    if (notify) notifyListeners();
+    unawaited(_prefs.setIroMix(_iroMix));
+  }
+
+  void _syncIroMixBSides() {
+    final mix = _iroMix;
+    if (mix == null) return;
+    final next = mix.withBSides(bSideEnabled);
+    if (next.key == mix.key) return;
+    _iroMix = next;
+    unawaited(_prefs.setIroMix(_iroMix));
+  }
   /// True after a successful swipe-right to Pocket on the Main Menu button.
   bool get pocketSwipeDiscovered => _pocketSwipeDiscovered;
   bool get isIroUnlocked => _devMode || _achievements.allUnlocked;
@@ -163,7 +242,11 @@ class SettingsProvider extends ChangeNotifier {
         }
       }
     }
+    final selectedIro = palette == GamePalette.iro && _palette != GamePalette.iro;
     _palette = palette;
+    if (selectedIro) {
+      rerollIroMix(notify: false);
+    }
     notifyListeners();
     await _prefs.setPalette(palette);
   }

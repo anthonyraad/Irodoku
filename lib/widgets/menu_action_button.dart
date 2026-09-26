@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../core/palette.dart';
 import '../providers/settings_provider.dart';
 import 'menu_select_sound.dart';
 import 'palette_sweep_mask.dart';
@@ -260,9 +259,8 @@ class _MenuActionBadge extends StatelessWidget {
       return _badgeShell(scheme: scheme, color: fill, child: text);
     }
 
-    final colors = IrodokuPalette.colorsFor(
-      context.watch<SettingsProvider>().palette,
-    );
+    final settings = context.watch<SettingsProvider>();
+    final colors = settings.colorsFor(settings.palette);
     return AnimatedBuilder(
       animation: progress,
       builder: (context, child) {

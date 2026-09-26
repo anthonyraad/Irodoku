@@ -26,7 +26,7 @@ void main() {
     );
     expect(
       IrodokuPalette.outlineForSlot(6, GamePalette.greyscale, null, offset),
-      IrodokuPalette.lightFillOutline,
+      isNull,
     );
   });
 

@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
 import '../models/game_palette.dart';
-import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../models/palette_swatch.dart';
@@ -65,8 +64,19 @@ class IroenProvider extends ChangeNotifier {
   /// Picker values 1–9 currently shown as solids (no palette texture).
   Set<int> get flatSlots => Set.unmodifiable(_flatSlots);
 
-  List<PaletteSwatch> displaySwatchesFor(GamePalette palette) =>
-      IrodokuPalette.swatchesFor(palette, flatSlots: _flatSlots);
+  List<PaletteSwatch> displaySwatchesFor(
+    GamePalette palette, {
+    bool? bSide,
+  }) {
+    if (palette == GamePalette.iro) {
+      return _settings.swatchesFor(palette, flatSlots: _flatSlots);
+    }
+    return IrodokuPalette.swatchesFor(
+      palette,
+      bSide: bSide ?? _settings.bSideEnabled(palette),
+      flatSlots: _flatSlots,
+    );
+  }
 
   /// Swipe left on a picker color to strip its texture; swipe right to restore.
   void setSlotFlat(int value, {required bool flat}) {
@@ -202,9 +212,59 @@ class IroenProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _bulkPainting = false;
+  bool _ignoreNextBulkTap = false;
+  bool _pendingBulkExit = false;
+
+  /// Add [row],[col] to the bulk selection (enters bulk if needed). Never toggles off.
+  void addBulkCell(int row, int col) {
+    if (isPickingQuadrant) return;
+    if (!_bulkNoteSelect) {
+      enterBulkNoteSelect(row, col);
+      return;
+    }
+    final key = _cellKey(row, col);
+    if (_bulkSelected.contains(key)) return;
+    _bulkSelected.add(key);
+    _selected = (row, col);
+    notifyListeners();
+  }
+
+  void prepareBulkPaintGesture() {
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
+  }
+
+  void beginBulkPaint() {
+    _bulkPainting = true;
+    _ignoreNextBulkTap = true;
+    _pendingBulkExit = false;
+  }
+
+  void endBulkPaint() {
+    _bulkPainting = false;
+  }
+
+  /// Stationary long-press in bulk exits on lift, so a follow-up swipe can still add cells.
+  void completePendingBulkExit(int? row, int? col) {
+    if (!_pendingBulkExit || _bulkPainting || !_bulkNoteSelect) {
+      _pendingBulkExit = false;
+      return;
+    }
+    _pendingBulkExit = false;
+    _exitBulkNoteSelect();
+    if (row != null && col != null) _selected = (row, col);
+    notifyListeners();
+  }
+
   void selectCell(int row, int col) {
     if (isPickingQuadrant) {
       selectQuadrant(row ~/ 3, col ~/ 3);
+      return;
+    }
+
+    if (_ignoreNextBulkTap) {
+      _ignoreNextBulkTap = false;
       return;
     }
 
@@ -224,10 +284,9 @@ class IroenProvider extends ChangeNotifier {
 
   void handleCellLongPress(int row, int col) {
     if (isPickingQuadrant) return;
+    if (_bulkPainting) return;
     if (_bulkNoteSelect) {
-      _exitBulkNoteSelect();
-      _selected = (row, col);
-      notifyListeners();
+      _pendingBulkExit = true;
       return;
     }
 
@@ -291,6 +350,9 @@ class IroenProvider extends ChangeNotifier {
   void _exitBulkNoteSelect() {
     _bulkNoteSelect = false;
     _bulkSelected.clear();
+    _bulkPainting = false;
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
   }
 
   void clearSelection() {
@@ -370,9 +432,12 @@ class IroenProvider extends ChangeNotifier {
   void _playPlacementConfirm(int value) {
     if (!_settings.soundEnabled) return;
     final palette = _settings.palette;
-    final sources = IroMix.sourcePalettes;
-    final source = palette == GamePalette.iro && value >= 1 && value <= 9
-        ? sources[(value - 1) % sources.length]
+    final mix = _settings.iroMix;
+    final source = palette == GamePalette.iro &&
+            mix != null &&
+            value >= 1 &&
+            value <= mix.sources.length
+        ? mix.sources[value - 1]
         : palette;
     unawaited(_sounds.playPlacementConfirm(source, value));
   }
@@ -532,6 +597,7 @@ class IroenProvider extends ChangeNotifier {
         detail: flat,
         updatedAtMs: now,
         palette: palette,
+        bSide: _settings.bSideEnabled(palette),
         flatSlots: {..._flatSlots},
       );
       _gallery = [..._gallery]..[activeIndex] = updated;
@@ -547,6 +613,7 @@ class IroenProvider extends ChangeNotifier {
       detail: flat,
       updatedAtMs: now,
       palette: palette,
+      bSide: _settings.bSideEnabled(palette),
       flatSlots: {..._flatSlots},
     );
     _gallery = [..._gallery, mosaic];
@@ -567,6 +634,7 @@ class IroenProvider extends ChangeNotifier {
       detail: _flatDetail(),
       updatedAtMs: now,
       palette: palette,
+      bSide: _settings.bSideEnabled(palette),
       flatSlots: {..._flatSlots},
     );
     _gallery = [..._gallery, mosaic];
