@@ -116,7 +116,10 @@ class _StatsScreenState extends State<StatsScreen> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.all(16),
-                            child: _PalettePreviewRow(palette: favoritePalette),
+                            child: _PalettePreviewRow(
+                              palette: favoritePalette.palette,
+                              bSide: favoritePalette.bSide,
+                            ),
                           ),
                         ],
                       ),
@@ -165,7 +168,10 @@ class _StatsScreenState extends State<StatsScreen> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.all(16),
-                            child: _PalettePreviewRow(palette: favoritePalette),
+                            child: _PalettePreviewRow(
+                              palette: favoritePalette.palette,
+                              bSide: favoritePalette.bSide,
+                            ),
                           ),
                         ],
                       ),
@@ -217,14 +223,18 @@ class _StatsScreenState extends State<StatsScreen> {
 
 class _PalettePreviewRow extends StatelessWidget {
   final GamePalette palette;
+  final bool bSide;
 
-  const _PalettePreviewRow({required this.palette});
+  const _PalettePreviewRow({
+    required this.palette,
+    this.bSide = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final line = IrodokuTheme.thinGridLine(IrodokuTheme.boardBrightness);
     final settings = context.watch<SettingsProvider>();
-    final swatches = settings.swatchesFor(palette);
+    final swatches = settings.swatchesFor(palette, bSide: bSide);
 
     return LayoutBuilder(
       builder: (context, constraints) {

@@ -2147,6 +2147,7 @@ class GameProvider extends ChangeNotifier {
             elapsed: _elapsed,
             mistakes: _mistakes,
             palette: winPalette,
+            bSide: _settings.bSideEnabled(winPalette),
             chromatic: _settings.chromatic,
             suppressSpeedAndFlawless: _retriedAfterLoss,
           );
@@ -2183,6 +2184,7 @@ class GameProvider extends ChangeNotifier {
           elapsed: _elapsed,
           mistakes: _mistakes,
           palette: winPalette,
+          bSide: _settings.bSideEnabled(winPalette),
           chromatic: _settings.chromatic && !_isDaily,
           daily: _isDaily,
           dailyStreak: _isDaily ? _dailyStreakAfterThisWin(pocket: false) : 0,

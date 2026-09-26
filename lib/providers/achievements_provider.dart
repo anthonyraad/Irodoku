@@ -177,10 +177,7 @@ class AchievementsProvider extends ChangeNotifier {
     for (final palette in GamePalette.values) {
       final lower = math.max(
         winsByPalette[palette] ?? 0,
-        math.max(
-          stats.bestStreakForPalette(palette),
-          stats.currentStreakByPalette[palette] ?? 0,
-        ),
+        stats.paletteWinLowerBound(palette),
       );
       if (lower > 0) winsByPalette[palette] = lower;
     }

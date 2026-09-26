@@ -68,7 +68,7 @@ abstract final class IrodokuPalette {
   static const List<Color> glassColors = [
     Color(0xFF243D42),
     Color(0xFF0B3C8C), // Deep Navy
-    Color(0xFF2563EB), // Royal Blue
+    Color(0xFF6A95F1), // Royal Blue
     Color(0xFFCFD8DC), // Light grey
     Color(0xFF00D9B4), // Turquoise
     Color(0xFF009448), // Emerald

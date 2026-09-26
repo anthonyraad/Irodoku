@@ -68,6 +68,7 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool bSide = false,
     bool chromatic = false,
     bool daily = false,
     int dailyStreak = 0,
@@ -80,6 +81,7 @@ class StatsProvider extends ChangeNotifier {
       elapsed: elapsed,
       mistakes: mistakes,
       palette: palette,
+      bSide: bSide,
       chromatic: chromatic,
       daily: daily,
       dailyStreak: dailyStreak,
@@ -96,6 +98,7 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool bSide = false,
     bool chromatic = false,
     bool daily = false,
     int dailyStreak = 0,
@@ -108,6 +111,7 @@ class StatsProvider extends ChangeNotifier {
       elapsed: elapsed,
       mistakes: mistakes,
       palette: palette,
+      bSide: bSide,
       chromatic: chromatic,
       daily: daily,
       dailyStreak: dailyStreak,
@@ -224,6 +228,7 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool bSide = false,
     bool chromatic = false,
     bool suppressSpeedAndFlawless = false,
   }) {
@@ -233,14 +238,20 @@ class StatsProvider extends ChangeNotifier {
     final pocketBest = Map<GamePalette, int>.from(
       _stats.pocketBestStreakByPalette,
     );
-    for (final p in GamePalette.values) {
-      if (p != palette) pocketCurrent[p] = 0;
-    }
-    final paletteCurrent = (pocketCurrent[palette] ?? 0) + 1;
-    pocketCurrent[palette] = paletteCurrent;
-    if (paletteCurrent > (pocketBest[palette] ?? 0)) {
-      pocketBest[palette] = paletteCurrent;
-    }
+    final pocketCurrentB = Map<GamePalette, int>.from(
+      _stats.pocketCurrentStreakByPaletteB,
+    );
+    final pocketBestB = Map<GamePalette, int>.from(
+      _stats.pocketBestStreakByPaletteB,
+    );
+    _creditPaletteSkin(
+      currentA: pocketCurrent,
+      currentB: pocketCurrentB,
+      bestA: pocketBest,
+      bestB: pocketBestB,
+      palette: palette,
+      bSide: bSide,
+    );
 
     if (chromatic) {
       final previous = _stats.pocketChromaticBestTime;
@@ -253,6 +264,8 @@ class StatsProvider extends ChangeNotifier {
         pocketChromaticBestTime: bestTime,
         pocketCurrentStreakByPalette: pocketCurrent,
         pocketBestStreakByPalette: pocketBest,
+        pocketCurrentStreakByPaletteB: pocketCurrentB,
+        pocketBestStreakByPaletteB: pocketBestB,
         pocketChromaticCurrentStreak: chromaticStreak,
         pocketChromaticBestStreak:
             chromaticStreak > _stats.pocketChromaticBestStreak
@@ -270,6 +283,8 @@ class StatsProvider extends ChangeNotifier {
         pocketBestTime: bestTime,
         pocketCurrentStreakByPalette: pocketCurrent,
         pocketBestStreakByPalette: pocketBest,
+        pocketCurrentStreakByPaletteB: pocketCurrentB,
+        pocketBestStreakByPaletteB: pocketBestB,
         pocketCurrentStreak: streak,
         pocketBestStreak: streak > _stats.pocketBestStreak
             ? streak
@@ -378,6 +393,7 @@ class StatsProvider extends ChangeNotifier {
     required Duration elapsed,
     required int mistakes,
     required GamePalette palette,
+    bool bSide = false,
     required bool chromatic,
     required bool daily,
     required int dailyStreak,
@@ -423,14 +439,20 @@ class StatsProvider extends ChangeNotifier {
     final bestStreakByPalette = Map<GamePalette, int>.from(
       _stats.bestStreakByPalette,
     );
-    for (final p in GamePalette.values) {
-      if (p != palette) currentStreakByPalette[p] = 0;
-    }
-    final paletteCurrent = (currentStreakByPalette[palette] ?? 0) + 1;
-    currentStreakByPalette[palette] = paletteCurrent;
-    if (paletteCurrent > (bestStreakByPalette[palette] ?? 0)) {
-      bestStreakByPalette[palette] = paletteCurrent;
-    }
+    final currentStreakByPaletteB = Map<GamePalette, int>.from(
+      _stats.currentStreakByPaletteB,
+    );
+    final bestStreakByPaletteB = Map<GamePalette, int>.from(
+      _stats.bestStreakByPaletteB,
+    );
+    _creditPaletteSkin(
+      currentA: currentStreakByPalette,
+      currentB: currentStreakByPaletteB,
+      bestA: bestStreakByPalette,
+      bestB: bestStreakByPaletteB,
+      palette: palette,
+      bSide: bSide,
+    );
 
     final unlockedPalettes = Set<GamePalette>.from(_stats.unlockedPalettes);
     final newlyUnlocked = <GamePalette>[];
@@ -488,6 +510,8 @@ class StatsProvider extends ChangeNotifier {
       unlockedPalettes: unlockedPalettes,
       bestStreakByPalette: bestStreakByPalette,
       currentStreakByPalette: currentStreakByPalette,
+      bestStreakByPaletteB: bestStreakByPaletteB,
+      currentStreakByPaletteB: currentStreakByPaletteB,
     );
     _awardWinXp(
       difficulty: difficulty,
@@ -510,15 +534,17 @@ class StatsProvider extends ChangeNotifier {
   }
 
   void resetStreakSync({required GamePalette palette}) {
-    final currentStreakByPalette = Map<GamePalette, int>.from(
-      _stats.currentStreakByPalette,
-    );
-    final hadPaletteStreak = (currentStreakByPalette[palette] ?? 0) > 0;
-    currentStreakByPalette[palette] = 0;
+    final currentA = Map<GamePalette, int>.from(_stats.currentStreakByPalette);
+    final currentB = Map<GamePalette, int>.from(_stats.currentStreakByPaletteB);
+    final hadPaletteStreak = (currentA[palette] ?? 0) > 0 ||
+        (currentB[palette] ?? 0) > 0;
+    currentA[palette] = 0;
+    currentB[palette] = 0;
     if (_stats.currentStreak == 0 && !hadPaletteStreak) return;
     _stats = _stats.copyWith(
       currentStreak: 0,
-      currentStreakByPalette: currentStreakByPalette,
+      currentStreakByPalette: currentA,
+      currentStreakByPaletteB: currentB,
     );
     notifyListeners();
   }
@@ -531,17 +557,47 @@ class StatsProvider extends ChangeNotifier {
     final pocketCurrent = Map<GamePalette, int>.from(
       _stats.pocketCurrentStreakByPalette,
     );
+    final pocketCurrentB = Map<GamePalette, int>.from(
+      _stats.pocketCurrentStreakByPaletteB,
+    );
     pocketCurrent[palette] = 0;
+    pocketCurrentB[palette] = 0;
     _stats = chromatic
         ? _stats.copyWith(
             pocketCurrentStreakByPalette: pocketCurrent,
+            pocketCurrentStreakByPaletteB: pocketCurrentB,
             pocketChromaticCurrentStreak: 0,
           )
         : _stats.copyWith(
             pocketCurrentStreakByPalette: pocketCurrent,
+            pocketCurrentStreakByPaletteB: pocketCurrentB,
             pocketCurrentStreak: 0,
           );
     notifyListeners();
+  }
+
+  static void _creditPaletteSkin({
+    required Map<GamePalette, int> currentA,
+    required Map<GamePalette, int> currentB,
+    required Map<GamePalette, int> bestA,
+    required Map<GamePalette, int> bestB,
+    required GamePalette palette,
+    required bool bSide,
+  }) {
+    final useB = bSide && palette.hasBSide;
+    final prior = useB ? (currentB[palette] ?? 0) : (currentA[palette] ?? 0);
+    for (final p in GamePalette.values) {
+      currentA[p] = 0;
+      currentB[p] = 0;
+    }
+    final next = prior + 1;
+    if (useB) {
+      currentB[palette] = next;
+      if (next > (bestB[palette] ?? 0)) bestB[palette] = next;
+    } else {
+      currentA[palette] = next;
+      if (next > (bestA[palette] ?? 0)) bestA[palette] = next;
+    }
   }
 }
 

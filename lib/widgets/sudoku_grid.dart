@@ -33,7 +33,7 @@ class SudokuGrid extends StatefulWidget {
 class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
-  static const _colorCycleDuration = Duration(milliseconds: 1050);
+  static const _colorCycleDuration = Duration(milliseconds: 1500);
 
   late final AnimationController _controller;
   late final BulkNoteBorderAnimation _unitBorders;

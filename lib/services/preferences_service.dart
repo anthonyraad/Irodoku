@@ -284,17 +284,30 @@ class PreferencesService {
     _migrateLegacyHardStats(bestTimes, winsByDifficulty);
     final bestStreakByPalette = <GamePalette, int>{};
     final currentStreakByPalette = <GamePalette, int>{};
+    final bestStreakByPaletteB = <GamePalette, int>{};
+    final currentStreakByPaletteB = <GamePalette, int>{};
     final pocketBestStreakByPalette = <GamePalette, int>{};
     final pocketCurrentStreakByPalette = <GamePalette, int>{};
+    final pocketBestStreakByPaletteB = <GamePalette, int>{};
+    final pocketCurrentStreakByPaletteB = <GamePalette, int>{};
     for (final palette in GamePalette.values) {
       bestStreakByPalette[palette] =
           _prefs.getInt(_paletteBestStreakKey(palette)) ?? 0;
       currentStreakByPalette[palette] =
           _prefs.getInt(_paletteCurrentStreakKey(palette)) ?? 0;
+      bestStreakByPaletteB[palette] =
+          _prefs.getInt(_paletteBestStreakKey(palette, bSide: true)) ?? 0;
+      currentStreakByPaletteB[palette] =
+          _prefs.getInt(_paletteCurrentStreakKey(palette, bSide: true)) ?? 0;
       pocketBestStreakByPalette[palette] =
           _prefs.getInt(_pocketPaletteBestStreakKey(palette)) ?? 0;
       pocketCurrentStreakByPalette[palette] =
           _prefs.getInt(_pocketPaletteCurrentStreakKey(palette)) ?? 0;
+      pocketBestStreakByPaletteB[palette] =
+          _prefs.getInt(_pocketPaletteBestStreakKey(palette, bSide: true)) ?? 0;
+      pocketCurrentStreakByPaletteB[palette] =
+          _prefs.getInt(_pocketPaletteCurrentStreakKey(palette, bSide: true)) ??
+              0;
     }
     return GameStats(
       currentStreak: _prefs.getInt(_keyCurrentStreak) ?? 0,
@@ -309,6 +322,8 @@ class PreferencesService {
       unlockedPalettes: _loadUnlockedPalettes(),
       bestStreakByPalette: bestStreakByPalette,
       currentStreakByPalette: currentStreakByPalette,
+      bestStreakByPaletteB: bestStreakByPaletteB,
+      currentStreakByPaletteB: currentStreakByPaletteB,
       graffitiWins: _prefs.getInt(_keyGraffitiWins) ?? 0,
       graffitiLosses: _prefs.getInt(_keyGraffitiLosses) ?? 0,
       graffitiDraws: _prefs.getInt(_keyGraffitiDraws) ?? 0,
@@ -320,6 +335,8 @@ class PreferencesService {
           _durationFromMs(_prefs.getInt(_keyPocketChromaticBestTime)),
       pocketBestStreakByPalette: pocketBestStreakByPalette,
       pocketCurrentStreakByPalette: pocketCurrentStreakByPalette,
+      pocketBestStreakByPaletteB: pocketBestStreakByPaletteB,
+      pocketCurrentStreakByPaletteB: pocketCurrentStreakByPaletteB,
       pocketCurrentStreak: _prefs.getInt(_keyPocketCurrentStreak) ?? 0,
       pocketBestStreak: _prefs.getInt(_keyPocketBestStreak) ?? 0,
       pocketChromaticCurrentStreak:
@@ -403,12 +420,28 @@ class PreferencesService {
         stats.currentStreakByPalette[palette] ?? 0,
       );
       await _prefs.setInt(
+        _paletteBestStreakKey(palette, bSide: true),
+        stats.bestStreakByPaletteB[palette] ?? 0,
+      );
+      await _prefs.setInt(
+        _paletteCurrentStreakKey(palette, bSide: true),
+        stats.currentStreakByPaletteB[palette] ?? 0,
+      );
+      await _prefs.setInt(
         _pocketPaletteBestStreakKey(palette),
         stats.pocketBestStreakByPalette[palette] ?? 0,
       );
       await _prefs.setInt(
         _pocketPaletteCurrentStreakKey(palette),
         stats.pocketCurrentStreakByPalette[palette] ?? 0,
+      );
+      await _prefs.setInt(
+        _pocketPaletteBestStreakKey(palette, bSide: true),
+        stats.pocketBestStreakByPaletteB[palette] ?? 0,
+      );
+      await _prefs.setInt(
+        _pocketPaletteCurrentStreakKey(palette, bSide: true),
+        stats.pocketCurrentStreakByPaletteB[palette] ?? 0,
       );
     }
   }
@@ -434,17 +467,23 @@ class PreferencesService {
   String _chromaticWinsKey(Difficulty d) =>
       'stats_chromatic_wins_${d.storageKey}';
 
-  String _paletteBestStreakKey(GamePalette palette) =>
-      'stats_palette_best_streak_${palette.storageKey}';
+  String _paletteBestStreakKey(GamePalette palette, {bool bSide = false}) =>
+      'stats_palette_best_streak_${palette.storageKey}${bSide ? '_b' : ''}';
 
-  String _paletteCurrentStreakKey(GamePalette palette) =>
-      'stats_palette_current_streak_${palette.storageKey}';
+  String _paletteCurrentStreakKey(GamePalette palette, {bool bSide = false}) =>
+      'stats_palette_current_streak_${palette.storageKey}${bSide ? '_b' : ''}';
 
-  String _pocketPaletteBestStreakKey(GamePalette palette) =>
-      'stats_pocket_palette_best_streak_${palette.storageKey}';
+  String _pocketPaletteBestStreakKey(
+    GamePalette palette, {
+    bool bSide = false,
+  }) =>
+      'stats_pocket_palette_best_streak_${palette.storageKey}${bSide ? '_b' : ''}';
 
-  String _pocketPaletteCurrentStreakKey(GamePalette palette) =>
-      'stats_pocket_palette_current_streak_${palette.storageKey}';
+  String _pocketPaletteCurrentStreakKey(
+    GamePalette palette, {
+    bool bSide = false,
+  }) =>
+      'stats_pocket_palette_current_streak_${palette.storageKey}${bSide ? '_b' : ''}';
 
   Set<GamePalette> _loadUnlockedPalettes() {
     final keys = _prefs.getStringList(_keyUnlockedPalettes);

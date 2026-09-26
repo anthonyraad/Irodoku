@@ -155,9 +155,42 @@ void main() {
     expect(none, isEmpty);
   });
 
+  test('favorite palette treats A and B streaks as separate skins', () {
+    const aLead = GameStats(
+      bestStreakByPalette: {GamePalette.standard: 5},
+      bestStreakByPaletteB: {GamePalette.standard: 3},
+    );
+    expect(aLead.favoritePalette?.palette, GamePalette.standard);
+    expect(aLead.favoritePalette?.bSide, isFalse);
+
+    const bLead = GameStats(
+      bestStreakByPalette: {GamePalette.standard: 5},
+      bestStreakByPaletteB: {GamePalette.standard: 6},
+    );
+    expect(bLead.favoritePalette?.palette, GamePalette.standard);
+    expect(bLead.favoritePalette?.bSide, isTrue);
+
+    const tied = GameStats(
+      bestStreakByPalette: {GamePalette.standard: 4},
+      bestStreakByPaletteB: {GamePalette.standard: 4},
+    );
+    expect(tied.favoritePalette?.bSide, isFalse);
+
+    const pocket = GameStats(
+      pocketBestStreakByPalette: {GamePalette.rainbow: 2},
+      pocketBestStreakByPaletteB: {GamePalette.rainbow: 3},
+    );
+    expect(pocket.favoritePocketPalette?.palette, GamePalette.rainbow);
+    expect(pocket.favoritePocketPalette?.bSide, isTrue);
+  });
+
   test('progress backup round-trips palette B-side choices', () {
     final backup = ProgressBackup(
-      stats: const GameStats(totalXp: 8000),
+      stats: const GameStats(
+        totalXp: 8000,
+        bestStreakByPalette: {GamePalette.standard: 5},
+        bestStreakByPaletteB: {GamePalette.standard: 7},
+      ),
       achievements: const AchievementsProgress(),
       paletteBSides: {GamePalette.rainbow, GamePalette.neon},
       iroMix: IroMix(
@@ -170,6 +203,9 @@ void main() {
     expect(copy.iroMix, isNotNull);
     expect(copy.iroMix!.sources, backup.iroMix!.sources);
     expect(copy.iroMix!.bSides, backup.iroMix!.bSides);
+    expect(copy.stats.bestStreakByPalette[GamePalette.standard], 5);
+    expect(copy.stats.bestStreakByPaletteB[GamePalette.standard], 7);
+    expect(copy.stats.favoritePalette?.bSide, isTrue);
   });
 }
 

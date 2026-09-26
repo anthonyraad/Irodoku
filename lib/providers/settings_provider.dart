@@ -124,6 +124,7 @@ class SettingsProvider extends ChangeNotifier {
   List<PaletteSwatch> swatchesFor(
     GamePalette palette, {
     Set<int> flatSlots = const {},
+    bool? bSide,
   }) {
     if (palette == GamePalette.iro) {
       final mix = _iroMix ?? IroMix.showcase(bSideEnabled);
@@ -131,7 +132,7 @@ class SettingsProvider extends ChangeNotifier {
     }
     return IrodokuPalette.swatchesFor(
       palette,
-      bSide: bSideEnabled(palette),
+      bSide: bSide ?? bSideEnabled(palette),
       flatSlots: flatSlots,
     );
   }

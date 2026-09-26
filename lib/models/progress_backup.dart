@@ -94,6 +94,9 @@ Map<String, dynamic> _statsToJson(GameStats stats) => {
       'bestStreakByPalette': _paletteIntMapToJson(stats.bestStreakByPalette),
       'currentStreakByPalette':
           _paletteIntMapToJson(stats.currentStreakByPalette),
+      'bestStreakByPaletteB': _paletteIntMapToJson(stats.bestStreakByPaletteB),
+      'currentStreakByPaletteB':
+          _paletteIntMapToJson(stats.currentStreakByPaletteB),
       'graffitiWins': stats.graffitiWins,
       'graffitiLosses': stats.graffitiLosses,
       'graffitiDraws': stats.graffitiDraws,
@@ -106,6 +109,10 @@ Map<String, dynamic> _statsToJson(GameStats stats) => {
           _paletteIntMapToJson(stats.pocketBestStreakByPalette),
       'pocketCurrentStreakByPalette':
           _paletteIntMapToJson(stats.pocketCurrentStreakByPalette),
+      'pocketBestStreakByPaletteB':
+          _paletteIntMapToJson(stats.pocketBestStreakByPaletteB),
+      'pocketCurrentStreakByPaletteB':
+          _paletteIntMapToJson(stats.pocketCurrentStreakByPaletteB),
       'pocketCurrentStreak': stats.pocketCurrentStreak,
       'pocketBestStreak': stats.pocketBestStreak,
       'pocketChromaticCurrentStreak': stats.pocketChromaticCurrentStreak,
@@ -138,6 +145,9 @@ GameStats _statsFromJson(Map<String, dynamic> json) {
     bestStreakByPalette: _paletteIntMapFromJson(json['bestStreakByPalette']),
     currentStreakByPalette:
         _paletteIntMapFromJson(json['currentStreakByPalette']),
+    bestStreakByPaletteB: _paletteIntMapFromJson(json['bestStreakByPaletteB']),
+    currentStreakByPaletteB:
+        _paletteIntMapFromJson(json['currentStreakByPaletteB']),
     graffitiWins: _asInt(json['graffitiWins']),
     graffitiLosses: _asInt(json['graffitiLosses']),
     graffitiDraws: _asInt(json['graffitiDraws']),
@@ -150,6 +160,10 @@ GameStats _statsFromJson(Map<String, dynamic> json) {
         _paletteIntMapFromJson(json['pocketBestStreakByPalette']),
     pocketCurrentStreakByPalette:
         _paletteIntMapFromJson(json['pocketCurrentStreakByPalette']),
+    pocketBestStreakByPaletteB:
+        _paletteIntMapFromJson(json['pocketBestStreakByPaletteB']),
+    pocketCurrentStreakByPaletteB:
+        _paletteIntMapFromJson(json['pocketCurrentStreakByPaletteB']),
     pocketCurrentStreak: _asInt(json['pocketCurrentStreak']),
     pocketBestStreak: _asInt(json['pocketBestStreak']),
     pocketChromaticCurrentStreak: _asInt(json['pocketChromaticCurrentStreak']),
