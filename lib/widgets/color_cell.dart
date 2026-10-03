@@ -30,6 +30,12 @@ class ColorCell extends StatefulWidget {
   final double celebrationShimmer;
   /// 0–1 local phase for the title-tap palette sweep; null when inactive.
   final double? colorCyclePhase;
+  /// When set, only this color value (fill or note) follows [colorCyclePhase].
+  final int? colorCycleFilter;
+  /// Linear out-and-back (hold sweep) instead of the eased one-shot glimmer.
+  final bool colorCycleLinear;
+  /// Envelope for the hold sweep: 0 = real color, 1 = fully cycling.
+  final double colorCycleMix;
   final int colorCycleSteps;
   /// Won-board mosaic shimmer: 9 Iroen sub-values for this cell (row-major).
   final List<int>? mosaicSubValues;
@@ -59,6 +65,9 @@ class ColorCell extends StatefulWidget {
     this.celebrationScale = 1,
     this.celebrationShimmer = 0,
     this.colorCyclePhase,
+    this.colorCycleFilter,
+    this.colorCycleLinear = false,
+    this.colorCycleMix = 1,
     this.colorCycleSteps = 4,
     this.mosaicSubValues,
     this.mosaicPalette,
@@ -346,13 +355,17 @@ class _ColorCellState extends State<ColorCell>
     const givenWashAlpha = 0.08;
 
     PaletteSwatch swatchFor(int value) =>
-        colorCyclePhase != null && !mosaicActive
+        colorCyclePhase != null &&
+                !mosaicActive &&
+                ColorCycle.valueMatchesFilter(value, widget.colorCycleFilter)
             ? ColorCycle.displaySwatch(
                 value,
                 colorCyclePhase,
                 stepCount: widget.colorCycleSteps,
                 palette: widget.palette,
                 swatches: widget.displaySwatches,
+                linear: widget.colorCycleLinear,
+                mix: widget.colorCycleMix,
               )
             : _swatchFor(value);
 

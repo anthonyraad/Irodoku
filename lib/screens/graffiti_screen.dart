@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../core/theme.dart';
 import '../providers/graffiti_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/graffiti_firebase_service.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/graffiti_grid.dart';
@@ -154,21 +155,10 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
                 ),
               ),
               actions: [
-                if (game.roomCode != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: Center(
-                      child: Text(
-                        game.roomCode!,
-                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          letterSpacing: 1.2,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ),
-                  ),
+                GraffitiAppBarTrailing(
+                  opponentName: game.opponentName,
+                  roomCode: game.roomCode,
+                ),
               ],
             ),
             body: SafeArea(
@@ -178,6 +168,48 @@ class _GraffitiScreenState extends State<GraffitiScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Top-right Graffiti chrome: opponent name when known, otherwise room code.
+class GraffitiAppBarTrailing extends StatelessWidget {
+  final String? opponentName;
+  final String? roomCode;
+
+  const GraffitiAppBarTrailing({
+    super.key,
+    this.opponentName,
+    this.roomCode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = GraffitiFirebaseService.appBarTrailing(
+      opponentName: opponentName,
+      roomCode: roomCode,
+    );
+    if (label == null) return const SizedBox.shrink();
+    final named = GraffitiFirebaseService.sanitizedDisplayName(opponentName) !=
+        null;
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 160),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              letterSpacing: named ? 0 : 1.2,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.55),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -449,6 +481,16 @@ class _GameBody extends StatelessWidget {
                                 onColorSelected: game.inputColor,
                                 onNoteAdded: game.addNote,
                                 onNoteRemoved: game.removeNote,
+                                onColorHoldStart:
+                                    game.selectedRow == null &&
+                                            !game.bulkNoteSelect
+                                        ? game.beginPickerHoldSweep
+                                        : null,
+                                onColorHoldEnd:
+                                    game.selectedRow == null &&
+                                            !game.bulkNoteSelect
+                                        ? game.endPickerHoldSweep
+                                        : null,
                               ),
                             ),
                         ],

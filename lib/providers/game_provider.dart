@@ -92,6 +92,9 @@ class GameProvider extends ChangeNotifier {
   /// Won 9×9 title tap: morph into this saved mosaic instead of a palette sweep.
   IroenMosaic? _colorCycleMosaic;
   String? _lastMosaicCycleId;
+  int? _pickerHoldValue;
+  bool _pickerHoldActive = false;
+  bool _ignorePickerTap = false;
   bool _noteMode = false;
   bool _bulkNoteSelect = false;
   final Set<int> _bulkSelected = {};
@@ -210,6 +213,8 @@ class GameProvider extends ChangeNotifier {
   int? get colorCycleFilterValue => _colorCycleFilterValue;
   /// Set for a won-board mosaic shimmer; null for the usual palette cycle.
   IroenMosaic? get colorCycleMosaic => _colorCycleMosaic;
+  int? get pickerHoldValue => _pickerHoldValue;
+  bool get pickerHoldActive => _pickerHoldActive;
   bool get noteMode => _noteMode;
   bool get bulkNoteSelect => _bulkNoteSelect;
   NoteClearWave? get noteClearWave => _noteClearWave;
@@ -248,7 +253,20 @@ class GameProvider extends ChangeNotifier {
 
   void _onSettingsChanged() {
     final adopted = _adoptConfigIroMix();
-    if (_applyLiveBSides() || adopted) notifyListeners();
+    var changed = _applyLiveBSides() || adopted;
+    if (_releaseTutorialTimer()) changed = true;
+    if (changed) notifyListeners();
+  }
+
+  /// Starts the clock after first-run copy, if a live puzzle is already ready.
+  bool _releaseTutorialTimer() {
+    if (_settings.showFirstRunTutorial) return false;
+    if (_timer != null) return false;
+    if (!_hasActiveGame || isGameOver || _isPaused || _isGenerating) {
+      return false;
+    }
+    _startTimer();
+    return true;
   }
 
   /// Attach the saved Config Iro mix only when this board is supposed to be Iro.
@@ -320,6 +338,8 @@ class GameProvider extends ChangeNotifier {
       (_isPocket && !_isDaily) ? _pocketSwatchOffset : 0;
 
   /// Short date for the active daily (`8.9.26`), or null when not daily.
+  String? get dailyDayKey => _dailyDayKey;
+
   String? get dailyDateLabel {
     final key = _dailyDayKey;
     if (key == null) return null;
@@ -474,6 +494,32 @@ class GameProvider extends ChangeNotifier {
     }
     _colorCycleSeq++;
     notifyListeners();
+  }
+
+  /// Hold on a picker color with no cell selected: loop a slow sweep.
+  void beginPickerHoldSweep(int value) {
+    if (value < 1 || value > gridSize) return;
+    if (_selected != null || _bulkNoteSelect) return;
+    if (_isGenerating || _isPaused) return;
+    if (!_hasActiveGame && !_isWon) return;
+    _pickerHoldValue = value;
+    _pickerHoldActive = true;
+    _ignorePickerTap = true;
+    notifyListeners();
+  }
+
+  void endPickerHoldSweep() {
+    if (!_pickerHoldActive) return;
+    _pickerHoldActive = false;
+    _ignorePickerTap = true;
+    notifyListeners();
+    scheduleMicrotask(() => _ignorePickerTap = false);
+  }
+
+  void _stopPickerHoldSweep() {
+    _pickerHoldActive = false;
+    _pickerHoldValue = null;
+    _ignorePickerTap = false;
   }
 
   IroenMosaic? _mosaicForTitleShimmer(List<IroenMosaic>? savedMosaics) {
@@ -846,6 +892,7 @@ class GameProvider extends ChangeNotifier {
     _undoStack.clear();
     _colorCycleFilterValue = null;
     _colorCycleMosaic = null;
+    _stopPickerHoldSweep();
     for (var r = 0; r < gridSize; r++) {
       for (var c = 0; c < gridSize; c++) {
         final cell = _cells[r][c];
@@ -1083,6 +1130,7 @@ class GameProvider extends ChangeNotifier {
     _celebration = null;
     _colorCycleFilterValue = null;
     _colorCycleMosaic = null;
+    _stopPickerHoldSweep();
     _noteMode = false;
     _undoStack.clear();
     _resetAchievementSession();
@@ -1203,6 +1251,7 @@ class GameProvider extends ChangeNotifier {
 
   void selectCell(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
+    if (_pickerHoldActive) endPickerHoldSweep();
     final cell = _cells[row][col];
 
     // Givens and locked correct fills aren't selectable — tap pulses matches.
@@ -1260,6 +1309,7 @@ class GameProvider extends ChangeNotifier {
   void enterBulkNoteSelect(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (!_cells[row][col].isEditable) return;
+    if (_pickerHoldActive) endPickerHoldSweep();
 
     _bulkNoteSelect = true;
     if (!_noteMode) _noteMode = true;
@@ -1275,6 +1325,7 @@ class GameProvider extends ChangeNotifier {
 
   void enterBulkNoteSelectFromToolbar() {
     if (!canEnterBulkNoteSelectFromToolbar) return;
+    if (_pickerHoldActive) endPickerHoldSweep();
     final sel = _selected;
     if (sel != null && _cells[sel.$1][sel.$2].isEditable) {
       enterBulkNoteSelect(sel.$1, sel.$2);
@@ -1341,6 +1392,7 @@ class GameProvider extends ChangeNotifier {
   /// Tap on a picker color: commit fill, toggle a note when note mode is on,
   /// or glimmer matching filled cells when nothing is selected.
   void applyPickerColor(int value) {
+    if (_pickerHoldActive || _ignorePickerTap) return;
     if (_noteMode) {
       toggleSelectedNote(value);
       return;
@@ -2904,6 +2956,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _startTimer() {
+    if (_settings.showFirstRunTutorial) return;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (isGameOver || _isGenerating || _isPaused) return;

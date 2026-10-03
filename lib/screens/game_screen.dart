@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -5,15 +6,19 @@ import 'package:provider/provider.dart';
 
 import '../core/irodoku_page_route.dart';
 import '../core/theme.dart';
+import '../models/daily_irodoku.dart';
+import '../models/daily_leaderboard.dart';
 import '../models/game_palette.dart';
 import '../models/player_xp.dart';
 import '../providers/game_provider.dart';
 import '../providers/iroen_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
+import '../services/daily_leaderboard_service.dart';
 import '../widgets/chromatic_palette_transition.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/dice_new_game_button.dart';
+import '../widgets/first_run_tutorial.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/mistake_display.dart';
@@ -22,6 +27,7 @@ import '../widgets/sudoku_grid.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/typing_title.dart';
 import '../widgets/win_dialog.dart';
+import 'daily_leaderboard_screen.dart';
 import 'settings_screen.dart';
 
 /// Font size that keeps [text] on the AppBar's true center without hitting
@@ -70,6 +76,10 @@ class _GameScreenState extends State<GameScreen> {
   /// XP/unlocks only on the first Victory for this finished board.
   bool _offerResultXp = true;
   int _titlePlayToken = 0;
+  bool _victoryOpen = false;
+  bool _defeatOpen = false;
+  String _resultTime = '';
+  XpAward? _resultXp;
 
   @override
   void initState() {
@@ -103,6 +113,8 @@ class _GameScreenState extends State<GameScreen> {
 
     _resultDialogShown = false;
     _offerResultXp = true;
+    _victoryOpen = false;
+    _defeatOpen = false;
     await game.startNewGame();
   }
 
@@ -111,6 +123,8 @@ class _GameScreenState extends State<GameScreen> {
     if (game.isGenerating) return;
     _resultDialogShown = false;
     _offerResultXp = true;
+    _victoryOpen = false;
+    _defeatOpen = false;
     await game.retryFromDefeat();
   }
 
@@ -136,56 +150,95 @@ class _GameScreenState extends State<GameScreen> {
       _resultDialogShown = true;
       final includeXp = _offerResultXp && !game.isDailyReview;
       _offerResultXp = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (includeXp) {
-          final unlocks = game.consumePendingPaletteUnlocks();
-          for (final palette in unlocks) {
-            _showPaletteUnlockedSnackBar(context, palette);
-          }
-          final award = context.read<StatsProvider>().lastXpAward;
-          if (award != null) {
-            final stats = context.read<StatsProvider>();
-            final bSides = {
-              ...PlayerXp.bSidesUnlockedByLevelUp(
-                fromXp: award.previousTotal,
-                toXp: award.newTotal,
-                paletteUnlocked: stats.isPaletteUnlocked,
-              ),
-              for (final palette in unlocks)
-                if (context.read<SettingsProvider>().isBSideUnlocked(palette))
-                  palette,
-            };
-            for (final palette in bSides) {
-              _showBSideUnlockedSnackBar(context, palette);
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted) return;
+          if (includeXp) {
+            final unlocks = game.consumePendingPaletteUnlocks();
+            for (final palette in unlocks) {
+              _showPaletteUnlockedSnackBar(context, palette);
+            }
+            final award = context.read<StatsProvider>().lastXpAward;
+            if (award != null) {
+              final stats = context.read<StatsProvider>();
+              final bSides = {
+                ...PlayerXp.bSidesUnlockedByLevelUp(
+                  fromXp: award.previousTotal,
+                  toXp: award.newTotal,
+                  paletteUnlocked: stats.isPaletteUnlocked,
+                ),
+                for (final palette in unlocks)
+                  if (context.read<SettingsProvider>().isBSideUnlocked(palette))
+                    palette,
+              };
+              for (final palette in bSides) {
+                _showBSideUnlockedSnackBar(context, palette);
+              }
             }
           }
-        }
-        showWinDialog(
-          context,
-          time: game.formatElapsed(),
-          showNewGame: !widget.isDailyRoute,
-          onNewGame: _onNewGame,
-          xp: includeXp ? context.read<StatsProvider>().lastXpAward : null,
-        ).then((_) => _playWinTitleShimmer());
-      });
+          if (widget.isDailyRoute) {
+            final settings = context.read<SettingsProvider>();
+            if (DisplayName.trySanitize(settings.displayName) != null) {
+              unawaited(_submitDailyLeaderboard(game));
+            }
+          }
+          if (!mounted) return;
+          setState(() {
+            _victoryOpen = true;
+            _defeatOpen = false;
+            _resultTime = game.formatElapsed();
+            _resultXp = includeXp
+                ? context.read<StatsProvider>().lastXpAward
+                : null;
+          });
+        });
     } else if (game.isLost && !_resultDialogShown) {
       _resultDialogShown = true;
       _offerResultXp = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        showLoseDialog(
-          context,
-          showNewGame: false,
-          onTryAgain: _onTryAgain,
-          onNewGame: _onNewGame,
-          maxMistakes: game.mistakeLimit,
-        );
+        setState(() => _defeatOpen = true);
       });
     } else if (!game.isGameOver) {
       _resultDialogShown = false;
       _offerResultXp = true;
+      if (_victoryOpen || _defeatOpen) {
+        _victoryOpen = false;
+        _defeatOpen = false;
+      }
     }
+  }
+
+  void _closeVictory() {
+    if (!_victoryOpen) return;
+    setState(() => _victoryOpen = false);
+    unawaited(_playWinTitleShimmer());
+  }
+
+  void _closeDefeat() {
+    if (!_defeatOpen) return;
+    setState(() => _defeatOpen = false);
+  }
+
+  void _openDailyLeaderboard(GameProvider game) {
+    Navigator.of(context).push(
+      IrodokuPageRoute(
+        builder: (_) => DailyLeaderboardScreen(
+          pocket: game.isPocket,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitDailyLeaderboard(GameProvider game) async {
+    final settings = context.read<SettingsProvider>();
+    final name = DisplayName.orFallback(settings.displayName);
+    final dayKey = game.dailyDayKey ?? DailyIrodoku.forDate().dayKey;
+    await DailyLeaderboardService.submit(
+      dayKey: dayKey,
+      pocket: game.isPocket,
+      name: name,
+      ms: game.elapsed.inMilliseconds,
+    );
   }
 
   @override
@@ -280,6 +333,8 @@ class _GameScreenState extends State<GameScreen> {
                       if (!mounted) return;
                       // Returning to a finished board should show Victory/Defeat again.
                       _resultDialogShown = false;
+                      _victoryOpen = false;
+                      _defeatOpen = false;
                       setState(() => _titlePlayToken++);
                     }),
                   ),
@@ -465,18 +520,32 @@ class _GameScreenState extends State<GameScreen> {
                                             child: Align(
                                               alignment: Alignment.center,
                                               child: ColorPicker(
-                                              swatchSize: swatchSize,
-                                              xlMode: xlPicker && !pocketPicker,
-                                              pocket: pocketPicker,
-                                              palette: palette,
-                                              displaySwatches: swatches,
-                                              visible: true,
-                                              onColorSelected:
-                                                  game.applyPickerColor,
-                                              onNoteAdded: game.addSelectedNote,
-                                              onNoteRemoved:
-                                                  game.removeSelectedNote,
-                                            ),
+                                                swatchSize: swatchSize,
+                                                xlMode:
+                                                    xlPicker && !pocketPicker,
+                                                pocket: pocketPicker,
+                                                palette: palette,
+                                                displaySwatches: swatches,
+                                                visible: true,
+                                                onColorSelected:
+                                                    game.applyPickerColor,
+                                                onNoteAdded:
+                                                    game.addSelectedNote,
+                                                onNoteRemoved:
+                                                    game.removeSelectedNote,
+                                                onColorHoldStart:
+                                                    game.selected == null &&
+                                                            !game.bulkNoteSelect
+                                                        ? game
+                                                            .beginPickerHoldSweep
+                                                        : null,
+                                                onColorHoldEnd:
+                                                    game.selected == null &&
+                                                            !game.bulkNoteSelect
+                                                        ? game
+                                                            .endPickerHoldSweep
+                                                        : null,
+                                              ),
                                             ),
                                           )
                                         else
@@ -498,14 +567,60 @@ class _GameScreenState extends State<GameScreen> {
           ),
         );
 
-        if (!widget.isDailyRoute) return scaffold;
-
-        return PopScope(
-          canPop: true,
-          onPopInvokedWithResult: (didPop, _) {
-            if (didPop) game.parkDailyForMenu();
-          },
-          child: scaffold,
+        Widget page = scaffold;
+        if (widget.isDailyRoute) {
+          page = PopScope(
+            canPop: true,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) game.parkDailyForMenu();
+            },
+            child: scaffold,
+          );
+        } else {
+          page = Stack(
+            children: [
+              scaffold,
+              if (settings.showFirstRunTutorial)
+                FirstRunTutorialOverlay(
+                  onComplete: settings.completeFirstRunTutorial,
+                ),
+            ],
+          );
+        }
+        // Keep this Stack even when the result is closed so the AppBar title
+        // is not recreated (and retyped) on the same screen.
+        return Stack(
+          children: [
+            page,
+            if (_victoryOpen || _defeatOpen)
+              Positioned.fill(
+                child: ResultScrim(
+                  child: _victoryOpen
+                      ? VictoryPanel(
+                          time: _resultTime,
+                          xp: _resultXp,
+                          showNewGame: !widget.isDailyRoute,
+                          leaderboardLabel: widget.isDailyRoute
+                              ? (game.isPocket
+                                  ? '[Rankings]'
+                                  : 'Rankings')
+                              : null,
+                          onLeaderboard: widget.isDailyRoute
+                              ? () => _openDailyLeaderboard(game)
+                              : null,
+                          onNewGame: _onNewGame,
+                          onClose: _closeVictory,
+                        )
+                      : DefeatPanel(
+                          showNewGame: false,
+                          onTryAgain: _onTryAgain,
+                          onNewGame: _onNewGame,
+                          maxMistakes: game.mistakeLimit,
+                          onClose: _closeDefeat,
+                        ),
+                ),
+              ),
+          ],
         );
       },
     );

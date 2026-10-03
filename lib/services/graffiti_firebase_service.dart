@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
 
 import '../firebase_options.dart';
+import '../models/daily_leaderboard.dart';
 
 /// RTDB helpers for Graffiti multiplayer (rooms share the word-multiplayer RTDB).
 class GraffitiFirebaseService {
@@ -99,14 +100,50 @@ class GraffitiFirebaseService {
     return generateRoomCode();
   }
 
+  /// Sanitized public name, or null when the player has none set.
+  static String? sanitizedDisplayName(String? raw) =>
+      DisplayName.trySanitize(raw ?? '');
+
+  /// Opponent name wins; otherwise the room code. Null when neither is known.
+  static String? appBarTrailing({
+    String? opponentName,
+    String? roomCode,
+  }) {
+    final name = sanitizedDisplayName(opponentName);
+    if (name != null) return name;
+    if (roomCode == null || roomCode.isEmpty) return null;
+    return roomCode;
+  }
+
+  static String? playerNameFromRoom(
+    Map<dynamic, dynamic> room,
+    String? playerId,
+  ) {
+    if (playerId == null || playerId.isEmpty) return null;
+    final names = room['names'];
+    if (names is! Map) return null;
+    return sanitizedDisplayName(names[playerId]?.toString());
+  }
+
+  static Future<void> writePlayerName({
+    required String roomCode,
+    required String playerId,
+    String? displayName,
+  }) async {
+    final name = sanitizedDisplayName(displayName);
+    if (name == null) return;
+    await roomRef(roomCode).child('names').child(playerId).set(name);
+  }
+
   static Future<void> createRoom({
     required String roomCode,
     required String hostId,
     required bool isQuickMatch,
     bool pocket = false,
+    String? displayName,
   }) async {
     final ref = roomRef(roomCode);
-    await ref.set({
+    final payload = <String, dynamic>{
       'app': appTagFor(pocket: pocket),
       'host': hostId,
       'players': {hostId: true},
@@ -116,7 +153,12 @@ class GraffitiFirebaseService {
       'winner': null,
       'solo': false,
       'pocket': pocket,
-    });
+    };
+    final name = sanitizedDisplayName(displayName);
+    if (name != null) {
+      payload['names'] = {hostId: name};
+    }
+    await ref.set(payload);
     // Host disconnect while still alone deletes the lobby room.
     // Cancelled in [cancelHostDisconnect] once a second player seats.
     await ref.onDisconnect().remove();
@@ -139,6 +181,7 @@ class GraffitiFirebaseService {
     required String roomCode,
     required String playerId,
     bool pocket = false,
+    String? displayName,
   }) async {
     final ref = roomRef(roomCode);
     final expectedApp = appTagFor(pocket: pocket);
@@ -161,6 +204,11 @@ class GraffitiFirebaseService {
     final playersRef = ref.child('players');
     final existing = Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
     if (existing.containsKey(playerId)) {
+      await _tryWritePlayerName(
+        roomCode: roomCode,
+        playerId: playerId,
+        displayName: displayName,
+      );
       return true; // already seated
     }
     if (existing.length >= 2) {
@@ -200,7 +248,28 @@ class GraffitiFirebaseService {
       // Still a successful seat.
       debugPrint('Graffiti join: $roomCode state now ${stateSnap.value}');
     }
+    await _tryWritePlayerName(
+      roomCode: roomCode,
+      playerId: playerId,
+      displayName: displayName,
+    );
     return true;
+  }
+
+  static Future<void> _tryWritePlayerName({
+    required String roomCode,
+    required String playerId,
+    String? displayName,
+  }) async {
+    try {
+      await writePlayerName(
+        roomCode: roomCode,
+        playerId: playerId,
+        displayName: displayName,
+      );
+    } catch (e) {
+      debugPrint('Graffiti name write failed for $roomCode: $e');
+    }
   }
 
   /// Host writes puzzle + empty board and starts play when 2 players are present.

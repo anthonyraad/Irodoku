@@ -172,6 +172,14 @@ abstract final class PlayerXp {
     return (p.intoLevel / p.toNext).clamp(0.0, 1.0);
   }
 
+  /// Main Menu palette wash: 0% through level 25, 1% at 26, +1%/level, 25% at 50+.
+  static double menuPaletteWashOpacityForLevel(int level) {
+    return ((level - 25).clamp(0, 25)) / 100.0;
+  }
+
+  static double menuPaletteWashOpacity(int totalXp) =>
+      menuPaletteWashOpacityForLevel(levelFor(totalXp));
+
   /// One-time seed: wins × base XP (no bonuses) + Graffiti wins × Medium.
   static int backfillFrom(GameStats stats) {
     var xp = 0;

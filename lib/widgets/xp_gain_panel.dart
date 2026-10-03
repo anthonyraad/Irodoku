@@ -212,6 +212,8 @@ class XpLevelBar extends StatefulWidget {
   final Color ink;
   final bool compact;
   final bool staggerPop;
+  /// Public leaderboard name, shown left of Level on Stats. Null if unset.
+  final String? name;
 
   const XpLevelBar({
     super.key,
@@ -220,6 +222,7 @@ class XpLevelBar extends StatefulWidget {
     required this.ink,
     this.compact = false,
     this.staggerPop = false,
+    this.name,
   });
 
   @override
@@ -337,26 +340,41 @@ class _XpLevelBarState extends State<XpLevelBar>
       children: [
         Row(
           children: [
-            _pop(
-              extra: Duration.zero,
-              alignment: Alignment.centerLeft,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Level ', style: levelStyle),
-                  if (fromLevel < level)
-                    _LevelUpDigit(
-                      from: fromLevel,
-                      to: level,
-                      style: levelStyle,
-                      delay: const Duration(milliseconds: 630),
-                    )
-                  else
-                    Text('$level', style: levelStyle),
-                ],
+            Expanded(
+              child: _pop(
+                extra: Duration.zero,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    Text('Level ', style: levelStyle),
+                    if (fromLevel < level)
+                      _LevelUpDigit(
+                        from: fromLevel,
+                        to: level,
+                        style: levelStyle,
+                        delay: const Duration(milliseconds: 630),
+                      )
+                    else
+                      Text('$level', style: levelStyle),
+                    if (widget.name != null) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          widget.name!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: levelStyle?.copyWith(
+                            color: muted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             _pop(
               extra: const Duration(milliseconds: _bonusStaggerMs),
               alignment: Alignment.centerRight,

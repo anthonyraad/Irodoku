@@ -23,6 +23,13 @@ import 'graffiti_screen.dart';
 import 'iroen_screen.dart';
 import 'stats_screen.dart';
 
+Color? _menuPaletteColor(SettingsProvider settings, int position) {
+  final colors = settings.colorsFor(settings.palette);
+  final index = position - 1;
+  if (index < 0 || index >= colors.length) return null;
+  return colors[index];
+}
+
 class SettingsScreen extends StatefulWidget {
   /// Cold-start: immediately push today's Daily after this menu appears.
   final bool openDailyOnLaunch;
@@ -177,18 +184,29 @@ class _SettingsScreenState extends State<SettingsScreen>
               Navigator.maybePop(context);
             },
           ),
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _MainMenuTitleIcon(visible: _titleIconsVisible),
-              const SizedBox(width: 8),
-              Text(
-                'Main Menu',
-                style: Theme.of(context).appBarTheme.titleTextStyle,
-              ),
-              const SizedBox(width: 8),
-              _MainMenuTitleIcon(visible: _titleIconsVisible),
-            ],
+          title: Consumer<SettingsProvider>(
+            builder: (context, settings, _) {
+              final iconTint = _menuPaletteColor(settings, 1);
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _MainMenuTitleIcon(
+                    visible: _titleIconsVisible,
+                    tint: iconTint,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Main Menu',
+                    style: Theme.of(context).appBarTheme.titleTextStyle,
+                  ),
+                  const SizedBox(width: 8),
+                  _MainMenuTitleIcon(
+                    visible: _titleIconsVisible,
+                    tint: iconTint,
+                  ),
+                ],
+              );
+            },
           ),
         ),
         body: Consumer3<SettingsProvider, StatsProvider, GameProvider>(
@@ -221,6 +239,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                   graffitiUnlocked: graffitiUnlocked,
                   pocketGraffitiUnlocked: pocketGraffitiUnlocked,
                   iroenUnlocked: statsProvider.isIroenUnlocked,
+                  irodokuTint: _menuPaletteColor(settings, 2),
+                  graffitiTint: _menuPaletteColor(settings, 3),
+                  dailyTint: _menuPaletteColor(settings, 4),
+                  chromaticTint: _menuPaletteColor(settings, 5),
+                  iroenTint: _menuPaletteColor(settings, 6),
                   onClassic: () => _onClassicPressed(context, game),
                   onDaily: () => _onDailyPressed(
                     context,
@@ -290,6 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Expanded(
                       child: MenuActionButton(
                         label: _pocketMenu ? '[Stats]' : 'Stats',
+                        fillTint: _menuPaletteColor(settings, 7),
                         labelShake: _statsShake,
                         onPressed: () async {
                           _hideTitleIcons();
@@ -308,6 +332,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     Expanded(
                       child: MenuActionButton(
                         label: 'Achievements',
+                        fillTint: _menuPaletteColor(settings, 8),
                         onPressed: () async {
                           _hideTitleIcons();
                           await Navigator.of(context).push(
@@ -327,6 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                 child: MenuActionButton(
                   label: 'Settings',
+                  fillTint: _menuPaletteColor(settings, 9),
                   onPressed: () async {
                     _hideTitleIcons();
                     await Navigator.of(context).push(
@@ -599,11 +625,33 @@ class _MainMenuTitleIcon extends StatelessWidget {
   static const _size = 22.0 * 0.85;
 
   final bool visible;
+  final Color? tint;
 
-  const _MainMenuTitleIcon({required this.visible});
+  const _MainMenuTitleIcon({required this.visible, this.tint});
 
   @override
   Widget build(BuildContext context) {
+    Widget icon = Image.asset(
+      _asset,
+      width: _size,
+      height: _size,
+      filterQuality: FilterQuality.none,
+    );
+    final wash = tint;
+    if (wash != null) {
+      final opacity = PlayerXp.menuPaletteWashOpacity(
+        context.watch<StatsProvider>().stats.totalXp,
+      );
+      if (opacity > 0) {
+        icon = ColorFiltered(
+          colorFilter: ColorFilter.mode(
+            wash.withValues(alpha: opacity),
+            BlendMode.srcATop,
+          ),
+          child: icon,
+        );
+      }
+    }
     return SizedBox(
       width: _size,
       height: _size,
@@ -614,12 +662,7 @@ class _MainMenuTitleIcon extends StatelessWidget {
             ? const Duration(milliseconds: 180)
             : Duration.zero,
         curve: Curves.easeOutBack,
-        child: Image.asset(
-          _asset,
-          width: _size,
-          height: _size,
-          filterQuality: FilterQuality.none,
-        ),
+        child: icon,
       ),
     );
   }
@@ -637,6 +680,11 @@ class _PlayModeGrid extends StatefulWidget {
   final bool graffitiUnlocked;
   final bool pocketGraffitiUnlocked;
   final bool iroenUnlocked;
+  final Color? irodokuTint;
+  final Color? graffitiTint;
+  final Color? dailyTint;
+  final Color? chromaticTint;
+  final Color? iroenTint;
   final VoidCallback onClassic;
   final VoidCallback onDaily;
   final VoidCallback onPocketDaily;
@@ -663,6 +711,11 @@ class _PlayModeGrid extends StatefulWidget {
     required this.graffitiUnlocked,
     required this.pocketGraffitiUnlocked,
     required this.iroenUnlocked,
+    required this.irodokuTint,
+    required this.graffitiTint,
+    required this.dailyTint,
+    required this.chromaticTint,
+    required this.iroenTint,
     required this.onClassic,
     required this.onDaily,
     required this.onPocketDaily,
@@ -735,6 +788,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
           onPocketModeChanged: _onPocketModeChanged,
           difficultySweep: widget.difficultySweep,
           pocketNudgeEpoch: widget.pocketNudgeEpoch,
+          fillTint: widget.irodokuTint,
         ),
         const SizedBox(height: 12),
         Row(
@@ -742,6 +796,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
             Expanded(
               child: MenuActionButton(
                 label: graffitiLabel,
+                fillTint: widget.graffitiTint,
                 enabled: !widget.busy,
                 locked: !graffitiUnlocked,
                 onPressed: _pocket
@@ -756,6 +811,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
             Expanded(
               child: MenuActionButton(
                 label: dailyLabel,
+                fillTint: widget.dailyTint,
                 badge: dailyUnlocked && dailyStreak > 0
                     ? 'x$dailyStreak'
                     : null,
@@ -777,6 +833,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
             Expanded(
               child: MenuActionButton(
                 label: chromaticLabel,
+                fillTint: widget.chromaticTint,
                 enabled: !widget.busy,
                 locked: !widget.chromaticUnlocked,
                 onPressed: _pocket && widget.chromaticUnlocked
@@ -792,6 +849,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
             Expanded(
               child: MenuActionButton(
                 label: 'Iroen',
+                fillTint: widget.iroenTint,
                 enabled: true,
                 locked: !widget.iroenUnlocked,
                 onPressed: widget.onIroen,
@@ -813,6 +871,7 @@ class _ClassicOrPocketButton extends StatefulWidget {
   final ValueChanged<bool> onPocketModeChanged;
   final Animation<double> difficultySweep;
   final int pocketNudgeEpoch;
+  final Color? fillTint;
 
   const _ClassicOrPocketButton({
     required this.busy,
@@ -821,6 +880,7 @@ class _ClassicOrPocketButton extends StatefulWidget {
     required this.onPocketModeChanged,
     required this.difficultySweep,
     required this.pocketNudgeEpoch,
+    this.fillTint,
   });
 
   @override
@@ -957,6 +1017,7 @@ class _ClassicOrPocketButtonState extends State<_ClassicOrPocketButton>
       onHorizontalDragEnd: _onDragEnd,
       child: MenuActionButton(
         label: _pocket ? '[Pocket]' : 'Irodoku',
+        fillTint: widget.fillTint,
         enabled: !widget.busy,
         onPressed: _onPressed,
         labelShake: _shake,

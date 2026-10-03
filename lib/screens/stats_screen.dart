@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../core/palette.dart';
 import '../core/theme.dart';
+import '../models/daily_leaderboard.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../providers/game_provider.dart';
@@ -426,6 +427,9 @@ class _LevelCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ink = Theme.of(context).colorScheme.onSurface;
+    final name = DisplayName.trySanitize(
+      context.watch<SettingsProvider>().displayName,
+    );
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color ??
@@ -434,7 +438,7 @@ class _LevelCard extends StatelessWidget {
         border: Border.all(color: Theme.of(context).dividerColor),
       ),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      child: XpLevelBar(totalXp: totalXp, ink: ink),
+      child: XpLevelBar(totalXp: totalXp, ink: ink, name: name),
     );
   }
 }

@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/palette.dart';
 import '../core/theme.dart';
+import '../models/daily_leaderboard.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
@@ -14,6 +16,7 @@ import '../providers/achievements_provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
+import '../services/daily_leaderboard_service.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
@@ -74,6 +77,60 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                     child: MenuActionButton(
                       label: 'Controls',
                       onPressed: () => showControlsHelpDialog(context),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                    child: Center(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .shadow
+                                  .withValues(alpha: 0.18),
+                              blurRadius: 5,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.surface,
+                            foregroundColor:
+                                Theme.of(context).colorScheme.onSurface,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            side: BorderSide(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              width: 2,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 15,
+                              vertical: 6,
+                            ),
+                            minimumSize: const Size(112, 37),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
+                                ),
+                          ),
+                          onPressed: withMenuSelect(context, () {
+                            unawaited(_showSetNameDialog(context));
+                          }),
+                          child: const Text('Set Name'),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -557,6 +614,105 @@ class _HowToPlayDialogState extends State<_HowToPlayDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+Future<void> _showSetNameDialog(BuildContext context) async {
+  final settings = context.read<SettingsProvider>();
+  final name = await showDialog<String>(
+    context: context,
+    builder: (context) => _SetNameDialog(initial: settings.displayName),
+  );
+  if (!context.mounted || name == null) return;
+  await settings.setDisplayName(name);
+  unawaited(DailyLeaderboardService.updateTodayName(name));
+}
+
+class _SetNameDialog extends StatefulWidget {
+  final String initial;
+
+  const _SetNameDialog({required this.initial});
+
+  @override
+  State<_SetNameDialog> createState() => _SetNameDialogState();
+}
+
+class _SetNameDialogState extends State<_SetNameDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initial);
+    if (widget.initial.isNotEmpty) {
+      _controller.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: widget.initial.length,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit(String? sanitized) {
+    if (sanitized == null) return;
+    Navigator.of(context).pop(sanitized);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = dark ? Colors.white : Colors.black;
+    final onInk = dark ? Colors.black : Colors.white;
+    final sanitized = DisplayName.trySanitize(_controller.text);
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        'Set Name',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: ink),
+      ),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: DisplayName.maxLength,
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ._\-]')),
+        ],
+        textInputAction: TextInputAction.done,
+        style: TextStyle(color: ink),
+        decoration: InputDecoration(
+          hintText: 'Name',
+          counterText: '',
+          enabledBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: ink.withValues(alpha: 0.4)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: BorderSide(color: ink, width: 2),
+          ),
+        ),
+        onChanged: (_) => setState(() {}),
+        onSubmitted: (_) => _submit(sanitized),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: ink,
+            foregroundColor: onInk,
+          ),
+          onPressed: sanitized == null
+              ? null
+              : withMenuSelect(context, () => _submit(sanitized)),
+          child: const Text('Confirm'),
+        ),
+      ],
     );
   }
 }

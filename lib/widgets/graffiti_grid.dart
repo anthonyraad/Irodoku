@@ -34,11 +34,11 @@ class _GraffitiGridState extends State<GraffitiGrid>
     with TickerProviderStateMixin {
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
-  static const _colorCycleDuration = Duration(milliseconds: 1500);
 
   late final AnimationController _controller;
   late final BulkNoteBorderAnimation _unitBorders;
   late final AnimationController _colorCycleController;
+  late final PickerHoldSweep _holdSweep;
   int _lastCelebrationId = 0;
   int _lastColorCycleSeq = 0;
   bool _holdingGlassMotion = false;
@@ -57,14 +57,16 @@ class _GraffitiGridState extends State<GraffitiGrid>
     _unitBorders = BulkNoteBorderAnimation(this);
     _colorCycleController = AnimationController(
       vsync: this,
-      duration: _colorCycleDuration,
+      duration: ColorCycle.oneShotDuration,
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
           _colorCycleController.value = 0;
         }
       });
+    _holdSweep = PickerHoldSweep(this);
     widget.game.addListener(_onGameChanged);
     _syncUnitBorders();
+    _syncHoldSweep();
     _syncGlassMotion();
   }
 
@@ -78,6 +80,7 @@ class _GraffitiGridState extends State<GraffitiGrid>
     _maybeStartCelebration();
     _maybeStartColorCycle();
     _syncUnitBorders();
+    _syncHoldSweep();
     _syncGlassMotion();
   }
 
@@ -88,6 +91,7 @@ class _GraffitiGridState extends State<GraffitiGrid>
     _controller.dispose();
     _unitBorders.dispose();
     _colorCycleController.dispose();
+    _holdSweep.dispose();
     super.dispose();
   }
 
@@ -95,6 +99,21 @@ class _GraffitiGridState extends State<GraffitiGrid>
     _maybeStartCelebration();
     _maybeStartColorCycle();
     _syncUnitBorders();
+    _syncHoldSweep();
+  }
+
+  void _syncHoldSweep() {
+    final blocked = widget.game.selectedRow != null ||
+        widget.game.bulkNoteSelect;
+    final active = !blocked &&
+        widget.game.pickerHoldActive &&
+        widget.game.pickerHoldValue != null;
+    _holdSweep.sync(active: active, immediateRelease: blocked);
+    if (active && _colorCycleController.isAnimating) {
+      _colorCycleController
+        ..stop()
+        ..value = 0;
+    }
   }
 
   void _syncGlassMotion({bool forceOff = false}) {
@@ -129,6 +148,14 @@ class _GraffitiGridState extends State<GraffitiGrid>
   }
 
   double? _cellColorCyclePhase(int row, int col) {
+    final hold = _holdSweep.phase(
+      filter: widget.game.pickerHoldValue,
+      matches: (filter) => ColorCycle.cellMatchesFilter(
+        widget.game.cells[row][col],
+        filter,
+      ),
+    );
+    if (hold != null) return hold;
     if (!_colorCycleController.isAnimating) return null;
     final filter = widget.game.colorCycleFilterValue;
     if (filter != null) {
@@ -177,7 +204,11 @@ class _GraffitiGridState extends State<GraffitiGrid>
           fit: StackFit.expand,
           children: [
             AnimatedBuilder(
-              animation: Listenable.merge([_controller, _colorCycleController]),
+              animation: Listenable.merge([
+                _controller,
+                _colorCycleController,
+                _holdSweep.listenable,
+              ]),
               builder: (context, _) => _buildCellLayer(
                 game: game,
                 palette: widget.palette,
@@ -316,6 +347,12 @@ class _GraffitiGridState extends State<GraffitiGrid>
                         col: col,
                         pocket: game.isPocket,
                         colorCyclePhase: _cellColorCyclePhase(row, col),
+                        colorCycleFilter: _holdSweep.isVisible
+                            ? game.pickerHoldValue
+                            : game.colorCycleFilterValue,
+                        colorCycleLinear: _holdSweep.isVisible,
+                        colorCycleMix:
+                            _holdSweep.isVisible ? _holdSweep.mix.value : 1,
                         colorCycleSteps: game.colorCycleSteps,
                         noteClearWave: game.noteClearWave,
                         onTap: () => game.selectCell(row, col),

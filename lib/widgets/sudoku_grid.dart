@@ -33,11 +33,11 @@ class SudokuGrid extends StatefulWidget {
 class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
-  static const _colorCycleDuration = Duration(milliseconds: 1500);
 
   late final AnimationController _controller;
   late final BulkNoteBorderAnimation _unitBorders;
   late final AnimationController _colorCycleController;
+  late final PickerHoldSweep _holdSweep;
   int _lastCelebrationId = 0;
   int _lastColorCycleSeq = 0;
   bool _holdingGlassMotion = false;
@@ -58,15 +58,17 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _unitBorders = BulkNoteBorderAnimation(this);
     _colorCycleController = AnimationController(
       vsync: this,
-      duration: _colorCycleDuration,
+      duration: ColorCycle.oneShotDuration,
     )..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
           _colorCycleController.value = 0;
         }
         _syncGlassMotion();
       });
+    _holdSweep = PickerHoldSweep(this);
     widget.game.addListener(_onGameChanged);
     _syncUnitBorders();
+    _syncHoldSweep();
   }
 
   @override
@@ -79,6 +81,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _maybeStartCelebration();
     _maybeStartColorCycle();
     _syncUnitBorders();
+    _syncHoldSweep();
     _syncGlassMotion();
   }
 
@@ -89,6 +92,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _controller.dispose();
     _unitBorders.dispose();
     _colorCycleController.dispose();
+    _holdSweep.dispose();
     super.dispose();
   }
 
@@ -125,6 +129,21 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _maybeStartCelebration();
     _maybeStartColorCycle();
     _syncUnitBorders();
+    _syncHoldSweep();
+  }
+
+  void _syncHoldSweep() {
+    final blocked =
+        widget.game.selected != null || widget.game.bulkNoteSelect;
+    final active = !blocked &&
+        widget.game.pickerHoldActive &&
+        widget.game.pickerHoldValue != null;
+    _holdSweep.sync(active: active, immediateRelease: blocked);
+    if (active && _colorCycleController.isAnimating) {
+      _colorCycleController
+        ..stop()
+        ..value = 0;
+    }
   }
 
   void _syncUnitBorders() {
@@ -152,12 +171,20 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     }
     _colorCycleController.duration = widget.game.colorCycleMosaic != null
         ? MosaicShimmer.duration
-        : _colorCycleDuration;
+        : ColorCycle.oneShotDuration;
     _colorCycleController.forward(from: 0);
     _syncGlassMotion();
   }
 
   double? _cellColorCyclePhase(int row, int col) {
+    final hold = _holdSweep.phase(
+      filter: widget.game.pickerHoldValue,
+      matches: (filter) => ColorCycle.cellMatchesFilter(
+        widget.game.cellAt(row, col),
+        filter,
+      ),
+    );
+    if (hold != null) return hold;
     // Only while animating — a completed controller sits at 1.0, which used to
     // keep cells stuck on solid representative colors after the shimmer.
     if (!_colorCycleController.isAnimating) return null;
@@ -207,7 +234,11 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
           fit: StackFit.expand,
           children: [
             AnimatedBuilder(
-              animation: Listenable.merge([_controller, _colorCycleController]),
+              animation: Listenable.merge([
+                _controller,
+                _colorCycleController,
+                _holdSweep.listenable,
+              ]),
               builder: (context, _) => _buildCellLayer(
                 game: game,
                 palette: widget.palette,
@@ -347,6 +378,12 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         celebrationScale: celebrationScale,
                         celebrationShimmer: celebrationShimmer,
                         colorCyclePhase: _cellColorCyclePhase(row, col),
+                        colorCycleFilter: _holdSweep.isVisible
+                            ? game.pickerHoldValue
+                            : game.colorCycleFilterValue,
+                        colorCycleLinear: _holdSweep.isVisible,
+                        colorCycleMix:
+                            _holdSweep.isVisible ? _holdSweep.mix.value : 1,
                         colorCycleSteps: game.colorCycleSteps,
                         mosaicSubValues:
                             game.colorCycleMosaic?.subValuesAt(row, col),

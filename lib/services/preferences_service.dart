@@ -63,6 +63,8 @@ class PreferencesService {
   static const _keyIroenActiveMosaicId = 'iroen_active_mosaic_id';
   static const _keyDevMode = 'dev_mode';
   static const _keyPocketSwipeDiscovered = 'pocket_swipe_discovered';
+  static const _keyFirstRunTutorialCompleted = 'first_run_tutorial_completed';
+  static const _keyDisplayName = 'display_name';
   static const _keyAchievements = 'achievements_progress';
   static const _keyAchievementsSeen = 'achievements_seen_ids';
   static const _keyDailyLastCompleted = 'daily_last_completed_day';
@@ -135,6 +137,62 @@ class PreferencesService {
 
   Future<void> setPocketSwipeDiscovered(bool discovered) async {
     await _prefs.setBool(_keyPocketSwipeDiscovered, discovered);
+  }
+
+  bool get hasFirstRunTutorialDecision =>
+      _prefs.containsKey(_keyFirstRunTutorialCompleted);
+
+  /// True when the first-run overlay should not be shown.
+  ///
+  /// Missing key: treat returning players as already finished so the overlay
+  /// is not sprung on an update. Brand-new installs stay incomplete.
+  bool get firstRunTutorialCompleted {
+    if (hasFirstRunTutorialDecision) {
+      return _prefs.getBool(_keyFirstRunTutorialCompleted) ?? false;
+    }
+    return _looksLikeExistingInstall();
+  }
+
+  Future<void> setFirstRunTutorialCompleted(bool completed) async {
+    await _prefs.setBool(_keyFirstRunTutorialCompleted, completed);
+  }
+
+  String getDisplayName() => _prefs.getString(_keyDisplayName) ?? '';
+
+  Future<void> setDisplayName(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      await _prefs.remove(_keyDisplayName);
+    } else {
+      await _prefs.setString(_keyDisplayName, trimmed);
+    }
+  }
+
+  bool _looksLikeExistingInstall() {
+    if ((_prefs.getInt(_keyGamesPlayed) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyGamesWon) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyChromaticGamesWon) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyGraffitiWins) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyGraffitiLosses) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyPocketWins) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyPocketGraffitiWins) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyPocketDailyWins) ?? 0) > 0) return true;
+    if ((_prefs.getInt(_keyTotalXp) ?? 0) > 0) return true;
+    if (getPocketSwipeDiscovered()) return true;
+    if (getDailyLastCompletedDay() != null) return true;
+    if (getPocketDailyLastCompletedDay() != null) return true;
+    const parkedKeys = [
+      _keyPausedGame,
+      _keyParkedRegularGame,
+      _keyParkedChromaticGame,
+      _keyParkedDailyGame,
+      _keyParkedPocketGame,
+      _keyParkedPocketChromaticGame,
+      _keyParkedPocketDailyGame,
+      _keyIroenState,
+      _keyIroenGallery,
+    ];
+    return parkedKeys.any(_prefs.containsKey);
   }
 
   bool get hasTotalXp => _prefs.containsKey(_keyTotalXp);

@@ -25,11 +25,190 @@ Widget _resultTransition(
   );
 }
 
+class VictoryPanel extends StatelessWidget {
+  final String time;
+  final VoidCallback onClose;
+  final VoidCallback onNewGame;
+  final bool showNewGame;
+  final String? leaderboardLabel;
+  final VoidCallback? onLeaderboard;
+  final XpAward? xp;
+
+  const VictoryPanel({
+    super.key,
+    required this.time,
+    required this.onClose,
+    required this.onNewGame,
+    this.showNewGame = true,
+    this.leaderboardLabel,
+    this.onLeaderboard,
+    this.xp,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = dark ? Colors.white : Colors.black;
+    final onInk = dark ? Colors.black : Colors.white;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        'Victory',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: ink),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _VictoryIcon(dark: dark),
+            const SizedBox(height: 16),
+            Text(
+              time,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: ink),
+            ),
+            if (xp != null) ...[
+              const SizedBox(height: 16),
+              XpGainPanel(award: xp!, ink: ink),
+            ],
+          ],
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        if (showNewGame)
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ink,
+              foregroundColor: onInk,
+            ),
+            onPressed: withMenuSelect(context, () {
+              onClose();
+              onNewGame();
+            }),
+            child: const Text('Next game'),
+          ),
+        if (leaderboardLabel != null && onLeaderboard != null)
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ink,
+              foregroundColor: onInk,
+            ),
+            onPressed: withMenuSelect(context, onLeaderboard!),
+            child: Text(leaderboardLabel!),
+          ),
+        TextButton(
+          style: TextButton.styleFrom(foregroundColor: ink),
+          onPressed: onClose,
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class DefeatPanel extends StatelessWidget {
+  final VoidCallback onClose;
+  final VoidCallback onNewGame;
+  final bool showNewGame;
+  final VoidCallback? onTryAgain;
+  final int maxMistakes;
+
+  const DefeatPanel({
+    super.key,
+    required this.onClose,
+    required this.onNewGame,
+    this.showNewGame = true,
+    this.onTryAgain,
+    this.maxMistakes = 3,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = dark ? Colors.white : Colors.black;
+    final onInk = dark ? Colors.black : Colors.white;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Text(
+        'Defeat',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: ink),
+      ),
+      content: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < maxMistakes; i++)
+            Icon(Icons.close, size: 48, weight: 700, color: ink),
+        ],
+      ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        if (onTryAgain != null)
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ink,
+              foregroundColor: onInk,
+            ),
+            onPressed: withMenuSelect(context, () {
+              onClose();
+              onTryAgain!();
+            }),
+            child: const Text('Try again'),
+          )
+        else if (showNewGame)
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ink,
+              foregroundColor: onInk,
+            ),
+            onPressed: withMenuSelect(context, () {
+              onClose();
+              onNewGame();
+            }),
+            child: const Text('New Game'),
+          ),
+        TextButton(
+          style: TextButton.styleFrom(foregroundColor: ink),
+          onPressed: onClose,
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+/// In-route dimmer + centered result card. Avoids [showGeneralDialog] overlays,
+/// which go blank on web when the game rebuilds under [WebLayout].
+class ResultScrim extends StatelessWidget {
+  final Widget child;
+
+  const ResultScrim({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Stack(
+        children: [
+          const ModalBarrier(dismissible: false, color: Colors.black54),
+          Center(child: child),
+        ],
+      ),
+    );
+  }
+}
+
 Future<void> showWinDialog(
   BuildContext context, {
   required String time,
   required VoidCallback onNewGame,
   bool showNewGame = true,
+  String? leaderboardLabel,
+  VoidCallback? onLeaderboard,
   XpAward? xp,
 }) {
   return showGeneralDialog(
@@ -40,57 +219,14 @@ Future<void> showWinDialog(
     transitionDuration: _resultTransitionDuration,
     transitionBuilder: _resultTransition,
     pageBuilder: (context, animation, secondaryAnimation) {
-      final dark = Theme.of(context).brightness == Brightness.dark;
-      final ink = dark ? Colors.white : Colors.black;
-      final onInk = dark ? Colors.black : Colors.white;
-
-      return AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Victory',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: ink),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _VictoryIcon(dark: dark),
-              const SizedBox(height: 16),
-              Text(
-                time,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyLarge?.copyWith(color: ink),
-              ),
-              if (xp != null) ...[
-                const SizedBox(height: 16),
-                XpGainPanel(award: xp, ink: ink),
-              ],
-            ],
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          if (showNewGame)
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: ink,
-                foregroundColor: onInk,
-              ),
-              onPressed: withMenuSelect(context, () {
-                Navigator.of(context).pop();
-                onNewGame();
-              }),
-              child: const Text('Next game'),
-            ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: ink),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+      return VictoryPanel(
+        time: time,
+        showNewGame: showNewGame,
+        leaderboardLabel: leaderboardLabel,
+        onLeaderboard: onLeaderboard,
+        xp: xp,
+        onNewGame: onNewGame,
+        onClose: () => Navigator.of(context).pop(),
       );
     },
   );
@@ -153,56 +289,12 @@ Future<void> showLoseDialog(
     transitionDuration: _resultTransitionDuration,
     transitionBuilder: _resultTransition,
     pageBuilder: (context, animation, secondaryAnimation) {
-      final dark = Theme.of(context).brightness == Brightness.dark;
-      final ink = dark ? Colors.white : Colors.black;
-      final onInk = dark ? Colors.black : Colors.white;
-
-      return AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Defeat',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: ink),
-        ),
-        content: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (var i = 0; i < maxMistakes; i++)
-              Icon(Icons.close, size: 48, weight: 700, color: ink),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          if (onTryAgain != null)
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: ink,
-                foregroundColor: onInk,
-              ),
-              onPressed: withMenuSelect(context, () {
-                Navigator.of(context).pop();
-                onTryAgain();
-              }),
-              child: const Text('Try again'),
-            )
-          else if (showNewGame)
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: ink,
-                foregroundColor: onInk,
-              ),
-              onPressed: withMenuSelect(context, () {
-                Navigator.of(context).pop();
-                onNewGame();
-              }),
-              child: const Text('New Game'),
-            ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: ink),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+      return DefeatPanel(
+        showNewGame: showNewGame,
+        onTryAgain: onTryAgain,
+        onNewGame: onNewGame,
+        maxMistakes: maxMistakes,
+        onClose: () => Navigator.of(context).pop(),
       );
     },
   );

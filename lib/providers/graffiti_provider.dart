@@ -81,6 +81,7 @@ class GraffitiProvider extends ChangeNotifier {
   String? _roomCode;
   String? _playerId;
   String? _opponentId;
+  String? _opponentName;
   bool _isHost = false;
   bool _solo = false;
   String? _statusMessage;
@@ -107,6 +108,9 @@ class GraffitiProvider extends ChangeNotifier {
   int _colorCycleSeq = 0;
   int _colorCycleSteps = 4;
   int? _colorCycleFilterValue;
+  int? _pickerHoldValue;
+  bool _pickerHoldActive = false;
+  bool _ignorePickerTap = false;
   NoteClearWave? _noteClearWave;
   int _noteClearWaveSeq = 0;
   int _noteClearWaveClearToken = 0;
@@ -138,6 +142,8 @@ class GraffitiProvider extends ChangeNotifier {
   String? get roomCode => _roomCode;
   String? get playerId => _playerId;
   String? get opponentId => _opponentId;
+  /// Sanitized opponent display name, or null when they have none set.
+  String? get opponentName => _opponentName;
   bool get isHost => _isHost;
   bool get solo => _solo;
   String? get statusMessage => _statusMessage;
@@ -172,6 +178,8 @@ class GraffitiProvider extends ChangeNotifier {
   int get colorCycleSeq => _colorCycleSeq;
   int get colorCycleSteps => _colorCycleSteps;
   int? get colorCycleFilterValue => _colorCycleFilterValue;
+  int? get pickerHoldValue => _pickerHoldValue;
+  bool get pickerHoldActive => _pickerHoldActive;
   bool get hasCellSelection =>
       _selectedRow != null || _bulkNoteSelect || _noteMode;
   bool get canUndo => _undoStack.isNotEmpty && !isLockedOut;
@@ -272,6 +280,32 @@ class GraffitiProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void beginPickerHoldSweep(int value) {
+    if (value < 1 || value > gridSize) return;
+    if (_selectedRow != null || _bulkNoteSelect) return;
+    if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
+      return;
+    }
+    _pickerHoldValue = value;
+    _pickerHoldActive = true;
+    _ignorePickerTap = true;
+    notifyListeners();
+  }
+
+  void endPickerHoldSweep() {
+    if (!_pickerHoldActive) return;
+    _pickerHoldActive = false;
+    _ignorePickerTap = true;
+    notifyListeners();
+    scheduleMicrotask(() => _ignorePickerTap = false);
+  }
+
+  void _stopPickerHoldSweep() {
+    _pickerHoldActive = false;
+    _pickerHoldValue = null;
+    _ignorePickerTap = false;
+  }
+
   Future<bool> _ensureReady() async {
     _phase = GraffitiPhase.connecting;
     _statusMessage = 'Connecting…';
@@ -329,6 +363,7 @@ class GraffitiProvider extends ChangeNotifier {
         hostId: pid,
         isQuickMatch: true,
         pocket: _pocket,
+        displayName: _settings.displayName,
       );
       _phase = GraffitiPhase.waiting;
       _statusMessage = 'Waiting for opponent…';
@@ -362,13 +397,17 @@ class GraffitiProvider extends ChangeNotifier {
       roomCode: code,
       playerId: pid,
       pocket: _pocket,
+      displayName: _settings.displayName,
     );
     if (!joined) return false;
 
     _roomCode = code;
     _isHost = false;
     final hostId = data['host']?.toString();
-    if (hostId != null && hostId != pid) _opponentId = hostId;
+    if (hostId != null && hostId != pid) {
+      _opponentId = hostId;
+      _opponentName = GraffitiFirebaseService.playerNameFromRoom(data, hostId);
+    }
     _phase = GraffitiPhase.waiting;
     _statusMessage = 'Joined $code — waiting to start…';
     _listenToRoom();
@@ -390,6 +429,7 @@ class GraffitiProvider extends ChangeNotifier {
         hostId: _playerId!,
         isQuickMatch: false,
         pocket: _pocket,
+        displayName: _settings.displayName,
       );
       _phase = GraffitiPhase.waiting;
       _statusMessage = 'Room $code — waiting for opponent…';
@@ -447,6 +487,7 @@ class GraffitiProvider extends ChangeNotifier {
       roomCode: code,
       playerId: pid,
       pocket: _pocket,
+      displayName: _settings.displayName,
     );
     if (!joined) {
       _failToIdle(
@@ -457,7 +498,10 @@ class GraffitiProvider extends ChangeNotifier {
     _roomCode = code;
     _isHost = false;
     final hostId = data['host']?.toString();
-    if (hostId != null && hostId != pid) _opponentId = hostId;
+    if (hostId != null && hostId != pid) {
+      _opponentId = hostId;
+      _opponentName = GraffitiFirebaseService.playerNameFromRoom(data, hostId);
+    }
     _phase = GraffitiPhase.waiting;
     _statusMessage = 'Joined $code — waiting to start…';
     _listenToRoom();
@@ -468,6 +512,8 @@ class GraffitiProvider extends ChangeNotifier {
     _phase = GraffitiPhase.idle;
     _statusMessage = message;
     _roomCode = null;
+    _opponentId = null;
+    _opponentName = null;
     notifyListeners();
   }
 
@@ -504,6 +550,10 @@ class GraffitiProvider extends ChangeNotifier {
         }
       }
     }
+    _opponentName = GraffitiFirebaseService.playerNameFromRoom(
+      data,
+      _opponentId,
+    );
 
     final gameState = data['gameState']?.toString() ?? 'waiting';
     final wasPlaying = _phase == GraffitiPhase.playing;
@@ -691,6 +741,7 @@ class GraffitiProvider extends ChangeNotifier {
     _completedUnits = {};
     _celebration = null;
     _colorCycleFilterValue = null;
+    _stopPickerHoldSweep();
     _noteClearWave = null;
     _selectedRow = null;
     _selectedCol = null;
@@ -875,6 +926,7 @@ class GraffitiProvider extends ChangeNotifier {
     if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
       return;
     }
+    if (_pickerHoldActive) endPickerHoldSweep();
     final cell = _cells[row][col];
     if (!cell.isEditable) {
       if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
@@ -925,6 +977,7 @@ class GraffitiProvider extends ChangeNotifier {
   void enterBulkNoteSelect(int row, int col) {
     if (!controlsEnabled) return;
     if (!_cells[row][col].isEditable) return;
+    if (_pickerHoldActive) endPickerHoldSweep();
 
     _bulkNoteSelect = true;
     if (!_noteMode) _noteMode = true;
@@ -941,6 +994,7 @@ class GraffitiProvider extends ChangeNotifier {
 
   void enterBulkNoteSelectFromToolbar() {
     if (!canEnterBulkNoteSelectFromToolbar) return;
+    if (_pickerHoldActive) endPickerHoldSweep();
     final r = _selectedRow;
     final c = _selectedCol;
     if (r != null && c != null && _cells[r][c].isEditable) {
@@ -1011,6 +1065,7 @@ class GraffitiProvider extends ChangeNotifier {
 
   Future<void> inputColor(int value) async {
     if (value < 1 || value > gridSize) return;
+    if (_pickerHoldActive || _ignorePickerTap) return;
     if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
       return;
     }
@@ -1425,6 +1480,7 @@ class GraffitiProvider extends ChangeNotifier {
     _phase = GraffitiPhase.idle;
     _roomCode = null;
     _opponentId = null;
+    _opponentName = null;
     _isHost = false;
     _solo = false;
     _statusMessage = message;
@@ -1442,6 +1498,7 @@ class GraffitiProvider extends ChangeNotifier {
     _completedUnits = {};
     _celebration = null;
     _colorCycleFilterValue = null;
+    _stopPickerHoldSweep();
     _noteClearWave = null;
     _selectedRow = null;
     _selectedCol = null;

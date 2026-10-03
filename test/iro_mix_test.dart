@@ -66,4 +66,63 @@ void main() {
       isTrue,
     );
   });
+
+  test('IroMix.random never pairs near-duplicate hexes', () {
+    for (var seed = 0; seed < 250; seed++) {
+      final mix = IroMix.random(Random(seed));
+      expect(
+        mix.hasNearDuplicateColors,
+        isFalse,
+        reason: 'seed $seed → ${mix.key}',
+      );
+      final allB = IroMix.random(Random(seed), (_) => true);
+      expect(
+        allB.hasNearDuplicateColors,
+        isFalse,
+        reason: 'seed $seed all B → ${allB.key}',
+      );
+      expect(allB.bSides.every((side) => side), isTrue);
+    }
+  });
+
+  test('IroMix.showcase skips palettes that would duplicate a hex', () {
+    expect(IroMix.showcase().hasNearDuplicateColors, isFalse);
+    expect(IroMix.showcase((_) => true).hasNearDuplicateColors, isFalse);
+  });
+
+  test('fromKeys round-trips a stored mix even if two slots share a hex', () {
+    final keys = [
+      GamePalette.standard.storageKey,
+      GamePalette.rainbow.storageKey,
+      GamePalette.world11.storageKey,
+      GamePalette.neon.storageKey,
+      GamePalette.pkmn.storageKey,
+      GamePalette.pkmn2.storageKey,
+      GamePalette.glass.storageKey,
+      GamePalette.sky.storageKey,
+      GamePalette.standard.storageKey,
+    ];
+    final restored = IroMix.fromKeys(keys);
+    expect(restored, isNotNull);
+    expect(restored!.sources[2], GamePalette.world11);
+    expect(restored.sources[3], GamePalette.neon);
+    expect(restored.hasNearDuplicateColors, isTrue);
+  });
+
+  test('withBSides keeps sources when B-sides would duplicate a hex', () {
+    final mix = IroMix([
+      GamePalette.standard,
+      GamePalette.pkmn,
+      GamePalette.rainbow,
+      GamePalette.world11,
+      GamePalette.standard,
+      GamePalette.pkmn2,
+      GamePalette.glass,
+      GamePalette.sky,
+      GamePalette.neon,
+    ]);
+    final flipped = mix.withBSides((_) => true);
+    expect(flipped.sources, mix.sources);
+    expect(flipped.bSides.every((side) => side), isTrue);
+  });
 }

@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/player_xp.dart';
 import '../providers/settings_provider.dart';
+import '../providers/stats_provider.dart';
 import 'menu_select_sound.dart';
 import 'palette_sweep_mask.dart';
 
@@ -25,6 +27,8 @@ class MenuActionButton extends StatelessWidget {
   final Animation<double>? labelSweep;
   /// 0–1 progress; when set, the badge pill sweeps the selected Config palette.
   final Animation<double>? badgeSweep;
+  /// Palette swatch laid over the button fill using [PlayerXp.menuPaletteWashOpacity].
+  final Color? fillTint;
 
   const MenuActionButton({
     super.key,
@@ -38,6 +42,7 @@ class MenuActionButton extends StatelessWidget {
     this.labelSlide,
     this.labelSweep,
     this.badgeSweep,
+    this.fillTint,
   });
 
   @override
@@ -48,8 +53,18 @@ class MenuActionButton extends StatelessWidget {
     final visuallyMuted = muted || locked || !interactive;
     final ink = scheme.onSurface.withValues(alpha: visuallyMuted ? 0.55 : 1);
     final border = visuallyMuted ? scheme.outlineVariant : scheme.onSurface;
-    final fill =
+    final baseFill =
         visuallyMuted ? scheme.surfaceContainerHighest : scheme.surface;
+    final tint = fillTint;
+    var fill = baseFill;
+    if (tint != null) {
+      final opacity = PlayerXp.menuPaletteWashOpacity(
+        context.watch<StatsProvider>().stats.totalXp,
+      );
+      if (opacity > 0) {
+        fill = Color.alphaBlend(tint.withValues(alpha: opacity), baseFill);
+      }
+    }
 
     final labelStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
           color: ink,

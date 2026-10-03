@@ -34,6 +34,8 @@ class SettingsProvider extends ChangeNotifier {
   Set<GamePalette> _paletteBSides;
   IroMix? _iroMix;
   bool _pocketSwipeDiscovered;
+  bool _showFirstRunTutorial;
+  String _displayName;
   int _darkModeToggleStreak = 0;
   DateTime? _lastDarkModeToggle;
   int _soundToggleStreak = 0;
@@ -55,15 +57,23 @@ class SettingsProvider extends ChangeNotifier {
         _palette = _prefs.getPalette(),
         _paletteBSides = _prefs.getPaletteBSides(),
         _iroMix = _prefs.getIroMix(),
-        _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered() {
+        _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered(),
+        _showFirstRunTutorial = !_prefs.firstRunTutorialCompleted,
+        _displayName = _prefs.getDisplayName() {
     _clampDifficultyToUnlocked();
     _clampPaletteToUnlocked();
     _clampChromaticToUnlocked();
+    if (!_prefs.hasFirstRunTutorialDecision) {
+      unawaited(
+        _prefs.setFirstRunTutorialCompleted(!_showFirstRunTutorial),
+      );
+    }
   }
 
   void applyAfterProgressLoad() {
     _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered();
     _paletteBSides = _prefs.getPaletteBSides();
+    _displayName = _prefs.getDisplayName();
     _iroMix = _prefs.getIroMix()?.withBSides(bSideEnabled);
     ensureDifficultyUnlocked(_stats.stats);
     ensurePaletteUnlocked(_stats.stats);
@@ -163,6 +173,27 @@ class SettingsProvider extends ChangeNotifier {
     if (_pocketSwipeDiscovered) return;
     _pocketSwipeDiscovered = true;
     await _prefs.setPocketSwipeDiscovered(true);
+  }
+
+  /// First-run 3-step overlay on the home Game Screen.
+  bool get showFirstRunTutorial => _showFirstRunTutorial;
+
+  /// Public Daily leaderboard name. Empty until the player sets one.
+  String get displayName => _displayName;
+
+  Future<void> setDisplayName(String name, {bool notify = true}) async {
+    final next = name.trim();
+    if (next == _displayName) return;
+    _displayName = next;
+    if (notify) notifyListeners();
+    await _prefs.setDisplayName(next);
+  }
+
+  Future<void> completeFirstRunTutorial() async {
+    if (!_showFirstRunTutorial) return;
+    _showFirstRunTutorial = false;
+    notifyListeners();
+    await _prefs.setFirstRunTutorialCompleted(true);
   }
 
   Future<void> setDifficulty(Difficulty difficulty) async {

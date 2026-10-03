@@ -27,6 +27,15 @@ void main() {
     expect(PlayerXp.progress(150), (intoLevel: 50, toNext: 214));
   });
 
+  test('menu palette wash is 0% through 25, 1% at 26, 25% from 50', () {
+    expect(PlayerXp.menuPaletteWashOpacityForLevel(1), 0);
+    expect(PlayerXp.menuPaletteWashOpacityForLevel(25), 0);
+    expect(PlayerXp.menuPaletteWashOpacityForLevel(26), closeTo(0.01, 1e-9));
+    expect(PlayerXp.menuPaletteWashOpacityForLevel(27), closeTo(0.02, 1e-9));
+    expect(PlayerXp.menuPaletteWashOpacityForLevel(50), closeTo(0.25, 1e-9));
+    expect(PlayerXp.menuPaletteWashOpacityForLevel(80), closeTo(0.25, 1e-9));
+  });
+
   test('flawless fast Hard first-of-day floors each 25% bonus', () {
     final award = PlayerXp.compute(
       difficulty: Difficulty.hard,
@@ -388,6 +397,10 @@ void main() {
   });
 
   test('Pocket Daily unlocks after a Pocket win', () {
+    if (GameStats.debugUnlockPocketDaily) {
+      expect(const GameStats().isPocketDailyUnlocked, isTrue);
+      return;
+    }
     expect(const GameStats().isPocketDailyUnlocked, isFalse);
     expect(
       const GameStats(

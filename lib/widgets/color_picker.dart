@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/color_cycle.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
 import '../models/game_palette.dart';
@@ -59,6 +62,8 @@ class ColorPicker extends StatelessWidget {
   final ValueChanged<int> onNoteRemoved;
   final ValueChanged<int>? onSwipeLeft;
   final ValueChanged<int>? onSwipeRight;
+  final ValueChanged<int>? onColorHoldStart;
+  final VoidCallback? onColorHoldEnd;
   final bool visible;
   final bool xlMode;
   final bool pocket;
@@ -76,6 +81,8 @@ class ColorPicker extends StatelessWidget {
     required this.onNoteRemoved,
     this.onSwipeLeft,
     this.onSwipeRight,
+    this.onColorHoldStart,
+    this.onColorHoldEnd,
     required this.visible,
     required this.palette,
     this.displaySwatches,
@@ -184,6 +191,7 @@ class ColorPicker extends StatelessWidget {
     final swatches = displaySwatches ?? IrodokuPalette.swatchesFor(palette);
     final outline = IrodokuPalette.outlineForSwatch(swatches[index]);
     return _ColorSwatch(
+      key: ValueKey('picker-swatch-$value'),
       swatch: swatches[index],
       borderColor: outline ?? line,
       borderWidth: outline != null ? 1.0 : 0.6,
@@ -194,6 +202,10 @@ class ColorPicker extends StatelessWidget {
           onSwipeLeft == null ? null : () => onSwipeLeft!(value),
       onSwipeRight:
           onSwipeRight == null ? null : () => onSwipeRight!(value),
+      onHoldStart: onColorHoldStart == null
+          ? null
+          : () => onColorHoldStart!(value),
+      onHoldEnd: onColorHoldEnd,
     );
   }
 }
@@ -268,8 +280,11 @@ class _ColorSwatch extends StatefulWidget {
   final VoidCallback onSwipeUp;
   final VoidCallback? onSwipeLeft;
   final VoidCallback? onSwipeRight;
+  final VoidCallback? onHoldStart;
+  final VoidCallback? onHoldEnd;
 
   const _ColorSwatch({
+    super.key,
     required this.swatch,
     required this.borderColor,
     required this.borderWidth,
@@ -278,6 +293,8 @@ class _ColorSwatch extends StatefulWidget {
     required this.onSwipeUp,
     this.onSwipeLeft,
     this.onSwipeRight,
+    this.onHoldStart,
+    this.onHoldEnd,
   });
 
   @override
@@ -291,12 +308,45 @@ class _ColorSwatchState extends State<_ColorSwatch> {
   int? _activePointer;
   Offset? _startGlobal;
   bool _resolved = false;
+  bool _holdStarted = false;
+  Timer? _holdTimer;
+  Stopwatch? _pressClock;
+
+  void _cancelHoldTimer() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+  }
+
+  void _armHoldTimer() {
+    _cancelHoldTimer();
+    _holdStarted = false;
+    _pressClock = Stopwatch()..start();
+    if (widget.onHoldStart == null) return;
+    _holdTimer = Timer(ColorCycle.holdStartDelay, () {
+      if (!mounted || _resolved || _activePointer == null) return;
+      _holdStarted = true;
+      widget.onHoldStart!();
+    });
+  }
+
+  void _finishHoldIfStarted() {
+    if (!_holdStarted) return;
+    _holdStarted = false;
+    widget.onHoldEnd?.call();
+  }
+
+  bool get _heldLongEnough {
+    if (_holdStarted) return true;
+    final elapsed = _pressClock?.elapsed ?? Duration.zero;
+    return elapsed >= ColorCycle.holdStartDelay;
+  }
 
   void _onPointerDown(PointerDownEvent event) {
     _cleanupRoute();
     _activePointer = event.pointer;
     _startGlobal = event.position;
     _resolved = false;
+    _armHoldTimer();
     // Keep receiving move/up even after the finger leaves this small swatch.
     GestureBinding.instance.pointerRouter.addRoute(event.pointer, _onPointerRoute);
   }
@@ -317,23 +367,35 @@ class _ColorSwatchState extends State<_ColorSwatch> {
       if (horizontalEnabled && dx.abs() > dy.abs()) {
         if (dx <= -_swipeThreshold && widget.onSwipeLeft != null) {
           _resolved = true;
+          _cancelHoldTimer();
+          _finishHoldIfStarted();
           widget.onSwipeLeft!();
         } else if (dx >= _swipeThreshold && widget.onSwipeRight != null) {
           _resolved = true;
+          _cancelHoldTimer();
+          _finishHoldIfStarted();
           widget.onSwipeRight!();
         }
       } else if (dy >= _swipeThreshold) {
         _resolved = true;
+        _cancelHoldTimer();
+        _finishHoldIfStarted();
         widget.onSwipeDown();
       } else if (dy <= -_swipeThreshold) {
         _resolved = true;
+        _cancelHoldTimer();
+        _finishHoldIfStarted();
         widget.onSwipeUp();
       }
       return;
     }
 
     if (event is PointerUpEvent || event is PointerCancelEvent) {
-      if (!_resolved && event is PointerUpEvent) {
+      final held = _heldLongEnough;
+      _cancelHoldTimer();
+      if (_holdStarted) {
+        _finishHoldIfStarted();
+      } else if (!held && !_resolved && event is PointerUpEvent) {
         // No meaningful swipe — treat as a tap to commit a full color.
         widget.onTap();
       }
@@ -342,6 +404,7 @@ class _ColorSwatchState extends State<_ColorSwatch> {
   }
 
   void _cleanupRoute() {
+    _cancelHoldTimer();
     final pointer = _activePointer;
     if (pointer != null) {
       GestureBinding.instance.pointerRouter.removeRoute(pointer, _onPointerRoute);
@@ -353,6 +416,12 @@ class _ColorSwatchState extends State<_ColorSwatch> {
 
   @override
   void dispose() {
+    _pressClock?.stop();
+    _cancelHoldTimer();
+    if (_holdStarted) {
+      _holdStarted = false;
+      widget.onHoldEnd?.call();
+    }
     _cleanupRoute();
     super.dispose();
   }

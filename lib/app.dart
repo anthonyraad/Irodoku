@@ -65,14 +65,15 @@ class IrodokuApp extends StatelessWidget {
           ),
         ),
       ],
-      child: Consumer<SettingsProvider>(
-        builder: (context, settings, _) {
+      child: Selector<SettingsProvider, bool>(
+        selector: (_, settings) => settings.darkMode,
+        builder: (context, darkMode, _) {
           return MaterialApp(
             title: 'Irodoku',
             debugShowCheckedModeBanner: false,
             theme: IrodokuTheme.light(),
             darkTheme: IrodokuTheme.dark(),
-            themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
             builder: WebLayout.wrap,
             home: const GameScreen(),
           );
