@@ -193,8 +193,11 @@ class GameStats {
 
   bool get isPocketGraffitiUnlocked => true;
 
+  /// Skip the 1 Pocket win gate for Pocket Daily. Keep false in release.
+  static const bool debugUnlockPocketDaily = false;
+
   bool get isPocketDailyUnlocked =>
-      pocketWins >= graffitiUnlockPocketWins;
+      debugUnlockPocketDaily || pocketWins >= graffitiUnlockPocketWins;
 
   Difficulty get highestUnlocked {
     Difficulty best = Difficulty.easy;
