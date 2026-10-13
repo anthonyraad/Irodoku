@@ -1,5 +1,8 @@
+import '../core/palette.dart';
 import 'game_palette.dart';
+import 'iro_mix.dart';
 import 'iroen_state.dart';
+import 'palette_swatch.dart';
 
 /// A named snapshot of an Iroen canvas for the gallery.
 class IroenMosaic {
@@ -10,6 +13,8 @@ class IroenMosaic {
   final GamePalette palette;
   /// Frozen A/B side for [palette] when this mosaic was saved.
   final bool bSide;
+  /// Frozen Iro mashup when this mosaic was painted with Iro.
+  final IroMix? iroMix;
   /// Picker values 1–9 whose palette texture is stripped to a solid fill.
   final Set<int> flatSlots;
 
@@ -20,8 +25,27 @@ class IroenMosaic {
     required this.updatedAtMs,
     this.palette = GamePalette.standard,
     this.bSide = false,
+    this.iroMix,
     this.flatSlots = const {},
   });
+
+  /// Colors this mosaic should always paint with, independent of the live mix.
+  List<PaletteSwatch> displaySwatches() {
+    if (palette == GamePalette.iro) {
+      if (iroMix != null) {
+        return IrodokuPalette.flattenSlots(iroMix!.swatches, flatSlots);
+      }
+      return IrodokuPalette.swatchesFor(
+        GamePalette.iro,
+        flatSlots: flatSlots,
+      );
+    }
+    return IrodokuPalette.swatchesFor(
+      palette,
+      bSide: bSide,
+      flatSlots: flatSlots,
+    );
+  }
 
   IroenState get asState => IroenState(detail: detail, flatSlots: flatSlots);
 
@@ -68,6 +92,7 @@ class IroenMosaic {
     int? updatedAtMs,
     GamePalette? palette,
     bool? bSide,
+    IroMix? iroMix,
     Set<int>? flatSlots,
   }) {
     return IroenMosaic(
@@ -77,6 +102,7 @@ class IroenMosaic {
       updatedAtMs: updatedAtMs ?? this.updatedAtMs,
       palette: palette ?? this.palette,
       bSide: bSide ?? this.bSide,
+      iroMix: iroMix ?? this.iroMix,
       flatSlots: flatSlots ?? this.flatSlots,
     );
   }
@@ -88,6 +114,8 @@ class IroenMosaic {
         'updatedAtMs': updatedAtMs,
         'palette': palette.storageKey,
         if (bSide) 'bSide': true,
+        if (palette == GamePalette.iro && iroMix != null)
+          'iroMix': iroMix!.toKeys(),
         if (flatSlots.isNotEmpty) 'flatSlots': (flatSlots.toList()..sort()),
       };
 
@@ -98,13 +126,19 @@ class IroenMosaic {
     if (detailRaw.length != IroenState.detailSize * IroenState.detailSize) {
       throw const FormatException('Invalid Iroen mosaic detail');
     }
+    final palette = GamePalette.fromStorageKey(json['palette']?.toString());
     return IroenMosaic(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Mosaic',
       detail: detailRaw,
       updatedAtMs: _mosaicInt(json['updatedAtMs']),
-      palette: GamePalette.fromStorageKey(json['palette']?.toString()),
+      palette: palette,
       bSide: json['bSide'] == true,
+      iroMix: palette == GamePalette.iro
+          ? IroMix.fromKeys(
+              json['iroMix'] is List ? json['iroMix'] as List : null,
+            )
+          : null,
       flatSlots: IroenState.parseFlatSlots(json['flatSlots']),
     );
   }

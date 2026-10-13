@@ -150,19 +150,21 @@ abstract final class MosaicShimmer {
     int col = 0,
     Set<int> flatSlots = const {},
     bool mosaicBSide = false,
+    List<PaletteSwatch>? mosaicSwatches,
   }) {
-    final mosaicSwatches = IrodokuPalette.swatchesFor(
-      mosaicPalette,
-      bSide: mosaicBSide,
-      flatSlots: flatSlots,
-    );
+    final resolvedSwatches = mosaicSwatches ??
+        IrodokuPalette.swatchesFor(
+          mosaicPalette,
+          bSide: mosaicBSide,
+          flatSlots: flatSlots,
+        );
     final empty = PaletteSwatch.solid(emptyFill);
     return [
       for (var i = 0; i < 9; i++)
         blendTile(
           original: original,
           mosaicValue: i < subValues.length ? subValues[i] : 0,
-          mosaicSwatches: mosaicSwatches,
+          mosaicSwatches: resolvedSwatches,
           empty: empty,
           amount: tileAmount(cellPhase, i, row: row, col: col),
         ),

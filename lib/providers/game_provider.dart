@@ -273,6 +273,9 @@ class GameProvider extends ChangeNotifier {
   /// Chromatic hops and in-progress non-Iro games must keep their session colors.
   bool _adoptConfigIroMix() {
     if (_isDaily) return false;
+    // Keep a started Iro puzzle's mix if Config changes because an Iroen
+    // mosaic was loaded (or remixed) in the background.
+    if (_hasActiveGame && _hasInteracted && !isGameOver) return false;
     final config = _settings.iroMix;
     if (config == null) return false;
     if (_sessionPalette != null && _sessionPalette != GamePalette.iro) {

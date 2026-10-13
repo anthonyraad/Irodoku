@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
 import '../models/game_palette.dart';
+import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../models/palette_swatch.dart';
@@ -580,6 +581,11 @@ class IroenProvider extends ChangeNotifier {
     _flatSlots.clear();
   }
 
+  IroMix? _frozenIroMix(GamePalette palette) {
+    if (palette != GamePalette.iro) return null;
+    return _settings.iroMix ?? IroMix.showcase(_settings.bSideEnabled);
+  }
+
   /// Saves the current canvas into the gallery.
   /// Updates the active mosaic when one is loaded; otherwise creates a new slot.
   Future<IroenMosaic?> saveToGallery(GamePalette palette) async {
@@ -593,11 +599,14 @@ class IroenProvider extends ChangeNotifier {
 
     if (activeIndex >= 0) {
       final existing = _gallery[activeIndex];
-      final updated = existing.copyWith(
+      final updated = IroenMosaic(
+        id: existing.id,
+        name: existing.name,
         detail: flat,
         updatedAtMs: now,
         palette: palette,
         bSide: _settings.bSideEnabled(palette),
+        iroMix: _frozenIroMix(palette),
         flatSlots: {..._flatSlots},
       );
       _gallery = [..._gallery]..[activeIndex] = updated;
@@ -614,6 +623,7 @@ class IroenProvider extends ChangeNotifier {
       updatedAtMs: now,
       palette: palette,
       bSide: _settings.bSideEnabled(palette),
+      iroMix: _frozenIroMix(palette),
       flatSlots: {..._flatSlots},
     );
     _gallery = [..._gallery, mosaic];
@@ -635,6 +645,7 @@ class IroenProvider extends ChangeNotifier {
       updatedAtMs: now,
       palette: palette,
       bSide: _settings.bSideEnabled(palette),
+      iroMix: _frozenIroMix(palette),
       flatSlots: {..._flatSlots},
     );
     _gallery = [..._gallery, mosaic];

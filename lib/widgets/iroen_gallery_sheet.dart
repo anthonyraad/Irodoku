@@ -204,8 +204,11 @@ class _IroenGallerySheet extends StatelessWidget {
   }
 
   Future<void> _load(BuildContext context, IroenMosaic mosaic) async {
+    final mixMatches = mosaic.iroMix == null ||
+        mosaic.iroMix!.key == settings.iroMix?.key;
     if (mosaic.id == iroen.activeMosaicId &&
-        settings.palette == mosaic.palette) {
+        settings.palette == mosaic.palette &&
+        mixMatches) {
       Navigator.pop(context);
       return;
     }
@@ -232,7 +235,14 @@ class _IroenGallerySheet extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
     final loaded = await iroen.loadMosaic(mosaic.id);
     if (loaded != null) {
-      await settings.setPalette(loaded.palette, force: true);
+      if (loaded.iroMix != null) {
+        await settings.applyIroMix(loaded.iroMix!);
+      }
+      await settings.setPalette(
+        loaded.palette,
+        force: true,
+        rerollIro: false,
+      );
     }
     if (!context.mounted) return;
     Navigator.pop(context);
@@ -412,9 +422,7 @@ class _MosaicCard extends StatelessWidget {
                       child: CustomPaint(
                         painter: _MosaicThumbPainter(
                           values: mosaic.overviewValues(),
-                          palette: mosaic.palette,
-                          bSide: mosaic.bSide,
-                          flatSlots: mosaic.flatSlots,
+                          swatches: mosaic.displaySwatches(),
                           emptyFill: IrodokuTheme.emptyCellFill(
                             IrodokuTheme.boardBrightness,
                           ),
@@ -444,17 +452,13 @@ class _MosaicCard extends StatelessWidget {
 
 class _MosaicThumbPainter extends CustomPainter {
   final List<int> values;
-  final GamePalette palette;
-  final bool bSide;
-  final Set<int> flatSlots;
+  final List<PaletteSwatch> swatches;
   final Color emptyFill;
   final Color line;
 
   const _MosaicThumbPainter({
     required this.values,
-    required this.palette,
-    this.bSide = false,
-    this.flatSlots = const {},
+    required this.swatches,
     required this.emptyFill,
     required this.line,
   });
@@ -463,17 +467,11 @@ class _MosaicThumbPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cell = size.width / 9;
     canvas.drawRect(Offset.zero & size, Paint()..color = emptyFill);
-    final swatches = IrodokuPalette.swatchesFor(
-      palette,
-      bSide: bSide,
-      flatSlots: flatSlots,
-    );
 
     for (var i = 0; i < values.length && i < 81; i++) {
       final value = values[i];
       if (value == 0) continue;
-      final swatch = IrodokuPalette.swatchFromList(value, swatches) ??
-          IrodokuPalette.swatchForValue(value, palette);
+      final swatch = IrodokuPalette.swatchFromList(value, swatches);
       if (swatch == null) continue;
       final row = i ~/ 9;
       final col = i % 9;
@@ -494,8 +492,7 @@ class _MosaicThumbPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _MosaicThumbPainter oldDelegate) {
     return oldDelegate.values != values ||
-        oldDelegate.palette != palette ||
-        oldDelegate.flatSlots != flatSlots ||
+        oldDelegate.swatches != swatches ||
         oldDelegate.emptyFill != emptyFill ||
         oldDelegate.line != line;
   }

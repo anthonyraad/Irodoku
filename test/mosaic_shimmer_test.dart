@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:irodoku/core/mosaic_shimmer.dart';
 import 'package:irodoku/models/game_palette.dart';
+import 'package:irodoku/models/iro_mix.dart';
 import 'package:irodoku/models/iroen_mosaic.dart';
 import 'package:irodoku/models/iroen_state.dart';
 import 'package:irodoku/models/palette_swatch.dart';
@@ -155,6 +156,30 @@ void main() {
     expect(
       (blank.start.g - original.g).abs(),
       greaterThan(0.05),
+    );
+  });
+
+  test('won-board tiles use a frozen Iro mix when provided', () {
+    final mix = IroMix.random(Random(42));
+    final mosaic = IroenMosaic(
+      id: 'iro',
+      name: 'iro',
+      detail: _detail(),
+      updatedAtMs: 1,
+      palette: GamePalette.iro,
+      iroMix: mix,
+    );
+    final tiles = MosaicShimmer.tiles(
+      original: PaletteSwatch.solid(const Color(0xFFE53935)),
+      subValues: const [2, 0, 0, 0, 0, 0, 0, 0, 0],
+      mosaicPalette: GamePalette.iro,
+      emptyFill: const Color(0xFFFAFAFA),
+      cellPhase: 0.5,
+      mosaicSwatches: mosaic.displaySwatches(),
+    );
+    expect(
+      tiles[0]!.representative,
+      mix.swatches[1].representative,
     );
   });
 

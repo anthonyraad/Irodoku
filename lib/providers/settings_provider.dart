@@ -262,7 +262,11 @@ class SettingsProvider extends ChangeNotifier {
     await _prefs.setChromatic(enabled);
   }
 
-  Future<void> setPalette(GamePalette palette, {bool force = false}) async {
+  Future<void> setPalette(
+    GamePalette palette, {
+    bool force = false,
+    bool rerollIro = true,
+  }) async {
     if (_palette == palette) return;
     if (!force) {
       if (palette == GamePalette.iro) {
@@ -274,13 +278,22 @@ class SettingsProvider extends ChangeNotifier {
         }
       }
     }
-    final selectedIro = palette == GamePalette.iro && _palette != GamePalette.iro;
+    final selectedIro =
+        palette == GamePalette.iro && _palette != GamePalette.iro;
     _palette = palette;
-    if (selectedIro) {
+    if (selectedIro && rerollIro) {
       rerollIroMix(notify: false);
     }
     notifyListeners();
     await _prefs.setPalette(palette);
+  }
+
+  /// Restore a frozen Iro mashup (e.g. loading a saved Iroen mosaic).
+  Future<void> applyIroMix(IroMix mix) async {
+    if (_iroMix?.key == mix.key) return;
+    _iroMix = mix;
+    notifyListeners();
+    await _prefs.setIroMix(_iroMix);
   }
 
   /// Call after stats change so a locked selection can't stick around.

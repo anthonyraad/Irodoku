@@ -1,6 +1,9 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:irodoku/core/palette.dart';
 import 'package:irodoku/models/game_palette.dart';
+import 'package:irodoku/models/iro_mix.dart';
 import 'package:irodoku/models/iroen_mosaic.dart';
 import 'package:irodoku/models/iroen_state.dart';
 import 'package:irodoku/models/palette_swatch.dart';
@@ -58,5 +61,42 @@ void main() {
       'palette': GamePalette.neon.storageKey,
     });
     expect(oldMosaic.flatSlots, isEmpty);
+  });
+
+  test('Iroen mosaic JSON freezes the Iro mix used at save', () {
+    final detail = List<int>.filled(
+      IroenState.detailSize * IroenState.detailSize,
+      0,
+    );
+    detail[0] = 2;
+    final mix = IroMix.random(Random(42));
+    final mosaic = IroenMosaic(
+      id: 'iro',
+      name: 'Iro art',
+      detail: detail,
+      updatedAtMs: 1,
+      palette: GamePalette.iro,
+      iroMix: mix,
+    );
+    final loaded = IroenMosaic.fromJson(mosaic.toJson());
+    expect(loaded.palette, GamePalette.iro);
+    expect(loaded.iroMix?.key, mix.key);
+    expect(
+      loaded.displaySwatches()[1].representative,
+      mix.swatches[1].representative,
+    );
+
+    final oldIro = IroenMosaic.fromJson({
+      'id': 'old-iro',
+      'name': 'Old Iro',
+      'detail': detail,
+      'updatedAtMs': 1,
+      'palette': GamePalette.iro.storageKey,
+    });
+    expect(oldIro.iroMix, isNull);
+    expect(
+      oldIro.displaySwatches()[0].representative,
+      IrodokuPalette.swatchesFor(GamePalette.iro)[0].representative,
+    );
   });
 }

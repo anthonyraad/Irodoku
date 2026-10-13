@@ -100,11 +100,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     final mosaic = widget.game.colorCycleMosaic;
     final mosaicNeedsMotion = mosaic != null &&
         _colorCycleController.isAnimating &&
-        IrodokuPalette.swatchesFor(
-          mosaic.palette,
-          bSide: mosaic.bSide,
-          flatSlots: mosaic.flatSlots,
-        ).any((swatch) => swatch.animated);
+        mosaic.displaySwatches().any((swatch) => swatch.animated);
     final needs = !forceOff &&
         (widget.palette == GamePalette.glass ||
             widget.palette == GamePalette.sky ||
@@ -389,6 +385,8 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                             game.colorCycleMosaic?.subValuesAt(row, col),
                         mosaicPalette: game.colorCycleMosaic?.palette,
                         mosaicBSide: game.colorCycleMosaic?.bSide ?? false,
+                        mosaicSwatches:
+                            game.colorCycleMosaic?.displaySwatches(),
                         mosaicFlatSlots:
                             game.colorCycleMosaic?.flatSlots ?? const {},
                         row: row,
