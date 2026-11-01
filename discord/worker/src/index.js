@@ -6,7 +6,7 @@
 import { dbConfigured, rtdb, topPocket, writeBest } from './firebase.js';
 import { leaderboardName, pstDayKey } from './names.js';
 import { leaderboardEmbed, renderPng } from './render.js';
-import { botApi, botEnabled, upsertDailyMessage, verifyDiscordRequest } from './discord_bot.js';
+import { botApi, botEnabled, dispDay, upsertDailyMessage, verifyDiscordRequest } from './discord_bot.js';
 
 const MIN_MS = 5000;
 const MAX_MS = 24 * 3600e3;
@@ -110,7 +110,7 @@ export async function livePost(env) {
   await postWebhook(env, {
     content: `Daily Iro is now live! — [Play Daily Iro](${activityLink(env)})`,
     embeds: [{
-      title: `Daily Iro — ${pstDayKey()}`, url: activityLink(env), color: 0x7c5cff,
+      title: `Daily Iro — ${dispDay(pstDayKey())}`, url: activityLink(env), color: 0x7c5cff,
       description: "Today's puzzle is ready. Finish it to get on the Pocket leaderboard!",
     }],
   });
@@ -177,7 +177,7 @@ async function handleLeaderboard(url, env) {
 
 export async function nightly(env, { day = pstDayKey(Date.now() - 86400e3), rows, post = true } = {}) {
   rows ??= await topPocket(env, day, 10);
-  const content = `Daily Iro results for ${day}`;
+  const content = `Daily Iro results for ${dispDay(day)}`;
   const form = new FormData();
   let png = null;
   if ((env.NIGHTLY_FORMAT || 'embed') === 'png') {

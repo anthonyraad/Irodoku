@@ -196,5 +196,5 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
 });
 
 test('daily payload title', () => {
-  assert.equal(dailyMessagePayload('2026-10-31', []).embeds[0].title, 'Daily Iro — 2026-10-31');
+  assert.equal(dailyMessagePayload('2026-10-31', []).embeds[0].title, 'Daily Iro — 10.31.26');
 });

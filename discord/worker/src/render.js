@@ -1,3 +1,4 @@
+import { dispDay } from './discord_bot.js';
 // Leaderboard image: hand-built SVG -> PNG via resvg-wasm with the bundled
 // Balatro font (no system fonts in Workers). Small canvas keeps CPU low.
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
@@ -22,7 +23,7 @@ export function leaderboardSvg(day, rows) {
     : '<text x="28" y="104" fill="#aaaaaa">No times yesterday.</text>';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" font-family="Balatro" font-size="24">`
     + `<rect width="100%" height="100%" fill="#16131f"/>${bars}`
-    + `<text x="28" y="56" font-size="30" fill="#ffffff">Daily Iro  ${esc(day)}</text>${body}</svg>`;
+    + `<text x="28" y="56" font-size="30" fill="#ffffff">Daily Iro  ${esc(dispDay(day))}</text>${body}</svg>`;
 }
 
 export async function renderPng(day, rows) {
@@ -38,5 +39,5 @@ export function leaderboardEmbed(day, rows) {
   const lines = rows.length
     ? rows.map((r, i) => `\`${String(i + 1).padStart(2)}.\` **${r.name}** — ${fmtMs(r.ms)}`).join('\n')
     : 'No times yesterday.';
-  return { title: `Daily Iro — ${day}`, description: lines, color: 0xa970ff };
+  return { title: `Daily Iro — ${dispDay(day)}`, description: lines, color: 0xa970ff };
 }

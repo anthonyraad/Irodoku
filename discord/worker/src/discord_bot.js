@@ -43,7 +43,7 @@ export function dailyMessagePayload(day, rows) {
   return {
     allowed_mentions: { parse: [] },
     embeds: [{
-      title: `Daily Iro — ${day}`, color: 0x7c5cff,
+      title: `Daily Iro — ${dispDay(day)}`, color: 0x7c5cff,
       description: n ? `${n} player${n === 1 ? '' : 's'} solved today\n\n` + lines.join('\n') : "Today's Iro is live!",
     }],
     components: [PLAY_BUTTON],
@@ -86,4 +86,10 @@ export async function upsertDailyMessage(env, day) {
   const msg = await r.json();
   await rtdb(env, path, { method: 'PUT', body: { id: msg.id, at: Date.now() } });
   return { created: msg.id };
+}
+
+/** '2026-10-31' -> '10.31.26' for display. */
+export function dispDay(day) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day));
+  return m ? `${m[2]}.${m[3]}.${m[1].slice(2)}` : String(day);
 }
