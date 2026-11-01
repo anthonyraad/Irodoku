@@ -15,6 +15,7 @@ import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../services/daily_leaderboard_service.dart';
+import '../services/discord_link_service.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/palette_sweep_mask.dart';
@@ -448,6 +449,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     BuildContext context,
     GameProvider game,
   ) async {
+    // Unlinked players: exactly the previous behavior.
+    if (!DiscordLinkService.instance.linked) return false;
     final dayKey = DailyIrodoku.pocketForDate().dayKey;
     final remoteMs = await DailyLeaderboardService.linkedPocketDoneMs(dayKey);
     if (!context.mounted) return true;
