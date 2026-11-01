@@ -2,6 +2,7 @@
 // Routes (behind Discord URL mapping '/api' -> this worker):
 //   POST /api/token  POST /api/start  POST /api/score  GET /api/leaderboard
 // Cron '0 8 * * *': post yesterday's Pocket top-10 to DISCORD_WEBHOOK_URL.
+// Cron '0 16 * * *' (8 AM PST): 'Daily Iro is now live' post.
 import { dbConfigured, rtdb, topPocket, writeBest } from './firebase.js';
 import { leaderboardName, pstDayKey } from './names.js';
 import { leaderboardEmbed, renderPng } from './render.js';
@@ -62,7 +63,51 @@ async function handleStart(req, env) {
   return json({ ok: true, start });
 }
 
-async function handleScore(req, env) {
+const DEFAULT_ACTIVITY_LINK = 'https://discord.com/activities/1565967052047388822';
+const activityLink = (env) => env.ACTIVITY_LINK || DEFAULT_ACTIVITY_LINK;
+
+export function fmtTime(ms) {
+  const t = Math.floor(ms / 1000), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const ss = String(s).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+async function postWebhook(env, payload) {
+  if (!env.DISCORD_WEBHOOK_URL) throw new Error('DISCORD_WEBHOOK_URL not set');
+  const r = await fetch(env.DISCORD_WEBHOOK_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowed_mentions: { parse: [] }, ...payload }),
+  });
+  if (!r.ok) throw new Error(`webhook ${r.status}`);
+}
+
+/** Post a no-spoiler finish shoutout once per player per day (Firebase-guarded). */
+export async function finishShoutout(env, day, uid, name, ms) {
+  const path = `irodoku_daily_posts/${day}/${uid}`;
+  const cur = await rtdb(env, path, { headers: { 'X-Firebase-ETag': 'true' } });
+  if (!cur.ok) throw new Error(`rtdb ${cur.status}`);
+  if ((await cur.json()) != null) return { posted: false };
+  // Claim atomically: fails with 412 if another request claimed first.
+  const claim = await rtdb(env, path, { method: 'PUT', body: Date.now(), headers: { 'if-match': cur.headers.get('ETag') } });
+  if (!claim.ok) return { posted: false };
+  await postWebhook(env, {
+    content: `**${name}** finished today's Daily Iro in ${fmtTime(ms)} — [Play Daily Iro](${activityLink(env)})`,
+  });
+  return { posted: true };
+}
+
+export async function livePost(env) {
+  await postWebhook(env, {
+    content: `Daily Iro is now live! — [Play Daily Iro](${activityLink(env)})`,
+    embeds: [{
+      title: `Daily Iro — ${pstDayKey()}`, url: activityLink(env), color: 0x7c5cff,
+      description: "Today's puzzle is ready. Finish it to get on the Pocket leaderboard!",
+    }],
+  });
+  return { posted: true };
+}
+
+async function handleScore(req, env, ctx) {
   const user = await discordUser(req);
   if (!user) return json({ error: 'unauthorized' }, 401);
   const { day, ms } = await readJson(req);
@@ -74,6 +119,11 @@ async function handleScore(req, env) {
   if (ms > Date.now() - start + SLACK_MS) return json({ error: 'time_exceeds_window' }, 422);
   const result = await writeBest(env, `irodoku_daily/${day}/pocket/${user.id}`,
     { name: leaderboardName(user), ms, at: Date.now(), src: 'discord' });
+  // First completion of the day always commits; the Firebase flag dedupes.
+  if (result.committed && day === pstDayKey()) {
+    const p = finishShoutout(env, day, user.id, leaderboardName(user), ms).catch((e) => console.error('shoutout', e));
+    if (ctx?.waitUntil) ctx.waitUntil(p);
+  }
   return json({ ok: true, ...result });
 }
 
@@ -109,14 +159,14 @@ export async function nightly(env, { day = pstDayKey(Date.now() - 86400e3), rows
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const route = `${req.method} ${url.pathname.replace(/\/+$/, '')}`;
     try {
       switch (route) {
         case 'POST /api/token': return await handleToken(req, env);
         case 'POST /api/start': return await handleStart(req, env);
-        case 'POST /api/score': return await handleScore(req, env);
+        case 'POST /api/score': return await handleScore(req, env, ctx);
         case 'GET /api/leaderboard': return await handleLeaderboard(url, env);
         case 'GET /api/health': return json({ ok: true });
         case 'GET /api/nightly-preview': {
@@ -133,7 +183,8 @@ export default {
       console.error(e); return json({ error: 'internal' }, 500);
     }
   },
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(nightly(env));
+  async scheduled(event, env, ctx) {
+    const job = event?.cron === '0 16 * * *' ? livePost(env) : nightly(env);
+    ctx.waitUntil(job);
   },
 };

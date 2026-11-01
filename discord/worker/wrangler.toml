@@ -4,7 +4,8 @@ compatibility_date = "2026-10-01"
 
 # Nightly Pocket top-10 at 00:00 UTC-8 (fixed PST, matches DailyIrodoku).
 [triggers]
-crons = ["0 8 * * *"]
+# 16:00 UTC = 8 AM PST "Daily Iro is now live" post.
+crons = ["0 8 * * *", "0 16 * * *"]
 
 [vars]
 DISCORD_CLIENT_ID = "1565967052047388822"
@@ -14,6 +15,8 @@ FIREBASE_DATABASE_URL = "https://word-multiplayer-default-rtdb.firebaseio.com"
 # or "png" (resvg-wasm image; ~9 ms warm / ~45 ms cold CPU measured, so it
 # can exceed the Free cap -- use on Workers Paid). PNG errors fall back to embed.
 NIGHTLY_FORMAT = "embed"
+# Direct Activity launch link (Discord format: https://discord.com/activities/<app_id>).
+ACTIVITY_LINK = "https://discord.com/activities/1565967052047388822"
 
 # Secrets (wrangler secret put ...): DISCORD_CLIENT_SECRET, DISCORD_WEBHOOK_URL,
 # FIREBASE_SERVICE_ACCOUNT (service-account JSON). Local dev: .dev.vars
