@@ -44,7 +44,7 @@ export function dailyMessagePayload(day, rows) {
     allowed_mentions: { parse: [] },
     embeds: [{
       title: `Daily Iro — ${day}`, color: 0x7c5cff,
-      description: `${n} player${n === 1 ? '' : 's'} solved today` + (lines.length ? '\n\n' + lines.join('\n') : '\n\nBe the first to finish!'),
+      description: n ? `${n} player${n === 1 ? '' : 's'} solved today\n\n` + lines.join('\n') : "Today's Iro is live!",
     }],
     components: [PLAY_BUTTON],
   };

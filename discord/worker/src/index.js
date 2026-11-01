@@ -177,7 +177,7 @@ async function handleLeaderboard(url, env) {
 
 export async function nightly(env, { day = pstDayKey(Date.now() - 86400e3), rows, post = true } = {}) {
   rows ??= await topPocket(env, day, 10);
-  const content = `Pocket Daily Iro results for ${day}`;
+  const content = `Daily Iro results for ${day}`;
   const form = new FormData();
   let png = null;
   if ((env.NIGHTLY_FORMAT || 'embed') === 'png') {

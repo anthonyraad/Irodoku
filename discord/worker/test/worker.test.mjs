@@ -180,7 +180,7 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
   assert.equal(r1.created, 'm1');
   assert.equal(db[`irodoku_daily_msg/${day}`].id, 'm1');
   assert.equal(discord[0].method, 'POST'); assert.equal(discord[0].auth, 'Bot bt');
-  assert.match(discord[0].body.embeds[0].description, /^0 players solved today/);
+  assert.match(discord[0].body.embeds[0].description, /^Today's Iro is live!$/);
   db[`irodoku_daily_starts/${day}/pocket/42`] = Date.now() - 600e3;
   const w = [];
   await worker.fetch(new Request('https://w/score', { method: 'POST', headers: { Authorization: 'Bearer abcdefghijkl' },
