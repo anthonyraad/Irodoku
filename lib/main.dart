@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'app.dart';
 import 'core/organic_swatch_shader.dart';
+import 'services/discord_link_service.dart';
 import 'services/preferences_service.dart';
 import 'sudoku/master_board_bank.dart';
 
@@ -21,5 +22,6 @@ Future<void> main() async {
   }
 
   final preferences = await PreferencesService.create();
+  DiscordLinkService.instance.start();
   runApp(IrodokuApp(preferences: preferences));
 }

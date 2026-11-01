@@ -17,6 +17,7 @@ import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../services/daily_leaderboard_service.dart';
+import '../services/discord_link_service.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
@@ -79,60 +80,7 @@ class _AppSettingsScreenState extends State<AppSettingsScreen> {
                       onPressed: () => showControlsHelpDialog(context),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                    child: Center(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .shadow
-                                  .withValues(alpha: 0.18),
-                              blurRadius: 5,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: FilledButton(
-                          style: FilledButton.styleFrom(
-                            backgroundColor:
-                                Theme.of(context).colorScheme.surface,
-                            foregroundColor:
-                                Theme.of(context).colorScheme.onSurface,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            side: BorderSide(
-                              color: Theme.of(context).colorScheme.onSurface,
-                              width: 2,
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 15,
-                              vertical: 6,
-                            ),
-                            minimumSize: const Size(112, 37),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            textStyle: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.3,
-                                ),
-                          ),
-                          onPressed: withMenuSelect(context, () {
-                            unawaited(_showSetNameDialog(context));
-                          }),
-                          child: const Text('Set Name'),
-                        ),
-                      ),
-                    ),
-                  ),
+                  const _NameAndDiscordSection(),
                 ],
               ),
             ),
@@ -622,7 +570,7 @@ Future<void> _showSetNameDialog(BuildContext context) async {
   final settings = context.read<SettingsProvider>();
   final name = await showDialog<String>(
     context: context,
-    builder: (context) => _SetNameDialog(initial: settings.displayName),
+    builder: (context) => _SetNameDialog(initial: settings.localDisplayName),
   );
   if (!context.mounted || name == null) return;
   await settings.setDisplayName(name);
@@ -1607,6 +1555,163 @@ class _PalettePreviewRowState extends State<_PalettePreviewRow>
           },
         );
       },
+    );
+  }
+}
+
+
+/// 'Set Name' + 'Sync Discord' (Android). Linked: 'Connected as [name]' +
+/// Disconnect. Non-Android builds keep the single centered Set Name button.
+class _NameAndDiscordSection extends StatefulWidget {
+  const _NameAndDiscordSection();
+
+  @override
+  State<_NameAndDiscordSection> createState() => _NameAndDiscordSectionState();
+}
+
+class _NameAndDiscordSectionState extends State<_NameAndDiscordSection> {
+  final _link = DiscordLinkService.instance;
+  StreamSubscription<String>? _errors;
+
+  @override
+  void initState() {
+    super.initState();
+    _link.addListener(_onLink);
+    _errors = _link.errors.listen(_onError);
+    unawaited(_link.refreshIfActive());
+  }
+
+  @override
+  void dispose() {
+    _link.removeListener(_onLink);
+    _errors?.cancel();
+    super.dispose();
+  }
+
+  void _onLink() {
+    if (mounted) setState(() {});
+  }
+
+  void _onError(String code) {
+    if (!mounted) return;
+    final message = switch (code) {
+      'denied' => 'Discord sync cancelled.',
+      'disconnect_failed' => "Couldn't disconnect Discord. Try again.",
+      'start_failed' => "Couldn't reach Discord. Check your connection.",
+      _ => "Couldn't sync Discord ($code). Try again.",
+    };
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _confirmDisconnect() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Disconnect Discord?'),
+        content: Text(
+          'Your Pocket Daily times will stop syncing with '
+          '${_link.name ?? 'Discord'}. You can sync again anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _link.disconnect();
+  }
+
+  Widget _button(String label, VoidCallback? onPressed) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.shadow.withValues(alpha: 0.18),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: scheme.surface,
+          foregroundColor: scheme.onSurface,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          side: BorderSide(color: scheme.onSurface, width: 2),
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+          minimumSize: const Size(112, 37),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.3,
+              ),
+        ),
+        onPressed: onPressed == null ? null : withMenuSelect(context, onPressed),
+        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final setName = _button('Set Name', () {
+      unawaited(_showSetNameDialog(context));
+    });
+    if (!DiscordLinkService.supported) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        child: Center(child: setName),
+      );
+    }
+    if (_link.linked) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Connected as ${_link.name ?? 'Discord'}',
+                style: Theme.of(context).textTheme.titleMedium,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            _button(
+              'Disconnect',
+              _link.busy ? null : () => unawaited(_confirmDisconnect()),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Row(
+        children: [
+          Expanded(child: setName),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _button(
+              'Sync Discord',
+              _link.busy ? null : () => unawaited(_link.startLink()),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

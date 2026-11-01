@@ -10,6 +10,7 @@ import '../models/game_stats.dart';
 import '../models/iro_mix.dart';
 import '../models/palette_swatch.dart';
 import '../models/player_xp.dart';
+import '../services/discord_link_service.dart';
 import '../services/preferences_service.dart';
 import 'achievements_provider.dart';
 import 'stats_provider.dart';
@@ -60,6 +61,7 @@ class SettingsProvider extends ChangeNotifier {
         _pocketSwipeDiscovered = _prefs.getPocketSwipeDiscovered(),
         _showFirstRunTutorial = !_prefs.firstRunTutorialCompleted,
         _displayName = _prefs.getDisplayName() {
+    DiscordLinkService.instance.addListener(notifyListeners);
     _clampDifficultyToUnlocked();
     _clampPaletteToUnlocked();
     _clampChromaticToUnlocked();
@@ -179,7 +181,16 @@ class SettingsProvider extends ChangeNotifier {
   bool get showFirstRunTutorial => _showFirstRunTutorial;
 
   /// Public Daily leaderboard name. Empty until the player sets one.
-  String get displayName => _displayName;
+  /// While Discord is linked (Android Sync Discord) the Discord name wins.
+  String get displayName {
+    final link = DiscordLinkService.instance;
+    final discord = link.linked ? link.name?.trim() : null;
+    if (discord != null && discord.isNotEmpty) return discord;
+    return _displayName;
+  }
+
+  /// The player's own Set Name value, ignoring any Discord link.
+  String get localDisplayName => _displayName;
 
   Future<void> setDisplayName(String name, {bool notify = true}) async {
     final next = name.trim();
@@ -187,6 +198,12 @@ class SettingsProvider extends ChangeNotifier {
     _displayName = next;
     if (notify) notifyListeners();
     await _prefs.setDisplayName(next);
+  }
+
+  @override
+  void dispose() {
+    DiscordLinkService.instance.removeListener(notifyListeners);
+    super.dispose();
   }
 
   Future<void> completeFirstRunTutorial() async {
