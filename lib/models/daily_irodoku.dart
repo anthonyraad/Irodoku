@@ -164,7 +164,11 @@ class DailyIrodoku {
     var hash = 0x811c9dc5;
     for (final unit in input.codeUnits) {
       hash ^= unit;
-      hash = (hash * 0x01000193) & 0xffffffff;
+      // hash * 0x01000193 mod 2^32, split as (hash * 0x193) + (hash << 24) so
+      // no intermediate exceeds 2^53. A plain multiply loses precision under
+      // dart2js (JS doubles) and gave web a different Daily than the VM.
+      // Results are bit-identical to the old VM computation.
+      hash = (hash * 0x193 + (hash & 0xff) * 0x1000000) & 0xffffffff;
     }
     return hash & 0x7fffffff;
   }

@@ -1,0 +1,14 @@
+{
+  "name": "irodoku-discord-activity",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.js", "nightly": "node nightly.js" },
+  "dependencies": {
+    "@discord/embedded-app-sdk": "^2.0.0",
+    "@napi-rs/canvas": "^0.1.65",
+    "express": "^4.21.2",
+    "firebase-admin": "^13.0.2"
+  },
+  "devDependencies": { "esbuild": "^0.24.0" }
+}

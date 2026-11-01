@@ -770,10 +770,12 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Starts or resumes today's seeded 6×6 [Daily Challenge].
-  Future<bool> startPocketDailyGame() async {
+  ///
+  /// [force] skips the unlock gate (Discord Activity has no progression).
+  Future<bool> startPocketDailyGame({bool force = false}) async {
     final challenge = DailyIrodoku.pocketForDate();
     if (_isGenerating) return false;
-    if (!_stats.devMode && !_stats.stats.isPocketDailyUnlocked) {
+    if (!force && !_stats.devMode && !_stats.stats.isPocketDailyUnlocked) {
       return false;
     }
 

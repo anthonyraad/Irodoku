@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/irodoku_page_route.dart';
+import '../discord/discord_bridge.dart';
+import '../discord/discord_leaderboard.dart';
+import '../discord/discord_mode.dart';
 import '../core/theme.dart';
 import '../models/daily_irodoku.dart';
 import '../models/daily_leaderboard.dart';
@@ -177,7 +180,8 @@ class _GameScreenState extends State<GameScreen> {
           }
           if (widget.isDailyRoute) {
             final settings = context.read<SettingsProvider>();
-            if (DisplayName.trySanitize(settings.displayName) != null) {
+            if (DiscordMode.enabled ||
+                DisplayName.trySanitize(settings.displayName) != null) {
               unawaited(_submitDailyLeaderboard(game));
             }
           }
@@ -220,6 +224,13 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _openDailyLeaderboard(GameProvider game) {
+    if (DiscordMode.enabled) {
+      showDiscordLeaderboard(
+        context,
+        game.dailyDayKey ?? DailyIrodoku.pocketForDate().dayKey,
+      );
+      return;
+    }
     Navigator.of(context).push(
       IrodokuPageRoute(
         builder: (_) => DailyLeaderboardScreen(
@@ -230,6 +241,14 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _submitDailyLeaderboard(GameProvider game) async {
+    if (DiscordMode.enabled) {
+      // Server validates the Discord token and writes to RTDB.
+      await DiscordBridge.submitScore(
+        game.dailyDayKey ?? DailyIrodoku.pocketForDate().dayKey,
+        game.elapsed.inMilliseconds,
+      );
+      return;
+    }
     final settings = context.read<SettingsProvider>();
     final name = DisplayName.orFallback(settings.displayName);
     final dayKey = game.dailyDayKey ?? DailyIrodoku.forDate().dayKey;
@@ -269,7 +288,7 @@ class _GameScreenState extends State<GameScreen> {
         final titleStyle = _centeredAppBarTitleStyle(
           context,
           text: titleText,
-          leadingWidth: widget.isDailyRoute ? 56 : 0,
+          leadingWidth: widget.isDailyRoute && !DiscordMode.enabled ? 56 : 0,
           actionsWidth:
               kMinInteractiveDimension * (widget.isDailyRoute ? 1 : 3),
         );
@@ -282,7 +301,7 @@ class _GameScreenState extends State<GameScreen> {
           child: Scaffold(
             appBar: AppBar(
               automaticallyImplyLeading: false,
-              leading: widget.isDailyRoute
+              leading: widget.isDailyRoute && !DiscordMode.enabled
                   ? IconButton(
                       tooltip: 'Main Menu',
                       icon: const Icon(Icons.arrow_back),

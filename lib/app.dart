@@ -16,7 +16,10 @@ import 'services/sound_service.dart';
 class IrodokuApp extends StatelessWidget {
   final PreferencesService preferences;
 
-  const IrodokuApp({super.key, required this.preferences});
+  /// Optional home override (Discord Activity uses the Pocket Daily shell).
+  final Widget? home;
+
+  const IrodokuApp({super.key, required this.preferences, this.home});
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +78,7 @@ class IrodokuApp extends StatelessWidget {
             darkTheme: IrodokuTheme.dark(),
             themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
             builder: WebLayout.wrap,
-            home: const GameScreen(),
+            home: home ?? const GameScreen(),
           );
         },
       ),
