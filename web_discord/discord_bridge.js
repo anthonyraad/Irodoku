@@ -47,6 +47,6 @@
       ? api('/api/score', { day: dayKey, ms }).then((r) => !!r.ok).catch(() => false)
       : Promise.resolve(false),
     leaderboard: (dayKey) => api('/api/leaderboard?day=' + encodeURIComponent(dayKey))
-      .then((r) => JSON.stringify(r)).catch(() => null),
+      .then((r) => JSON.stringify(r)).catch((e) => { console.warn('[IroDiscord] leaderboard', e); return null; }),
   };
 })();

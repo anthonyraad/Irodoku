@@ -250,10 +250,12 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _submitDailyLeaderboard(GameProvider game) async {
     if (DiscordMode.enabled) {
       // Server validates the Discord token and writes to RTDB.
-      await DiscordBridge.submitScore(
+      final f = DiscordBridge.submitScore(
         game.dailyDayKey ?? DailyIrodoku.pocketForDate().dayKey,
         game.elapsed.inMilliseconds,
       );
+      DiscordMode.pendingScore = f.then((_) {});
+      await f;
       return;
     }
     final settings = context.read<SettingsProvider>();

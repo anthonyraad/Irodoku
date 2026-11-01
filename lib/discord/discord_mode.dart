@@ -21,4 +21,8 @@ class DiscordMode {
 
   /// This player's finished time for today, if known.
   static int? myMs;
+
+  /// In-flight `/api/score` POST for today's finish. The leaderboard waits on
+  /// it so it never reads Firebase before this player's time is written.
+  static Future<void>? pendingScore;
 }
