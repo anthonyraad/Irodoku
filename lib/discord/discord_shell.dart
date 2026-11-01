@@ -63,6 +63,11 @@ class _DiscordPocketDailyState extends State<DiscordPocketDaily> {
     if (info.done) {
       done = true;
       DiscordMode.myMs = info.ms ?? DiscordMode.myMs;
+    } else if (done && (DiscordMode.myMs ?? 0) >= 5000) {
+      // Finished on this device but the server has no score (e.g. an
+      // earlier save failed): resend it so the leaderboard includes us.
+      DiscordMode.pendingScore =
+          DiscordBridge.submitScore(dayKey, DiscordMode.myMs!).then((_) {});
     }
     if (done) DiscordMode.showLeaderboard.value = true;
     if (mounted) setState(() => _ready = true);
