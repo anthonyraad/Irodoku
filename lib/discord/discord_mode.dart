@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Discord Activity mode ("Pocket Daily Iro").
 ///
 /// Enabled by `lib/main_discord.dart` (or `--dart-define=DISCORD=true`).
@@ -11,4 +13,12 @@ class DiscordMode {
 
   /// Discord username once the Embedded App SDK has authenticated.
   static String? username;
+
+  /// Flipped once today's Daily is finished (here or in an earlier session);
+  /// the shell then swaps the puzzle for the leaderboard so it can't be
+  /// replayed.
+  static final ValueNotifier<bool> showLeaderboard = ValueNotifier(false);
+
+  /// This player's finished time for today, if known.
+  static int? myMs;
 }

@@ -6,7 +6,7 @@ external _IroDiscord? get _bridge;
 
 extension type _IroDiscord._(JSObject _) implements JSObject {
   external JSPromise<JSString?> init();
-  external JSPromise<JSAny?> startRun(JSString dayKey);
+  external JSPromise<JSString?> startRun(JSString dayKey);
   external JSPromise<JSBoolean> submitScore(JSString dayKey, JSNumber ms);
   external JSPromise<JSString?> leaderboard(JSString dayKey);
 }
@@ -26,10 +26,13 @@ class DiscordBridge {
     }
   }
 
-  static Future<void> startRun(String dayKey) async {
+  /// Records the run start; returns the /api/start JSON (or null).
+  static Future<String?> startRun(String dayKey) async {
     try {
-      await _bridge?.startRun(dayKey.toJS).toDart;
-    } catch (_) {}
+      return (await _bridge?.startRun(dayKey.toJS).toDart)?.toDart;
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<bool> submitScore(String dayKey, int ms) async {

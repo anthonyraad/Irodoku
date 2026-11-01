@@ -86,3 +86,15 @@ test('client time beyond server window is rejected', async () => {
   db[`irodoku_daily_starts/${pstDayKey()}/pocket/42`] = Date.now() - 10e3;
   assert.equal((await score(60e3)).error, 'time_exceeds_window');
 });
+
+test('start reports done when a score exists for today', async () => {
+  const { db } = mock();
+  const day = pstDayKey();
+  db[`irodoku_daily/${day}/pocket/42`] = { name: 'Tony', ms: 131000 };
+  const r = await (await worker.fetch(new Request('https://w/api/start', {
+    method: 'POST', headers: { Authorization: 'Bearer abcdefghijkl' },
+    body: JSON.stringify({ day }),
+  }), env, {})).json();
+  assert.deepEqual(r, { ok: true, done: true, ms: 131000 });
+  assert.equal(db[`irodoku_daily_starts/${day}/pocket/42`], undefined);
+});

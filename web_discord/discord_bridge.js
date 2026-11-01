@@ -42,7 +42,7 @@
 
   window.IroDiscord = {
     init: () => init().catch((e) => { console.warn('[IroDiscord]', e); return null; }),
-    startRun: (dayKey) => accessToken ? api('/api/start', { day: dayKey }).catch(() => null) : Promise.resolve(null),
+    startRun: (dayKey) => accessToken ? api('/api/start', { day: dayKey }).then((r) => (r ? JSON.stringify(r) : null)).catch(() => null) : Promise.resolve(null),
     submitScore: (dayKey, ms) => accessToken
       ? api('/api/score', { day: dayKey, ms }).then((r) => !!r.ok).catch(() => false)
       : Promise.resolve(false),

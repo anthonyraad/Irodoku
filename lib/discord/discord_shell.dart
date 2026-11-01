@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../screens/game_screen.dart';
 import '../services/preferences_service.dart';
 import 'discord_bridge.dart';
+import 'discord_leaderboard.dart';
 import 'discord_mode.dart';
 
 /// Root of the Discord Activity: same providers/theme as [IrodokuApp], but
@@ -30,6 +33,7 @@ class DiscordPocketDaily extends StatefulWidget {
 
 class _DiscordPocketDailyState extends State<DiscordPocketDaily> {
   bool _ready = false;
+  String? _dayKey;
 
   @override
   void initState() {
@@ -49,7 +53,18 @@ class _DiscordPocketDailyState extends State<DiscordPocketDaily> {
     await game.startPocketDailyGame(force: true);
     DiscordMode.username = await auth;
     final dayKey = game.dailyDayKey ?? DailyIrodoku.pocketForDate().dayKey;
-    if (!game.isGameOver) await DiscordBridge.startRun(dayKey);
+    _dayKey = dayKey;
+    var done = game.isPocketDailyCompletedToday;
+    if (done) DiscordMode.myMs ??= game.elapsed.inMilliseconds;
+    // /api/start reports a saved score for today (by Discord id), which
+    // catches a finish from another device / cleared storage.
+    final res = await DiscordBridge.startRun(dayKey);
+    final info = parseStartResponse(res);
+    if (info.done) {
+      done = true;
+      DiscordMode.myMs = info.ms ?? DiscordMode.myMs;
+    }
+    if (done) DiscordMode.showLeaderboard.value = true;
     if (mounted) setState(() => _ready = true);
   }
 
@@ -58,6 +73,26 @@ class _DiscordPocketDailyState extends State<DiscordPocketDaily> {
     if (!_ready) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    return const GameScreen(isDailyRoute: true);
+    return ValueListenableBuilder<bool>(
+      valueListenable: DiscordMode.showLeaderboard,
+      builder: (context, show, _) => show
+          ? DiscordLeaderboardScreen(
+              dayKey: _dayKey ?? DailyIrodoku.pocketForDate().dayKey,
+            )
+          : const GameScreen(isDailyRoute: true),
+    );
   }
+}
+
+/// `/api/start` JSON: `{ok, start}` or `{ok, done: true, ms}`.
+({bool done, int? ms}) parseStartResponse(String? raw) {
+  if (raw == null) return (done: false, ms: null);
+  try {
+    final m = jsonDecode(raw);
+    if (m is Map && m['done'] == true) {
+      final ms = m['ms'];
+      return (done: true, ms: ms is num ? ms.toInt() : null);
+    }
+  } catch (_) {}
+  return (done: false, ms: null);
 }

@@ -193,6 +193,9 @@ class GameProvider extends ChangeNotifier {
   }
 
   List<List<Cell>> get cells => _cells;
+
+  @visibleForTesting
+  int? debugSolutionAt(int row, int col) => _solution?.get(row, col);
   (int, int)? get selected => _selected;
   Duration get elapsed => _elapsed;
   bool get isWon => _isWon;

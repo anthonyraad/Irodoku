@@ -151,7 +151,8 @@ class _GameScreenState extends State<GameScreen> {
 
     if (game.isWon && !_resultDialogShown) {
       _resultDialogShown = true;
-      final includeXp = _offerResultXp && !game.isDailyReview;
+      final includeXp =
+          _offerResultXp && !game.isDailyReview && !DiscordMode.enabled;
       _offerResultXp = false;
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           if (!mounted) return;
@@ -224,6 +225,12 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _openDailyLeaderboard(GameProvider game) {
+    if (DiscordMode.enabled && game.isGameOver && game.isWon) {
+      // One attempt per day: finishing swaps the puzzle for the leaderboard.
+      DiscordMode.myMs = game.elapsed.inMilliseconds;
+      DiscordMode.showLeaderboard.value = true;
+      return;
+    }
     if (DiscordMode.enabled) {
       showDiscordLeaderboard(
         context,
@@ -620,7 +627,9 @@ class _GameScreenState extends State<GameScreen> {
                           xp: _resultXp,
                           showNewGame: !widget.isDailyRoute,
                           leaderboardLabel: widget.isDailyRoute
-                              ? (game.isPocket
+                              ? DiscordMode.enabled
+                                  ? "See today's leaderboard"
+                                  : (game.isPocket
                                   ? '[Rankings]'
                                   : 'Rankings')
                               : null,

@@ -55,6 +55,9 @@ async function handleStart(req, env) {
   const { day } = await readJson(req);
   if (!validDay(day)) return json({ error: 'bad_day' }, 400);
   if (!dbConfigured(env)) return json({ error: 'db_not_configured' }, 503);
+  // Already finished today: no new run, the client shows the leaderboard.
+  const done = await (await rtdb(env, `irodoku_daily/${day}/pocket/${user.id}`)).json();
+  if (done && typeof done.ms === 'number') return json({ ok: true, done: true, ms: done.ms });
   const path = startPath(day, user.id);
   const prior = await (await rtdb(env, path)).json();
   if (typeof prior === 'number') return json({ ok: true, start: prior });
