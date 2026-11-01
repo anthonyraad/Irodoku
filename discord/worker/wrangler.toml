@@ -9,7 +9,7 @@ crons = ["0 8 * * *"]
 [vars]
 DISCORD_CLIENT_ID = "1565967052047388822"
 # RTDB root, e.g. https://<project>-default-rtdb.firebaseio.com
-FIREBASE_DATABASE_URL = ""
+FIREBASE_DATABASE_URL = "https://word-multiplayer-default-rtdb.firebaseio.com"
 # "embed" (Discord embed table; ~1 ms CPU, safe on Workers Free's 10 ms cap)
 # or "png" (resvg-wasm image; ~9 ms warm / ~45 ms cold CPU measured, so it
 # can exceed the Free cap -- use on Workers Paid). PNG errors fall back to embed.
