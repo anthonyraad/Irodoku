@@ -82,6 +82,36 @@ class DailyLeaderboardService {
     }
   }
 
+  /// Saved time in a Pocket entry snapshot (`{name, ms, at}`), else null.
+  static int? entryMs(Object? value) {
+    if (value is! Map) return null;
+    final raw = value['ms'];
+    final ms = raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+    if (ms == null || ms < minMs || ms > maxMs) return null;
+    return ms;
+  }
+
+  /// Linked players only: today's Pocket time already saved under the Discord
+  /// id (e.g. finished in the Discord Activity). Null when unlinked, no
+  /// entry, offline, or the read fails (callers keep local behavior).
+  static Future<int?> linkedPocketDoneMs(String dayKey) async {
+    final link = DiscordLinkService.instance;
+    final discordId = link.discordId;
+    if (!DiscordLinkService.supported || discordId == null) return null;
+    try {
+      final ready = await GraffitiFirebaseService.ensureInitialized()
+          .timeout(const Duration(seconds: 6));
+      if (!ready) return null;
+      final snap = await _dayRef(dayKey, pocket: true)
+          .child(discordId)
+          .get()
+          .timeout(const Duration(seconds: 6));
+      return entryMs(snap.value);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<DailyLeaderboardBoard> fetch({
     required String dayKey,
     required bool pocket,
