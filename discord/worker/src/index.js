@@ -168,10 +168,19 @@ export async function nightly(env, { day = pstDayKey(Date.now() - 86400e3), rows
   return { day, posted: rows.length };
 }
 
+// Discord's URL-mapping proxy strips the matched prefix: the client's
+// /api/leaderboard (or /.proxy/api/leaderboard) arrives here as /leaderboard.
+// Accept both forms so direct curl and proxied requests route the same.
+export function normalizePath(p) {
+  p = p.replace(/\/+$/, '').replace(/^\/\.proxy(?=\/|$)/, '');
+  if (!p.startsWith('/api/') && p !== '/api') p = '/api' + p;
+  return p;
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
-    const route = `${req.method} ${url.pathname.replace(/\/+$/, '')}`;
+    const route = `${req.method} ${normalizePath(url.pathname)}`;
     try {
       switch (route) {
         case 'POST /api/token': return await handleToken(req, env);

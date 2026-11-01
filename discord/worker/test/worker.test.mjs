@@ -98,3 +98,11 @@ test('start reports done when a score exists for today', async () => {
   assert.deepEqual(r, { ok: true, done: true, ms: 131000 });
   assert.equal(db[`irodoku_daily_starts/${day}/pocket/42`], undefined);
 });
+
+test('routes accept proxy-stripped and /api path forms', async () => {
+  mock();
+  for (const p of ['/leaderboard', '/api/leaderboard', '/.proxy/api/leaderboard', '/health', '/api/health/']) {
+    const r = await worker.fetch(new Request('https://w' + p + (p.includes('leader') ? '?day=2026-10-31' : '')), env, {});
+    assert.equal(r.status, 200, p);
+  }
+});
