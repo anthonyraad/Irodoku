@@ -163,12 +163,12 @@ class _GraffitiDiscordHomeState extends State<GraffitiDiscordHome> {
                                 ],
                                 const SizedBox(height: 24),
                                 MenuActionButton(
-                                  label: 'Graffiti 9x9',
+                                  label: 'Graffiti - 9x9',
                                   onPressed: () => _open(false),
                                 ),
                                 const SizedBox(height: 12),
                                 MenuActionButton(
-                                  label: '[Graffiti] 6x6',
+                                  label: '[Graffiti] - 6x6',
                                   onPressed: () => _open(true),
                                 ),
                               ],
