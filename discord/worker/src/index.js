@@ -6,6 +6,7 @@
 import { dbConfigured, rtdb, topPocket, writeBest } from './firebase.js';
 import { leaderboardName, pstDayKey } from './names.js';
 import { leaderboardEmbed, renderPng } from './render.js';
+import { botApi, botEnabled, upsertDailyMessage, verifyDiscordRequest } from './discord_bot.js';
 
 const MIN_MS = 5000;
 const MAX_MS = 24 * 3600e3;
@@ -49,10 +50,17 @@ async function handleToken(req, env) {
   return json({ access_token: data.access_token });
 }
 
-async function handleStart(req, env) {
+function bg(ctx, p, label) {
+  p = Promise.resolve(p).catch((e) => console.error(label, e));
+  if (ctx?.waitUntil) ctx.waitUntil(p);
+  return p;
+}
+
+async function handleStart(req, env, ctx) {
   const user = await discordUser(req);
   if (!user) return json({ error: 'unauthorized' }, 401);
   const { day } = await readJson(req);
+  if (day === pstDayKey() && dbConfigured(env)) bg(ctx, upsertDailyMessage(env, day), 'daily msg');
   if (!validDay(day)) return json({ error: 'bad_day' }, 400);
   if (!dbConfigured(env)) return json({ error: 'db_not_configured' }, 503);
   // Already finished today: no new run, the client shows the leaderboard.
@@ -130,11 +138,29 @@ async function handleScore(req, env, ctx) {
   const result = await writeBest(env, `irodoku_daily/${day}/pocket/${user.id}`,
     { name: leaderboardName(user), ms, at: Date.now(), src: 'discord' });
   // First completion of the day always commits; the Firebase flag dedupes.
-  if (result.committed && day === pstDayKey()) {
+  if (day === pstDayKey() && botEnabled(env)) {
+    // Bot mode: the single daily message replaces per-finish shoutouts.
+    if (result.committed) bg(ctx, upsertDailyMessage(env, day), 'daily msg');
+  } else if (result.committed && day === pstDayKey()) {
     const p = finishShoutout(env, day, user.id, leaderboardName(user), ms).catch((e) => console.error('shoutout', e));
     if (ctx?.waitUntil) ctx.waitUntil(p);
   }
   return json({ ok: true, ms, ...result });
+}
+
+async function handleInteractions(req, env, ctx) {
+  const body = await req.text();
+  const ok = await verifyDiscordRequest(env.DISCORD_PUBLIC_KEY, req.headers.get('X-Signature-Ed25519'),
+    req.headers.get('X-Signature-Timestamp'), body);
+  if (!ok) return new Response('invalid request signature', { status: 401 });
+  let i; try { i = JSON.parse(body); } catch { return json({ error: 'bad_json' }, 400); }
+  if (i.type === 1) return json({ type: 1 });
+  const launch = (i.type === 2 && i.data?.type === 4) || (i.type === 3 && i.data?.custom_id === 'iro_play');
+  if (launch) {
+    if (dbConfigured(env)) bg(ctx, upsertDailyMessage(env, pstDayKey()), 'daily msg');
+    return json({ type: 12 });
+  }
+  return json({ type: 4, data: { content: 'Unknown command.', flags: 64 } });
 }
 
 async function handleLeaderboard(url, env) {
@@ -162,9 +188,14 @@ export async function nightly(env, { day = pstDayKey(Date.now() - 86400e3), rows
     if (!post) return { day, embed };
     form.append('payload_json', JSON.stringify({ content, embeds: [embed] }));
   }
-  if (!env.DISCORD_WEBHOOK_URL) throw new Error('DISCORD_WEBHOOK_URL not set');
-  const r = await fetch(env.DISCORD_WEBHOOK_URL, { method: 'POST', body: form });
-  if (!r.ok) throw new Error(`webhook ${r.status}`);
+  let r;
+  if (botEnabled(env)) {
+    r = await botApi(env, 'POST', `/channels/${env.DISCORD_CHANNEL_ID}/messages`, form);
+  } else {
+    if (!env.DISCORD_WEBHOOK_URL) throw new Error('DISCORD_WEBHOOK_URL not set');
+    r = await fetch(env.DISCORD_WEBHOOK_URL, { method: 'POST', body: form });
+  }
+  if (!r.ok) throw new Error(`nightly post ${r.status}`);
   return { day, posted: rows.length };
 }
 
@@ -184,9 +215,10 @@ export default {
     try {
       switch (route) {
         case 'POST /api/token': return await handleToken(req, env);
-        case 'POST /api/start': return await handleStart(req, env);
+        case 'POST /api/start': return await handleStart(req, env, ctx);
         case 'POST /api/score': return await handleScore(req, env, ctx);
         case 'GET /api/leaderboard': return await handleLeaderboard(url, env);
+        case 'POST /api/interactions': return await handleInteractions(req, env, ctx);
         case 'GET /api/health': return json({ ok: true });
         case 'GET /api/nightly-preview': {
           env = { ...env, NIGHTLY_FORMAT: url.searchParams.get('format') || 'png' };
@@ -203,7 +235,9 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
-    const job = event?.cron === '0 16 * * *' ? livePost(env) : nightly(env);
+    const job = event?.cron === '0 16 * * *'
+      ? (botEnabled(env) ? upsertDailyMessage(env, pstDayKey()) : livePost(env))
+      : nightly(env);
     ctx.waitUntil(job);
   },
 };

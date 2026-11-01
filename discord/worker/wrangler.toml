@@ -17,8 +17,12 @@ FIREBASE_DATABASE_URL = "https://word-multiplayer-default-rtdb.firebaseio.com"
 NIGHTLY_FORMAT = "embed"
 # Direct Activity launch link (Discord format: https://discord.com/activities/<app_id>).
 ACTIVITY_LINK = "https://discord.com/activities/1565967052047388822"
+# Interactions endpoint signature key (public; from the Developer Portal).
+DISCORD_PUBLIC_KEY = "b1a7cdd789828b9c22b28ebfe8956b385f3857f5034698f040eeaedc31e7e266"
+# #dire-dire-docks: single daily status message (needs secret DISCORD_BOT_TOKEN).
+DISCORD_CHANNEL_ID = "1552500217524523118"
 
-# Secrets (wrangler secret put ...): DISCORD_CLIENT_SECRET, DISCORD_WEBHOOK_URL,
+# Secrets (wrangler secret put ...): DISCORD_CLIENT_SECRET, DISCORD_BOT_TOKEN (optional; enables bot mode), DISCORD_WEBHOOK_URL,
 # FIREBASE_SERVICE_ACCOUNT (service-account JSON). Local dev: .dev.vars
 
 [[rules]]

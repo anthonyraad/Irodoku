@@ -106,3 +106,85 @@ test('routes accept proxy-stripped and /api path forms', async () => {
     assert.equal(r.status, 200, p);
   }
 });
+
+// ---- Part B: interactions + single daily message ----
+import { generateKeyPairSync as gkp, sign as edSign } from 'node:crypto';
+import { dailyMessagePayload, upsertDailyMessage, verifyDiscordRequest } from '../src/discord_bot.js';
+
+const ed = gkp('ed25519');
+const pubHex = ed.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex');
+const signed = (body, path = '/interactions') => {
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = edSign(null, Buffer.from(ts + body), ed.privateKey).toString('hex');
+  return new Request('https://w' + path, { method: 'POST', body,
+    headers: { 'X-Signature-Ed25519': sig, 'X-Signature-Timestamp': ts } });
+};
+
+function botMock() {
+  const m = mock(); const discord = [];
+  const base = globalThis.fetch;
+  let n = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    url = String(url);
+    if (url.startsWith('https://discord.com/api/v10/channels/')) {
+      discord.push({ url, method: init.method, auth: init.headers?.Authorization, body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body });
+      return new Response(JSON.stringify({ id: 'm' + (++n) }), { status: 200 });
+    }
+    if (url.startsWith('https://db.test/') && init.method === 'DELETE') {
+      delete m.db[url.replace('https://db.test/', '').replace(/\.json.*$/, '')]; return new Response('null');
+    }
+    if (url.includes('users/@me')) return new Response(JSON.stringify({ id: '42', global_name: 'Tony' }));
+    const key = url.replace('https://db.test/', '').replace(/\.json.*$/, '');
+    if (url.startsWith('https://db.test/') && (init.method || 'GET') === 'GET' && !(key in m.db)) {
+      const kids = Object.fromEntries(Object.entries(m.db).filter(([k]) => k.startsWith(key + '/')).map(([k, v]) => [k.slice(key.length + 1), v]));
+      if (Object.keys(kids).length) return new Response(JSON.stringify(kids));
+    }
+    return base(url, init);
+  };
+  return { ...m, discord };
+}
+const benv = { ...env, DISCORD_PUBLIC_KEY: pubHex, DISCORD_BOT_TOKEN: 'bt', DISCORD_CHANNEL_ID: '99' };
+
+test('ed25519 verify', async () => {
+  const req = signed('{"type":1}');
+  assert.equal(await verifyDiscordRequest(pubHex, req.headers.get('X-Signature-Ed25519'), req.headers.get('X-Signature-Timestamp'), '{"type":1}'), true);
+  assert.equal(await verifyDiscordRequest(pubHex, req.headers.get('X-Signature-Ed25519'), req.headers.get('X-Signature-Timestamp'), '{"type":2}'), false);
+});
+
+test('interactions: ping, entry point, play button, bad sig', async () => {
+  botMock();
+  const call = async (b, p) => { const w = []; const r = await worker.fetch(signed(JSON.stringify(b), p), benv, { waitUntil: (x) => w.push(x) }); await Promise.all(w); return r; };
+  assert.deepEqual(await (await call({ type: 1 })).json(), { type: 1 });
+  assert.deepEqual(await (await call({ type: 1 }, '/api/interactions')).json(), { type: 1 });
+  assert.deepEqual(await (await call({ type: 2, data: { type: 4 } })).json(), { type: 12 });
+  assert.deepEqual(await (await call({ type: 3, data: { custom_id: 'iro_play' } })).json(), { type: 12 });
+  const bad = signed('{"type":1}'); 
+  const r = await worker.fetch(new Request(bad.url, { method: 'POST', body: '{"type":2}', headers: bad.headers }), benv, {});
+  assert.equal(r.status, 401);
+});
+
+test('daily message: created once, edited on finishes, no webhook shoutouts', async () => {
+  const { db, hooks, discord } = botMock();
+  const day = pstDayKey();
+  const r1 = await upsertDailyMessage(benv, day);
+  assert.equal(r1.created, 'm1');
+  assert.equal(db[`irodoku_daily_msg/${day}`].id, 'm1');
+  assert.equal(discord[0].method, 'POST'); assert.equal(discord[0].auth, 'Bot bt');
+  assert.match(discord[0].body.embeds[0].description, /^0 players solved today/);
+  db[`irodoku_daily_starts/${day}/pocket/42`] = Date.now() - 600e3;
+  const w = [];
+  await worker.fetch(new Request('https://w/score', { method: 'POST', headers: { Authorization: 'Bearer abcdefghijkl' },
+    body: JSON.stringify({ day, ms: 134000 }) }), benv, { waitUntil: (p) => w.push(p) });
+  await Promise.all(w);
+  const last = discord.at(-1);
+  assert.equal(last.method, 'PATCH'); assert.match(last.url, /messages\/m1$/);
+  assert.match(last.body.embeds[0].description, /1 player solved today[\s\S]*\*\*Tony\*\* — 2:14/);
+  assert.deepEqual(last.body.allowed_mentions, { parse: [] });
+  assert.equal(last.body.components[0].components[0].custom_id, 'iro_play');
+  assert.equal(hooks.length, 0);
+  assert.equal(discord.filter((d) => d.method === 'POST').length, 1);
+});
+
+test('daily payload title', () => {
+  assert.equal(dailyMessagePayload('2026-10-31', []).embeds[0].title, 'Daily Iro — 2026-10-31');
+});
