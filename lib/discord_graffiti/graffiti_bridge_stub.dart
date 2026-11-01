@@ -4,6 +4,7 @@ class GraffitiDiscordBridge {
   static bool get inDiscord => false;
   static Future<bool> firebaseReady() async => true;
   static Future<String?> init() async => null;
+  static Future<String?> reportResult(String code) async => null;
   static String? netJson() => null;
   static void note(String message) {}
 }

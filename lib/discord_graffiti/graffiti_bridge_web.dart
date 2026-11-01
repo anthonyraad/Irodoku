@@ -8,6 +8,7 @@ extension type _IroGraffiti._(JSObject _) implements JSObject {
   external JSBoolean inDiscord();
   external JSPromise<JSBoolean> firebaseReady();
   external JSPromise<JSString?> init();
+  external JSPromise<JSString?> reportResult(JSString code);
   external JSString net();
   external void note(JSString message);
 }
@@ -42,6 +43,17 @@ class GraffitiDiscordBridge {
     if (b == null) return null;
     try {
       return (await b.init().toDart)?.toDart;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// POST /api/result for a finished room. Worker response JSON or null.
+  static Future<String?> reportResult(String code) async {
+    final b = _bridge;
+    if (b == null) return null;
+    try {
+      return (await b.reportResult(code.toJS).toDart)?.toDart;
     } catch (_) {
       return null;
     }

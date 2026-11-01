@@ -10,6 +10,7 @@ import '../app.dart';
 import '../core/irodoku_page_route.dart';
 import '../core/theme.dart';
 import '../firebase_options.dart';
+import '../providers/graffiti_provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/graffiti_screen.dart';
 import '../services/graffiti_firebase_service.dart';
@@ -49,6 +50,8 @@ class _GraffitiDiscordHomeState extends State<GraffitiDiscordHome> {
   bool _ready = false;
   String? _name;
   StreamSubscription<dynamic>? _connSub;
+  GraffitiProvider? _graffiti;
+  bool _reported = false;
 
   @override
   void initState() {
@@ -58,12 +61,14 @@ class _GraffitiDiscordHomeState extends State<GraffitiDiscordHome> {
 
   @override
   void dispose() {
+    _graffiti?.removeListener(_onGraffiti);
     _connSub?.cancel();
     super.dispose();
   }
 
   Future<void> _boot() async {
     final settings = context.read<SettingsProvider>();
+    _graffiti = context.read<GraffitiProvider>()..addListener(_onGraffiti);
     await settings.completeFirstRunTutorial();
     final status = GraffitiDiscordStatus.auth;
     try {
@@ -119,6 +124,23 @@ class _GraffitiDiscordHomeState extends State<GraffitiDiscordHome> {
     }
     _name ??= settings.displayName.isEmpty ? null : settings.displayName;
     if (mounted) setState(() => _ready = true);
+  }
+
+  /// Once per decided match: ask the worker to post `<W> vandalized <L>`.
+  void _onGraffiti() {
+    final g = _graffiti;
+    if (g == null) return;
+    if (g.phase != GraffitiPhase.finished) {
+      _reported = false;
+      return;
+    }
+    final code = g.roomCode;
+    if (_reported || code == null || g.solo) return;
+    if (g.outcome != GraffitiOutcome.win && g.outcome != GraffitiOutcome.lose) {
+      return;
+    }
+    _reported = true;
+    unawaited(GraffitiDiscordBridge.reportResult(code));
   }
 
   void _open(bool pocket) {

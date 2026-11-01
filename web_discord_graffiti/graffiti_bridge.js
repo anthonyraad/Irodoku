@@ -109,6 +109,10 @@
     inDiscord: () => inDiscord,
     init: () => init().catch((e) => { note('init: ' + (e && e.message || e)); console.warn('[IroGraffiti]', e); return null; }),
     firebaseReady: () => (window.__iroFirebaseReady || Promise.resolve()).then(() => true, (e) => { note('firebase js: ' + e); return false; }),
+    // Ask the worker to announce a finished match (it re-reads rooms/<code>).
+    reportResult: (code) => accessToken
+      ? api('/api/result', { code: String(code) }).then((r) => JSON.stringify(r)).catch((e) => { note('result: ' + (e && e.message || e)); return null; })
+      : Promise.resolve(null),
     net: () => JSON.stringify(Object.assign({}, net, { longPolls: longPollCount(), inDiscord })),
     note,
   };

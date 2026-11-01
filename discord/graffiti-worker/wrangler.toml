@@ -6,8 +6,10 @@ compatibility_date = "2026-10-01"
 # Discord URL mapping '/api' -> this worker (Discord's proxy strips '/api').
 [vars]
 FIREBASE_PROJECT_ID = "word-multiplayer"
+FIREBASE_DATABASE_URL = "https://word-multiplayer-default-rtdb.firebaseio.com"
 
 # Secrets (wrangler secret put ...):
 #   DISCORD_CLIENT_ID      Graffiti Discord app id (also served by /config)
 #   DISCORD_CLIENT_SECRET  Graffiti Discord app OAuth2 secret
 #   FIREBASE_SERVICE_ACCOUNT  service-account JSON (same one irodoku-discord uses)
+#   DISCORD_WEBHOOK_URL    #dire-dire-docks webhook (match result posts)
