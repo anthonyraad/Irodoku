@@ -1,0 +1,13 @@
+name = "irodoku-graffiti"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Graffiti Discord Activity API (separate Discord app from Daily Iro).
+# Discord URL mapping '/api' -> this worker (Discord's proxy strips '/api').
+[vars]
+FIREBASE_PROJECT_ID = "word-multiplayer"
+
+# Secrets (wrangler secret put ...):
+#   DISCORD_CLIENT_ID      Graffiti Discord app id (also served by /config)
+#   DISCORD_CLIENT_SECRET  Graffiti Discord app OAuth2 secret
+#   FIREBASE_SERVICE_ACCOUNT  service-account JSON (same one irodoku-discord uses)

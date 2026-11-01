@@ -30,6 +30,8 @@ jobs:
         with:
           node-version: 20
       - run: bash web_discord/build.sh build/web/discord
+      # [Graffiti] Discord Activity (separate Discord app) -> /Irodoku/discord-graffiti/
+      - run: bash web_discord_graffiti/build.sh build/web/discord-graffiti
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

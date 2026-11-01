@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    One build, two homes:
+      * Discord proxy  https://<app>.discordsays.com/   (mapping '/' -> anthonyraad.github.io/Irodoku/discord-graffiti)
+      * GitHub Pages   https://anthonyraad.github.io/Irodoku/discord-graffiti/
+  -->
+  <script>
+    (function () {
+      var p = location.pathname, m = p.match(/^(.*\/discord-graffiti\/)/);
+      document.write('<base href="' + (m ? m[1] : '/') + '">');
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>[Graffiti]</title>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <style>html,body{margin:0;height:100%;width:100%;overflow:hidden;background:#111}</style>
+</head>
+<body>
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations()
+      .then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () {});
+    if (window.caches) caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); }).catch(function () {});
+  </script>
+  <script>
+    // Same WebAudio unlock as the Daily Iro Activity (see web_discord/index.html).
+    (function () {
+      var Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return;
+      var ctxs = [], unlocked = false;
+      function Tracked(o) { var c = new Ctor(o); ctxs.push(c); if (unlocked) c.resume(); return c; }
+      Tracked.prototype = Ctor.prototype;
+      window.AudioContext = Tracked; window.webkitAudioContext = Tracked;
+      function unlock() { unlocked = true; ctxs.forEach(function (c) { if (c.state !== 'running') c.resume().catch(function () {}); }); }
+      ['pointerdown', 'touchend', 'mousedown', 'keydown'].forEach(function (e) {
+        window.addEventListener(e, unlock, { capture: true, passive: true });
+      });
+    })();
+  </script>
+  <script src="discord-sdk.js?v=__BUILD__"></script>
+  <script src="graffiti_bridge.js?v=__BUILD__"></script>
+  <script>
+    // Self-hosted Firebase JS SDK (Discord's CSP blocks www.gstatic.com).
+    // Versioned dir (not ?v=) so auth/database share one firebase-app module.
+    // FlutterFire skips its gstatic injection when window.firebase_core exists.
+    window.__iroFirebaseReady = Promise.all([
+      import('./firebasejs/__FBJS__/firebase-app.js'),
+      import('./firebasejs/__FBJS__/firebase-auth.js'),
+      import('./firebasejs/__FBJS__/firebase-database.js'),
+    ]).then(function (m) {
+      window.firebase_core = m[0]; window.firebase_auth = m[1]; window.firebase_database = m[2];
+    });
+  </script>
+  <script src="flutter_bootstrap.js?v=__BUILD__" async></script>
+</body>
+</html>
