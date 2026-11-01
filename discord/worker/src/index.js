@@ -159,6 +159,7 @@ async function handleInteractions(req, env, ctx) {
   if (!ok) return new Response('invalid request signature', { status: 401 });
   let i; try { i = JSON.parse(body); } catch { return json({ error: 'bad_json' }, 400); }
   if (i.type === 1) return json({ type: 1 });
+  console.log('interaction', JSON.stringify({ t: i.type, dt: i.data?.type, name: i.data?.name, cid: i.data?.custom_id, ctx: i.context, ch: i.channel?.type }));
   const launch = (i.type === 2 && i.data?.type === 4) || (i.type === 3 && i.data?.custom_id === 'iro_play');
   if (launch) {
     if (dbConfigured(env)) bg(ctx, upsertDailyMessage(env, pstDayKey()), 'daily msg');
