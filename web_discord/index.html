@@ -23,8 +23,37 @@
 </head>
 <body>
   <!-- Bundled locally: Discord's CSP blocks outside origins. -->
+  <script>
+    // Drop any service worker / Cache Storage left by older builds so Discord
+    // never serves a stale main.dart.js.
+    if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations()
+      .then(function (rs) { rs.forEach(function (r) { r.unregister(); }); }).catch(function () {});
+    if (window.caches) caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); }).catch(function () {});
+  </script>
+  <script>
+    // Sound: audioplayers routes every <audio> through a WebAudio AudioContext.
+    // Contexts created before a user gesture start "suspended" (Chrome/Discord
+    // desktop, iOS/Android webviews), so the Activity was silent. Track every
+    // context and resume them all on each user gesture.
+    (function () {
+      var Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return;
+      var ctxs = [];
+      function Tracked(o) { var c = new Ctor(o); ctxs.push(c); if (unlocked) c.resume(); return c; }
+      Tracked.prototype = Ctor.prototype;
+      window.AudioContext = Tracked; window.webkitAudioContext = Tracked;
+      var unlocked = false;
+      function unlock() {
+        unlocked = true;
+        ctxs.forEach(function (c) { if (c.state !== 'running') c.resume().catch(function () {}); });
+      }
+      ['pointerdown', 'touchend', 'mousedown', 'keydown'].forEach(function (e) {
+        window.addEventListener(e, unlock, { capture: true, passive: true });
+      });
+    })();
+  </script>
   <script src="discord-sdk.js"></script>
   <script src="discord_bridge.js"></script>
-  <script src="flutter_bootstrap.js" async></script>
+  <script src="flutter_bootstrap.js?v=__BUILD__" async></script>
 </body>
 </html>
