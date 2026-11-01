@@ -10,7 +10,6 @@ import { botApi, botEnabled, upsertDailyMessage, verifyDiscordRequest } from './
 
 const MIN_MS = 5000;
 const MAX_MS = 24 * 3600e3;
-const SLACK_MS = 3000;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -120,7 +119,7 @@ export async function livePost(env) {
 
 async function handleScore(req, env, ctx) {
   const user = await discordUser(req);
-  if (!user) return json({ error: 'unauthorized' }, 401);
+  if (!user) { console.log('score unauthorized'); return json({ error: 'unauthorized' }, 401); }
   const body = await readJson(req);
   const { day } = body;
   let { ms } = body;
@@ -128,13 +127,18 @@ async function handleScore(req, env, ctx) {
   if (ms != null && (!Number.isInteger(ms) || ms < 0 || ms > MAX_MS)) return json({ error: 'bad_time' }, 400);
   if (!dbConfigured(env)) return json({ error: 'db_not_configured' }, 503);
   const start = await (await rtdb(env, startPath(day, user.id))).json();
-  if (typeof start !== 'number') return json({ error: 'no_start' }, 409);
-  const serverMs = Date.now() - start;
-  if (ms != null && ms > serverMs + SLACK_MS) return json({ error: 'time_exceeds_window' }, 422);
-  // A missing/implausibly small client time means the on-screen clock never
-  // ran; fall back to the server-recorded window (start -> now).
-  if (ms == null || ms < MIN_MS) ms = serverMs;
-  if (ms < MIN_MS || ms > MAX_MS) return json({ error: 'bad_time' }, 400);
+  // The client clock starts when the puzzle is shown, which is BEFORE auth +
+  // /api/start finish (the OAuth consent alone can take many seconds), so a
+  // client time longer than the server window is normal, not cheating — a
+  // longer time is never an advantage. Only the server window can shorten a
+  // claim. Without a recorded start (start failed) trust the client time.
+  const serverMs = typeof start === 'number' ? Date.now() - start : null;
+  if ((ms == null || ms < MIN_MS) && serverMs != null) ms = serverMs;
+  if (ms == null || ms < MIN_MS || ms > MAX_MS) {
+    console.log('score rejected', JSON.stringify({ day, ms, serverMs }));
+    return json({ error: 'bad_time' }, 400);
+  }
+  console.log('score', JSON.stringify({ day, ms, serverMs }));
   const result = await writeBest(env, `irodoku_daily/${day}/pocket/${user.id}`,
     { name: leaderboardName(user), ms, at: Date.now(), src: 'discord' });
   // First completion of the day always commits; the Firebase flag dedupes.

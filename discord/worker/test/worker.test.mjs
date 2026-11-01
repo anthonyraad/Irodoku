@@ -81,10 +81,20 @@ test('zero/missing client time falls back to server elapsed', async () => {
   assert.equal(r2.ok, true);
 });
 
-test('client time beyond server window is rejected', async () => {
+test('client time beyond server window (slow auth) is saved and shown', async () => {
   const { db } = mock();
   db[`irodoku_daily_starts/${pstDayKey()}/pocket/42`] = Date.now() - 10e3;
-  assert.equal((await score(60e3)).error, 'time_exceeds_window');
+  const r = await score(60e3);
+  assert.equal(r.ok, true);
+  assert.equal(db[`irodoku_daily/${pstDayKey()}/pocket/42`].src, 'discord');
+});
+
+test('missing start still saves the client time', async () => {
+  const { db } = mock();
+  const r = await score(70e3);
+  assert.equal(r.ok, true);
+  assert.equal(db[`irodoku_daily/${pstDayKey()}/pocket/42`].ms, 70e3);
+  assert.equal((await score(1000)).error, 'bad_time');
 });
 
 test('start reports done when a score exists for today', async () => {
