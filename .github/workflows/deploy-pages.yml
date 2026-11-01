@@ -25,6 +25,11 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build web --release --base-href="/Irodoku/"
+      # Discord Activity (Pocket Daily Iro) -> /Irodoku/discord/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: bash web_discord/build.sh build/web/discord
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

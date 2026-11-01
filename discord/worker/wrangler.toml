@@ -1,0 +1,24 @@
+name = "irodoku-discord"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Nightly Pocket top-10 at 00:00 UTC-8 (fixed PST, matches DailyIrodoku).
+[triggers]
+crons = ["0 8 * * *"]
+
+[vars]
+DISCORD_CLIENT_ID = "1565967052047388822"
+# RTDB root, e.g. https://<project>-default-rtdb.firebaseio.com
+FIREBASE_DATABASE_URL = ""
+# "embed" (Discord embed table; ~1 ms CPU, safe on Workers Free's 10 ms cap)
+# or "png" (resvg-wasm image; ~9 ms warm / ~45 ms cold CPU measured, so it
+# can exceed the Free cap -- use on Workers Paid). PNG errors fall back to embed.
+NIGHTLY_FORMAT = "embed"
+
+# Secrets (wrangler secret put ...): DISCORD_CLIENT_SECRET, DISCORD_WEBHOOK_URL,
+# FIREBASE_SERVICE_ACCOUNT (service-account JSON). Local dev: .dev.vars
+
+[[rules]]
+type = "Data"
+globs = ["**/*.ttf"]
+fallthrough = true

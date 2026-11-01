@@ -1,7 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base href="$FLUTTER_BASE_HREF">
+  <!--
+    One build, two homes:
+      * Discord proxy  https://<app>.discordsays.com/           (mapping '/' -> anthonyraad.github.io/Irodoku/discord)
+      * GitHub Pages   https://anthonyraad.github.io/Irodoku/discord/
+    Flutter resolves every asset against document.baseURI, so pick the base
+    at load time instead of baking one in with --base-href.
+  -->
+  <script>
+    (function () {
+      var p = location.pathname, m = p.match(/^(.*\/discord\/)/);
+      var base = m ? m[1] : '/';
+      document.write('<base href="' + base + '">');
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Pocket Daily Iro</title>

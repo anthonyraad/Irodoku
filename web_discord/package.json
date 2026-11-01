@@ -1,0 +1,9 @@
+{
+  "name": "irodoku-discord-web",
+  "private": true,
+  "scripts": {
+    "bundle-sdk": "esbuild sdk-entry.js --bundle --minify --format=iife --outfile=dist/discord-sdk.js"
+  },
+  "dependencies": { "@discord/embedded-app-sdk": "^2.0.0" },
+  "devDependencies": { "esbuild": "^0.24.0" }
+}
