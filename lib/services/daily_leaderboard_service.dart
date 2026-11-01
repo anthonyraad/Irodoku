@@ -3,6 +3,7 @@ import 'package:firebase_database/firebase_database.dart';
 
 import '../models/daily_irodoku.dart';
 import '../models/daily_leaderboard.dart';
+import 'discord_link_service.dart';
 import 'graffiti_firebase_service.dart';
 
 /// Public Daily times on the shared Irodoku RTDB.
@@ -15,6 +16,11 @@ class DailyLeaderboardService {
   static const topN = 50;
   static const minMs = 5000;
   static const maxMs = 24 * 60 * 60 * 1000;
+
+  /// Entry key: linked players' Pocket Daily uses their Discord id; all other
+  /// modes (and unlinked players) use the Firebase uid.
+  static String? _keyFor(String? uid, {required bool pocket}) =>
+      pocket ? DiscordLinkService.instance.pocketKey(uid) : uid;
 
   static DatabaseReference _dayRef(String dayKey, {required bool pocket}) =>
       GraffitiFirebaseService.database
@@ -29,7 +35,10 @@ class DailyLeaderboardService {
     if (ms < minMs || ms > maxMs) return false;
     final ready = await GraffitiFirebaseService.ensureInitialized();
     if (!ready) return false;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _keyFor(
+      FirebaseAuth.instance.currentUser?.uid,
+      pocket: pocket,
+    );
     if (uid == null) return false;
     final sanitized = DisplayName.orFallback(name);
     final ref = _dayRef(dayKey, pocket: pocket).child(uid);
@@ -62,12 +71,44 @@ class DailyLeaderboardService {
     if (uid == null) return;
     final dayKey = DailyIrodoku.dayKeyFor(DateTime.now());
     for (final pocket in [false, true]) {
-      final ref = _dayRef(dayKey, pocket: pocket).child(uid);
+      final key = _keyFor(uid, pocket: pocket);
+      if (key == null) continue;
+      final ref = _dayRef(dayKey, pocket: pocket).child(key);
       try {
         final snap = await ref.get();
         if (!snap.exists) continue;
         await ref.update({'name': sanitized});
       } catch (_) {}
+    }
+  }
+
+  /// Saved time in a Pocket entry snapshot (`{name, ms, at}`), else null.
+  static int? entryMs(Object? value) {
+    if (value is! Map) return null;
+    final raw = value['ms'];
+    final ms = raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+    if (ms == null || ms < minMs || ms > maxMs) return null;
+    return ms;
+  }
+
+  /// Linked players only: today's Pocket time already saved under the Discord
+  /// id (e.g. finished in the Discord Activity). Null when unlinked, no
+  /// entry, offline, or the read fails (callers keep local behavior).
+  static Future<int?> linkedPocketDoneMs(String dayKey) async {
+    final link = DiscordLinkService.instance;
+    final discordId = link.discordId;
+    if (!DiscordLinkService.supported || discordId == null) return null;
+    try {
+      final ready = await GraffitiFirebaseService.ensureInitialized()
+          .timeout(const Duration(seconds: 6));
+      if (!ready) return null;
+      final snap = await _dayRef(dayKey, pocket: true)
+          .child(discordId)
+          .get()
+          .timeout(const Duration(seconds: 6));
+      return entryMs(snap.value);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -79,7 +120,10 @@ class DailyLeaderboardService {
     if (!ready) {
       return const DailyLeaderboardBoard(top: []);
     }
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _keyFor(
+      FirebaseAuth.instance.currentUser?.uid,
+      pocket: pocket,
+    );
     try {
       final snap = await _dayRef(dayKey, pocket: pocket).get();
       final entries = <DailyLeaderboardEntry>[];

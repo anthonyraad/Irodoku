@@ -1,11 +1,13 @@
 // Pocket Daily Iro — Discord Activity API (Cloudflare Worker).
 // Routes (behind Discord URL mapping '/api' -> this worker):
 //   POST /api/token  POST /api/start  POST /api/score  GET /api/leaderboard
+// Android Sync Discord (src/link.js): POST /link/start  GET /link/callback  POST /link/disconnect
 // Cron '0 8 * * *': post yesterday's Pocket top-10 to DISCORD_WEBHOOK_URL.
 // Cron '0 16 * * *' (8 AM PST): 'Daily Iro is now live' post.
 import { dbConfigured, rtdb, topPocket, writeBest } from './firebase.js';
 import { leaderboardName, pstDayKey } from './names.js';
 import { leaderboardEmbed, renderPng } from './render.js';
+import { handleLinkCallback, handleLinkDisconnect, handleLinkStart } from './link.js';
 import { botApi, botEnabled, dispDay, upsertDailyMessage, verifyDiscordRequest } from './discord_bot.js';
 
 const MIN_MS = 5000;
@@ -219,6 +221,10 @@ export default {
     const route = `${req.method} ${normalizePath(url.pathname)}`;
     try {
       switch (route) {
+        // Android 'Sync Discord' (direct, not via the Activity proxy).
+        case 'POST /api/link/start': return await handleLinkStart(req, env);
+        case 'GET /api/link/callback': return await handleLinkCallback(url, env);
+        case 'POST /api/link/disconnect': return await handleLinkDisconnect(req, env);
         case 'POST /api/token': return await handleToken(req, env);
         case 'POST /api/start': return await handleStart(req, env, ctx);
         case 'POST /api/score': return await handleScore(req, env, ctx);

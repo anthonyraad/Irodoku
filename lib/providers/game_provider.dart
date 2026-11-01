@@ -415,8 +415,8 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Streak after today's Daily win: continues from yesterday, else resets to 1.
-  int _dailyStreakAfterThisWin({required bool pocket}) {
-    final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
+  int _dailyStreakAfterThisWin({required bool pocket, String? day}) {
+    final dayKey = day ?? _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
     final last = pocket
         ? _prefs.getPocketDailyLastCompletedDay()
         : _prefs.getDailyLastCompletedDay();
@@ -838,6 +838,27 @@ class GameProvider extends ChangeNotifier {
       pocket: true,
     );
     return true;
+  }
+
+  /// True when today's Pocket Daily is marked done locally but there is no
+  /// frozen board to reopen (finished elsewhere, e.g. the Discord Activity).
+  bool get pocketDailyDoneWithoutBoard {
+    if (!isPocketDailyCompletedToday) return false;
+    final completed = _prefs.loadCompletedPocketDailyGame();
+    return completed == null ||
+        completed.dailyDayKey != DailyIrodoku.forDate().dayKey;
+  }
+
+  /// Mark today's Pocket Daily done from a time saved on another device
+  /// (linked Discord). Keeps the streak; no board snapshot exists.
+  Future<void> markPocketDailyDoneRemotely(String dayKey) async {
+    if (_prefs.getPocketDailyLastCompletedDay() == dayKey) return;
+    final streak = _dailyStreakAfterThisWin(pocket: true, day: dayKey);
+    await _prefs.setPocketDailyProgress(
+      lastCompletedDay: dayKey,
+      streak: streak,
+    );
+    notifyListeners();
   }
 
   /// Restart today's Daily from the given cells after a defeat.

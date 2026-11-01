@@ -7,17 +7,21 @@ import 'package:provider/provider.dart';
 import '../core/irodoku_page_route.dart';
 import '../core/theme.dart';
 import '../models/daily_irodoku.dart';
+import '../models/daily_leaderboard.dart';
 import '../models/difficulty.dart';
 import '../models/game_stats.dart';
 import '../models/player_xp.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
+import '../services/daily_leaderboard_service.dart';
+import '../services/discord_link_service.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/palette_sweep_mask.dart';
 import 'achievements_screen.dart';
 import 'app_settings_screen.dart';
+import 'daily_leaderboard_screen.dart';
 import 'game_screen.dart';
 import 'graffiti_screen.dart';
 import 'iroen_screen.dart';
@@ -438,6 +442,49 @@ class _SettingsScreenState extends State<SettingsScreen>
     _scheduleTitleIcons();
   }
 
+  /// Linked Discord: today's Pocket Daily may already be saved under the
+  /// Discord id (Activity / another device). If so, mark it done locally and
+  /// show the leaderboard instead of starting a run. Returns true if handled.
+  Future<bool> _openLinkedPocketDone(
+    BuildContext context,
+    GameProvider game,
+  ) async {
+    // Unlinked players: exactly the previous behavior.
+    if (!DiscordLinkService.instance.linked) return false;
+    final dayKey = DailyIrodoku.pocketForDate().dayKey;
+    final remoteMs = await DailyLeaderboardService.linkedPocketDoneMs(dayKey);
+    if (!context.mounted) return true;
+    if (remoteMs == null) {
+      // No remote result: local behavior, except a remote-only done day
+      // (no frozen board) still opens the leaderboard instead of nothing.
+      if (!game.pocketDailyDoneWithoutBoard) return false;
+    } else {
+      await game.markPocketDailyDoneRemotely(dayKey);
+      if (!context.mounted) return true;
+      // A frozen local board (finished here) still opens the normal review.
+      if (!game.pocketDailyDoneWithoutBoard) return false;
+    }
+    if (remoteMs != null) {
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              "Today's Pocket Daily is done: ${formatLeaderboardTime(remoteMs)}",
+            ),
+          ),
+        );
+    }
+    _hideTitleIcons();
+    await Navigator.of(context).push(
+      IrodokuPageRoute(
+        builder: (_) => const DailyLeaderboardScreen(pocket: true),
+      ),
+    );
+    if (mounted) _scheduleTitleIcons();
+    return true;
+  }
+
   Future<void> _onDailyPressed(
     BuildContext context,
     GameProvider game, {
@@ -456,6 +503,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
     _openingDaily = true;
     try {
+      if (pocket && await _openLinkedPocketDone(context, game)) return;
       final started = pocket
           ? await game.startPocketDailyGame()
           : await game.startDailyGame();
