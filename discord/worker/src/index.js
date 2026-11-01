@@ -110,13 +110,20 @@ export async function livePost(env) {
 async function handleScore(req, env, ctx) {
   const user = await discordUser(req);
   if (!user) return json({ error: 'unauthorized' }, 401);
-  const { day, ms } = await readJson(req);
+  const body = await readJson(req);
+  const { day } = body;
+  let { ms } = body;
   if (!validDay(day)) return json({ error: 'bad_day' }, 400);
-  if (!Number.isInteger(ms) || ms < MIN_MS || ms > MAX_MS) return json({ error: 'bad_time' }, 400);
+  if (ms != null && (!Number.isInteger(ms) || ms < 0 || ms > MAX_MS)) return json({ error: 'bad_time' }, 400);
   if (!dbConfigured(env)) return json({ error: 'db_not_configured' }, 503);
   const start = await (await rtdb(env, startPath(day, user.id))).json();
   if (typeof start !== 'number') return json({ error: 'no_start' }, 409);
-  if (ms > Date.now() - start + SLACK_MS) return json({ error: 'time_exceeds_window' }, 422);
+  const serverMs = Date.now() - start;
+  if (ms != null && ms > serverMs + SLACK_MS) return json({ error: 'time_exceeds_window' }, 422);
+  // A missing/implausibly small client time means the on-screen clock never
+  // ran; fall back to the server-recorded window (start -> now).
+  if (ms == null || ms < MIN_MS) ms = serverMs;
+  if (ms < MIN_MS || ms > MAX_MS) return json({ error: 'bad_time' }, 400);
   const result = await writeBest(env, `irodoku_daily/${day}/pocket/${user.id}`,
     { name: leaderboardName(user), ms, at: Date.now(), src: 'discord' });
   // First completion of the day always commits; the Firebase flag dedupes.
@@ -124,7 +131,7 @@ async function handleScore(req, env, ctx) {
     const p = finishShoutout(env, day, user.id, leaderboardName(user), ms).catch((e) => console.error('shoutout', e));
     if (ctx?.waitUntil) ctx.waitUntil(p);
   }
-  return json({ ok: true, ...result });
+  return json({ ok: true, ms, ...result });
 }
 
 async function handleLeaderboard(url, env) {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app.dart';
 import '../models/daily_irodoku.dart';
 import '../providers/game_provider.dart';
+import '../providers/settings_provider.dart';
 import '../screens/game_screen.dart';
 import '../services/preferences_service.dart';
 import 'discord_bridge.dart';
@@ -39,6 +40,11 @@ class _DiscordPocketDailyState extends State<DiscordPocketDaily> {
   Future<void> _boot() async {
     final game = context.read<GameProvider>();
     final auth = DiscordBridge.init();
+    // The Activity runs in Discord's iframe with fresh storage, so the
+    // first-run tutorial flag is set — but the Daily route never shows that
+    // overlay, and GameProvider holds the clock until it is dismissed. Mark
+    // it done so the timer runs from the moment the puzzle is shown.
+    await context.read<SettingsProvider>().completeFirstRunTutorial();
     await game.bootstrap();
     await game.startPocketDailyGame(force: true);
     DiscordMode.username = await auth;

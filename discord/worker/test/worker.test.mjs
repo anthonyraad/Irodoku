@@ -69,3 +69,20 @@ test('scheduled dispatches by cron', async () => {
   await run('0 8 * * *');
   assert.ok(hooks.some((h) => h.nightly === 'https://hook.test/x'));
 });
+
+test('zero/missing client time falls back to server elapsed', async () => {
+  const { db } = mock();
+  db[`irodoku_daily_starts/${pstDayKey()}/pocket/42`] = Date.now() - 90e3;
+  const r = await score(0);
+  assert.equal(r.ok, true);
+  assert.ok(r.ms >= 90e3 && r.ms < 95e3, `ms=${r.ms}`);
+  assert.equal(db[`irodoku_daily/${pstDayKey()}/pocket/42`].ms, r.ms);
+  const r2 = await score(undefined);
+  assert.equal(r2.ok, true);
+});
+
+test('client time beyond server window is rejected', async () => {
+  const { db } = mock();
+  db[`irodoku_daily_starts/${pstDayKey()}/pocket/42`] = Date.now() - 10e3;
+  assert.equal((await score(60e3)).error, 'time_exceeds_window');
+});

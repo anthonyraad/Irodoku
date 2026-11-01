@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../discord/discord_mode.dart';
 import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/cell.dart';
@@ -260,7 +261,7 @@ class GameProvider extends ChangeNotifier {
 
   /// Starts the clock after first-run copy, if a live puzzle is already ready.
   bool _releaseTutorialTimer() {
-    if (_settings.showFirstRunTutorial) return false;
+    if (_settings.showFirstRunTutorial && !DiscordMode.enabled) return false;
     if (_timer != null) return false;
     if (!_hasActiveGame || isGameOver || _isPaused || _isGenerating) {
       return false;
@@ -2961,7 +2962,8 @@ class GameProvider extends ChangeNotifier {
   }
 
   void _startTimer() {
-    if (_settings.showFirstRunTutorial) return;
+    // Discord has no first-run overlay to dismiss, so never hold the clock.
+    if (_settings.showFirstRunTutorial && !DiscordMode.enabled) return;
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (isGameOver || _isGenerating || _isPaused) return;
