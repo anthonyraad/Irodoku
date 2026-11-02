@@ -36,7 +36,7 @@ const esc = (s) => String(s).replace(/([\\*_~`|>#\[\]()])/g, '\\$1');
 
 export const PLAY_BUTTON = { type: 1, components: [{ type: 2, style: 1, label: 'Play', custom_id: 'iro_play' }] };
 
-export const ANDROID_LINK = '[Download Irodoku on Android](https://play.google.com/store/apps/details?id=com.irodoku.irodoku)';
+export const ANDROID_LINK = '[Download Irodoku on Android ↗](https://play.google.com/store/apps/details?id=com.irodoku.irodoku)';
 export const DESC_LIMIT = 4096; // Discord embed description max
 
 /** Shared by the initial POST and every PATCH: body + blank line + Android link,
