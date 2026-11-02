@@ -18,6 +18,7 @@ import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/discord_link_service.dart';
+import '../widgets/age_gate.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
@@ -1605,6 +1606,11 @@ class _NameAndDiscordSectionState extends State<_NameAndDiscordSection> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _startDiscordSync() async {
+    if (!await ensureAgeOk(context, AgeGateFeature.discordSync)) return;
+    await _link.startLink();
+  }
+
   Future<void> _confirmDisconnect() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1707,7 +1713,7 @@ class _NameAndDiscordSectionState extends State<_NameAndDiscordSection> {
           Expanded(
             child: _button(
               'Sync Discord',
-              _link.busy ? null : () => unawaited(_link.startLink()),
+              _link.busy ? null : () => unawaited(_startDiscordSync()),
             ),
           ),
         ],
