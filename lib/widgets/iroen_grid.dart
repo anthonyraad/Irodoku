@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/bulk_note_rainbow_border.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/organic_swatch_motion.dart';
 import '../core/palette.dart';
 import '../core/theme.dart';
@@ -29,12 +30,7 @@ class IroenGrid extends StatefulWidget {
 class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
   late final BulkNoteBorderAnimation _unitBorders;
   bool _holdingGlassMotion = false;
-  final _cellLayerKey = GlobalKey();
-  int? _paintPointer;
-  Offset? _paintDownGlobal;
-  (int, int)? _paintStart;
-  (int, int)? _paintLast;
-  var _painting = false;
+  final _paint = BulkPaintGesture(gridSize: SudokuBoard.size);
 
   @override
   void initState() {
@@ -172,12 +168,12 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
     final displaySwatches = iroen.displaySwatchesFor(widget.palette);
 
     return Listener(
-      onPointerDown: (event) => _onPaintPointerDown(iroen, event),
-      onPointerMove: (event) => _onPaintPointerMove(iroen, event),
-      onPointerUp: (event) => _onPaintPointerUp(iroen, event),
-      onPointerCancel: (event) => _onPaintPointerUp(iroen, event),
+      onPointerDown: (event) => _paint.onPointerDown(iroen, event),
+      onPointerMove: (event) => _paint.onPointerMove(iroen, event),
+      onPointerUp: (event) => _paint.onPointerUp(iroen, event),
+      onPointerCancel: (event) => _paint.onPointerUp(iroen, event),
       child: Column(
-        key: _cellLayerKey,
+        key: _paint.layerKey,
         children: List.generate(SudokuBoard.size, (row) {
         return Expanded(
           child: Row(
@@ -264,71 +260,6 @@ class _IroenGridState extends State<IroenGrid> with TickerProviderStateMixin {
       }),
       ),
     );
-  }
-
-  static const _paintSlop = 12.0;
-
-  void _onPaintPointerDown(IroenProvider iroen, PointerDownEvent event) {
-    if (iroen.isPickingQuadrant) return;
-    iroen.prepareBulkPaintGesture();
-    _paintPointer = event.pointer;
-    _paintDownGlobal = event.position;
-    _paintStart = _cellAtGlobal(event.position);
-    _paintLast = _paintStart;
-    _painting = false;
-  }
-
-  void _onPaintPointerMove(IroenProvider iroen, PointerMoveEvent event) {
-    if (_paintPointer != event.pointer || iroen.isPickingQuadrant) return;
-    if (!_painting) {
-      final origin = _paintDownGlobal;
-      if (origin == null || (event.position - origin).distance < _paintSlop) {
-        return;
-      }
-    }
-    final cell = _cellAtGlobal(event.position);
-    if (cell == null || cell == _paintLast) return;
-    if (!_painting) {
-      final start = _paintStart;
-      if (start == null) return;
-      iroen.beginBulkPaint();
-      iroen.addBulkCell(start.$1, start.$2);
-      _painting = true;
-    }
-    iroen.addBulkCell(cell.$1, cell.$2);
-    _paintLast = cell;
-  }
-
-  void _onPaintPointerUp(IroenProvider iroen, PointerEvent event) {
-    if (_paintPointer != event.pointer) return;
-    if (_painting) {
-      iroen.endBulkPaint();
-    } else {
-      final start = _paintStart;
-      iroen.completePendingBulkExit(start?.$1, start?.$2);
-    }
-    _paintPointer = null;
-    _paintDownGlobal = null;
-    _paintStart = null;
-    _paintLast = null;
-    _painting = false;
-  }
-
-  (int, int)? _cellAtGlobal(Offset global) {
-    final box = _cellLayerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-    final local = box.globalToLocal(global);
-    final size = box.size;
-    if (size.width <= 0 || size.height <= 0) return null;
-    final col = (local.dx / size.width * SudokuBoard.size).floor();
-    final row = (local.dy / size.height * SudokuBoard.size).floor();
-    if (row < 0 ||
-        row >= SudokuBoard.size ||
-        col < 0 ||
-        col >= SudokuBoard.size) {
-      return null;
-    }
-    return (row, col);
   }
 }
 

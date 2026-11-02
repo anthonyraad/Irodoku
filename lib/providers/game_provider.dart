@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../discord/discord_mode.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/cell.dart';
@@ -49,7 +50,7 @@ List<List<int>> generatePocketIsolate(int seed) {
   return [generated.puzzle.toFlat(), generated.solution.toFlat()];
 }
 
-class GameProvider extends ChangeNotifier {
+class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   static const int maxMistakes = 3;
   static const int pocketMaxMistakes = 2;
 
@@ -76,8 +77,10 @@ class GameProvider extends ChangeNotifier {
   bool _hasActiveGame = false;
   bool _winRecorded = false;
   bool _lossRecorded = false;
+
   /// Classic / Chromatic / Pocket: this board was restarted after a defeat.
   bool _retriedAfterLoss = false;
+
   /// True after the player taps/edits any cell this game.
   bool _hasInteracted = false;
   int _generationToken = 0;
@@ -88,8 +91,10 @@ class GameProvider extends ChangeNotifier {
   int _celebrationSeq = 0;
   int _colorCycleSeq = 0;
   int _colorCycleSteps = 4;
+
   /// When non-null, only cells with this committed value join the sweep.
   int? _colorCycleFilterValue;
+
   /// Won 9×9 title tap: morph into this saved mosaic instead of a palette sweep.
   IroenMosaic? _colorCycleMosaic;
   String? _lastMosaicCycleId;
@@ -177,12 +182,12 @@ class GameProvider extends ChangeNotifier {
     required AchievementsProvider achievements,
     required PreferencesService preferences,
     SoundService? sounds,
-  })  : _settings = settings,
-        _stats = stats,
-        _achievements = achievements,
-        _prefs = preferences,
-        _ownsSounds = sounds == null,
-        _sounds = sounds ?? SoundService() {
+  }) : _settings = settings,
+       _stats = stats,
+       _achievements = achievements,
+       _prefs = preferences,
+       _ownsSounds = sounds == null,
+       _sounds = sounds ?? SoundService() {
     _gameDifficulty = settings.difficulty;
     _cells = List.generate(
       SudokuBoard.size,
@@ -204,8 +209,10 @@ class GameProvider extends ChangeNotifier {
   bool get isGameOver => _isWon || _isLost;
   bool get isGenerating => _isGenerating;
   bool get hasActiveGame => _hasActiveGame;
+
   /// Bumps when a new puzzle generation starts; use to reset per-cell UI state.
   int get boardEpoch => _generationToken;
+
   /// Whether the player has interacted with any cell this game.
   bool get hasInteracted => _hasInteracted;
   int get mistakes => _mistakes;
@@ -213,8 +220,10 @@ class GameProvider extends ChangeNotifier {
   UnitCelebration? get celebration => _celebration;
   int get colorCycleSeq => _colorCycleSeq;
   int get colorCycleSteps => _colorCycleSteps;
+
   /// `null` = all filled cells (title tap); otherwise only that color value.
   int? get colorCycleFilterValue => _colorCycleFilterValue;
+
   /// Set for a won-board mosaic shimmer; null for the usual palette cycle.
   IroenMosaic? get colorCycleMosaic => _colorCycleMosaic;
   int? get pickerHoldValue => _pickerHoldValue;
@@ -225,14 +234,10 @@ class GameProvider extends ChangeNotifier {
   bool get isDaily => _isDaily;
   bool get isPocket => _isPocket;
   bool get isPocketDaily => _isDaily && _isPocket;
-  int get mistakeLimit =>
-      _isPocket ? pocketMaxMistakes : maxMistakes;
-  int get gridSize =>
-      _isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
-  int get boxW =>
-      _isPocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
-  int get boxH =>
-      _isPocket ? SudokuBoard.pocketBoxHeight : SudokuBoard.boxSize;
+  int get mistakeLimit => _isPocket ? pocketMaxMistakes : maxMistakes;
+  int get gridSize => _isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
+  int get boxW => _isPocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
+  int get boxH => _isPocket ? SudokuBoard.pocketBoxHeight : SudokuBoard.boxSize;
 
   /// True when reopening today's completed Daily for viewing only.
   bool get isDailyReview => _dailyReviewMode;
@@ -240,11 +245,13 @@ class GameProvider extends ChangeNotifier {
   /// Palette for the live board (daily session override or settings).
   /// A live Iro mix keeps the board on Iro even if Config is changed mid-game
   /// (Chromatic hops leave [_sessionPalette] unset).
-  GamePalette get activePalette =>
-      _iroMix != null ? GamePalette.iro : (_sessionPalette ?? _settings.palette);
+  GamePalette get activePalette => _iroMix != null
+      ? GamePalette.iro
+      : (_sessionPalette ?? _settings.palette);
 
   List<PaletteSwatch>? get displaySwatches {
-    final full = _iroMix?.swatches ??
+    final full =
+        _iroMix?.swatches ??
         (activePalette == GamePalette.iro
             ? _settings.swatchesFor(GamePalette.iro)
             : IrodokuPalette.swatchesFor(
@@ -421,9 +428,7 @@ class GameProvider extends ChangeNotifier {
         ? _prefs.getPocketDailyLastCompletedDay()
         : _prefs.getDailyLastCompletedDay();
     if (last == dayKey) {
-      return pocket
-          ? _prefs.getPocketDailyStreak()
-          : _prefs.getDailyStreak();
+      return pocket ? _prefs.getPocketDailyStreak() : _prefs.getDailyStreak();
     }
     final yesterday = DailyIrodoku.previousDayKey(dayKey);
     if (pocket) {
@@ -442,6 +447,7 @@ class GameProvider extends ChangeNotifier {
     _pendingPaletteUnlocks = [];
     return pending;
   }
+
   bool get canUndo => _undoStack.isNotEmpty && !_isGenerating;
 
   bool isCellSelected(int row, int col) {
@@ -481,10 +487,7 @@ class GameProvider extends ChangeNotifier {
   /// On a fully completed 9×9 (Classic / Chromatic / Daily), pass [savedMosaics]
   /// from the Iroen gallery. If Iroen is unlocked and any mosaic is non-empty,
   /// the board morphs into one at random instead of the palette sweep.
-  void triggerColorCycle({
-    int? onlyValue,
-    List<IroenMosaic>? savedMosaics,
-  }) {
+  void triggerColorCycle({int? onlyValue, List<IroenMosaic>? savedMosaics}) {
     if (_isGenerating || _isPaused || _isLost) return;
     if (!_hasActiveGame && !_isWon) return;
     if (_celebration != null) return;
@@ -609,10 +612,10 @@ class GameProvider extends ChangeNotifier {
 
   Future<void> _runMasterPrefetch() async {
     try {
-      final boards = await compute(
-        generatePuzzleIsolate,
-        <Object>[Difficulty.master.storageKey, -1],
-      );
+      final boards = await compute(generatePuzzleIsolate, <Object>[
+        Difficulty.master.storageKey,
+        -1,
+      ]);
       _cachedMasterBoards ??= boards;
     } catch (_) {
       // Prefetch is best-effort; New Game can still generate on demand.
@@ -622,10 +625,10 @@ class GameProvider extends ChangeNotifier {
   /// Prefers the shipped Master board bank; falls back to warm cache / generate.
   Future<List<List<int>>> _obtainMasterBoards({required int? seed}) async {
     if (seed != null) {
-      return compute(
-        generatePuzzleIsolate,
-        <Object>[Difficulty.master.storageKey, seed],
-      );
+      return compute(generatePuzzleIsolate, <Object>[
+        Difficulty.master.storageKey,
+        seed,
+      ]);
     }
 
     // Instant path: precomputed Master puzzles.
@@ -650,16 +653,18 @@ class GameProvider extends ChangeNotifier {
       }
     }
 
-    final boards = await compute(
-      generatePuzzleIsolate,
-      <Object>[Difficulty.master.storageKey, -1],
-    );
+    final boards = await compute(generatePuzzleIsolate, <Object>[
+      Difficulty.master.storageKey,
+      -1,
+    ]);
     unawaited(prefetchMasterPuzzle());
     return boards;
   }
 
   /// Prefer Classic hold, then Chromatic; otherwise start a new home game.
-  Future<void> _restoreHomeFromParkedHolds({required bool preserveDaily}) async {
+  Future<void> _restoreHomeFromParkedHolds({
+    required bool preserveDaily,
+  }) async {
     if (_heldRegular != null) {
       await _settings.setChromatic(false);
       _applyHeld(_heldRegular!);
@@ -812,9 +817,7 @@ class GameProvider extends ChangeNotifier {
       return true;
     }
 
-    if (isPocketDaily &&
-        _dailyDayKey == challenge.dayKey &&
-        !isGameOver) {
+    if (isPocketDaily && _dailyDayKey == challenge.dayKey && !isGameOver) {
       _sessionPalette ??= challenge.palette;
       _ensureDailyPaletteForProgress();
       notifyListeners();
@@ -869,8 +872,9 @@ class GameProvider extends ChangeNotifier {
     } else if (isDailyCompletedToday) {
       return;
     }
-    final challenge =
-        _isPocket ? DailyIrodoku.pocketForDate() : DailyIrodoku.forDate();
+    final challenge = _isPocket
+        ? DailyIrodoku.pocketForDate()
+        : DailyIrodoku.forDate();
     if (!_isPocket) {
       await _prefs.clearDailyFailedDay();
       await _prefs.clearFailedDailyGame();
@@ -1168,7 +1172,8 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
 
     final List<List<int>> boards;
-    final usedMasterWarmPath = !startingDaily &&
+    final usedMasterWarmPath =
+        !startingDaily &&
         !startingPocket &&
         _gameDifficulty == Difficulty.master &&
         seed == null;
@@ -1177,10 +1182,10 @@ class GameProvider extends ChangeNotifier {
     } else if (!startingDaily && _gameDifficulty == Difficulty.master) {
       boards = await _obtainMasterBoards(seed: seed);
     } else {
-      boards = await compute(
-        generatePuzzleIsolate,
-        <Object>[_gameDifficulty.storageKey, seed ?? -1],
-      );
+      boards = await compute(generatePuzzleIsolate, <Object>[
+        _gameDifficulty.storageKey,
+        seed ?? -1,
+      ]);
       unawaited(prefetchMasterPuzzle());
     }
 
@@ -1198,10 +1203,7 @@ class GameProvider extends ChangeNotifier {
     _cells = List.generate(n, (r) {
       return List.generate(n, (c) {
         final value = puzzle.get(r, c);
-        return Cell(
-          value: value,
-          isGiven: value != 0,
-        );
+        return Cell(value: value, isGiven: value != 0);
       });
     });
 
@@ -1212,6 +1214,41 @@ class GameProvider extends ChangeNotifier {
       await _stats.recordGameStarted();
     }
     _startTimer();
+    notifyListeners();
+  }
+
+  @visibleForTesting
+  void debugSetElapsed(Duration elapsed) => _elapsed = elapsed;
+
+  /// Test hook: load a generated puzzle synchronously (no isolate / prefs I/O).
+  @visibleForTesting
+  void debugLoadBoards(
+    List<List<int>> boards, {
+    required bool pocket,
+    String? dailyDayKey,
+  }) {
+    _isPocket = pocket;
+    _isDaily = dailyDayKey != null;
+    _dailyDayKey = dailyDayKey;
+    _isGenerating = false;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = false;
+    _selected = null;
+    _exitBulkNoteSelect();
+    _noteMode = false;
+    _undoStack.clear();
+    final puzzle = SudokuBoard.fromFlat(boards[0], pocket: pocket);
+    _solution = SudokuBoard.fromFlat(boards[1], pocket: pocket);
+    final n = gridSize;
+    _cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
+        final value = puzzle.get(r, c);
+        return Cell(value: value, isGiven: value != 0);
+      });
+    });
+    _hasActiveGame = true;
+    _completedUnits = _successfullyCompletedUnits();
     notifyListeners();
   }
 
@@ -1251,6 +1288,89 @@ class GameProvider extends ChangeNotifier {
     await _prefs.savePausedGame(snapshot);
   }
 
+  /// Parked slot written by [persistLiveGameForBackground] this session,
+  /// so [onAppForeground] only clears what it wrote.
+  _BackgroundSlot? _backgroundSlot;
+
+  /// App is leaving the foreground: a live, unfinished board is written to
+  /// its existing parked key (same format as a mode switch). Bootstrap
+  /// hydrates it; Classic/Chromatic come back as home, Pocket via Main Menu
+  /// and Daily / Pocket Daily via their Daily entry, after a cold restart.
+  /// Iroen and Graffiti keep their own state and are not touched here.
+  Future<void> persistLiveGameForBackground() async {
+    if (!_hasActiveGame || isGameOver || _isGenerating) return;
+    // A paused Classic board is already in paused_game (restored on launch);
+    // a second parked copy would duplicate it.
+    if (!_isPocket && _isPaused) return;
+    final slot = _isPocket
+        ? (_isDaily
+              ? _BackgroundSlot.pocketDaily
+              : _settings.chromatic
+              ? _BackgroundSlot.pocketChromatic
+              : _BackgroundSlot.pocket)
+        : (_isDaily
+              ? _BackgroundSlot.daily
+              : _settings.chromatic
+              ? _BackgroundSlot.chromatic
+              : _BackgroundSlot.regular);
+    if (_isDaily) {
+      if (_dailyDayKey == null) return;
+      if (_isPocket ? isPocketDailyCompletedToday : isDailyCompletedToday) {
+        return;
+      }
+    }
+    // Never overwrite a different board parked in the same slot.
+    if (_heldFor(slot) != null) return;
+    final snapshot = _snapshotLiveGame();
+    if (snapshot == null) return;
+    _backgroundSlot = slot;
+    switch (slot) {
+      case _BackgroundSlot.regular:
+        await _prefs.saveParkedRegularGame(snapshot);
+      case _BackgroundSlot.chromatic:
+        await _prefs.saveParkedChromaticGame(snapshot);
+      case _BackgroundSlot.daily:
+        await _prefs.saveParkedDailyGame(snapshot);
+      case _BackgroundSlot.pocket:
+        await _prefs.saveParkedPocketGame(snapshot);
+      case _BackgroundSlot.pocketChromatic:
+        await _prefs.saveParkedPocketChromaticGame(snapshot);
+      case _BackgroundSlot.pocketDaily:
+        await _prefs.saveParkedPocketDailyGame(snapshot);
+    }
+  }
+
+  _HeldGameSession? _heldFor(_BackgroundSlot slot) => switch (slot) {
+    _BackgroundSlot.regular => _heldRegular,
+    _BackgroundSlot.chromatic => _heldChromatic,
+    _BackgroundSlot.daily => _heldDaily,
+    _BackgroundSlot.pocket => _heldPocket,
+    _BackgroundSlot.pocketChromatic => _heldPocketChromatic,
+    _BackgroundSlot.pocketDaily => _heldPocketDaily,
+  };
+
+  /// Back in the foreground with the same live board: drop the background
+  /// copy so a later win/loss/new game can never be resurrected from it.
+  Future<void> onAppForeground() async {
+    final slot = _backgroundSlot;
+    _backgroundSlot = null;
+    if (slot == null || _heldFor(slot) != null) return;
+    switch (slot) {
+      case _BackgroundSlot.regular:
+        await _prefs.clearParkedRegularGame();
+      case _BackgroundSlot.chromatic:
+        await _prefs.clearParkedChromaticGame();
+      case _BackgroundSlot.daily:
+        await _prefs.clearParkedDailyGame();
+      case _BackgroundSlot.pocket:
+        await _prefs.clearParkedPocketGame();
+      case _BackgroundSlot.pocketChromatic:
+        await _prefs.clearParkedPocketChromaticGame();
+      case _BackgroundSlot.pocketDaily:
+        await _prefs.clearParkedPocketDailyGame();
+    }
+  }
+
   PausedGame? _snapshotLiveGame() {
     final solution = _solution;
     if (solution == null) return null;
@@ -1279,10 +1399,75 @@ class GameProvider extends ChangeNotifier {
     );
   }
 
+  // Hold-and-drag multi-select — same flow as IroenProvider (BulkPaintTarget).
+  bool _bulkPainting = false;
+  bool _ignoreNextBulkTap = false;
+  bool _pendingBulkExit = false;
+
+  bool get _inputBlocked => isGameOver || _isGenerating || _isPaused;
+
+  @override
+  bool get bulkPaintEnabled => !_inputBlocked;
+
+  /// Add [row],[col] to the bulk selection (enters bulk if needed). Never toggles off.
+  @override
+  void addBulkCell(int row, int col) {
+    if (_inputBlocked) return;
+    if (!_cells[row][col].isEditable) return;
+    if (!_bulkNoteSelect) {
+      _hasInteracted = true;
+      enterBulkNoteSelect(row, col);
+      return;
+    }
+    final key = _cellKey(row, col);
+    if (_bulkSelected.contains(key)) return;
+    _bulkSelected.add(key);
+    _selected = (row, col);
+    notifyListeners();
+  }
+
+  @override
+  void prepareBulkPaintGesture() {
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
+  }
+
+  @override
+  void beginBulkPaint() {
+    _bulkPainting = true;
+    _ignoreNextBulkTap = true;
+    _pendingBulkExit = false;
+  }
+
+  @override
+  void endBulkPaint() {
+    _bulkPainting = false;
+  }
+
+  /// Stationary long-press in bulk exits to single-cell note mode on lift,
+  /// so a hold-then-swipe can still add cells.
+  @override
+  void completePendingBulkExit(int? row, int? col) {
+    if (!_pendingBulkExit || _bulkPainting || !_bulkNoteSelect) {
+      _pendingBulkExit = false;
+      return;
+    }
+    _pendingBulkExit = false;
+    _exitBulkNoteSelect();
+    _noteMode = true;
+    if (row != null && col != null) _selected = (row, col);
+    notifyListeners();
+  }
+
   void selectCell(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (_pickerHoldActive) endPickerHoldSweep();
     final cell = _cells[row][col];
+
+    if (_ignoreNextBulkTap) {
+      _ignoreNextBulkTap = false;
+      if (_bulkNoteSelect) return;
+    }
 
     // Givens and locked correct fills aren't selectable — tap pulses matches.
     if (!cell.isEditable) {
@@ -1323,12 +1508,12 @@ class GameProvider extends ChangeNotifier {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (!_cells[row][col].isEditable) return;
 
+    if (_bulkPainting) return;
     _hasInteracted = true;
     if (_bulkNoteSelect) {
-      _exitBulkNoteSelect();
-      _noteMode = true;
-      _selected = (row, col);
-      notifyListeners();
+      // Exit to single-cell note mode on lift (completePendingBulkExit),
+      // unless the hold turns into a drag.
+      _pendingBulkExit = true;
       return;
     }
 
@@ -1389,6 +1574,9 @@ class GameProvider extends ChangeNotifier {
   void _exitBulkNoteSelect() {
     _bulkNoteSelect = false;
     _bulkSelected.clear();
+    _bulkPainting = false;
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
   }
 
   bool _bulkSelectionHasNotes() {
@@ -1488,8 +1676,7 @@ class GameProvider extends ChangeNotifier {
     }
 
     final solution = _solution;
-    final isMistake =
-        solution != null && value != solution.get(row, col);
+    final isMistake = solution != null && value != solution.get(row, col);
 
     // Correct confirms aren't undoable; mistakes / edits still are.
     if (isMistake) {
@@ -1528,9 +1715,7 @@ class GameProvider extends ChangeNotifier {
         _playSound(_sounds.playGameWin);
       } else {
         _playSound(
-          unitCompleted
-              ? _sounds.playComplete
-              : _placementConfirmSound(value),
+          unitCompleted ? _sounds.playComplete : _placementConfirmSound(value),
         );
       }
     }
@@ -1557,12 +1742,7 @@ class GameProvider extends ChangeNotifier {
   }
 
   /// Removes [value] from notes in peer cells of (row, col).
-  void _clearPeerNotes(
-    int row,
-    int col,
-    int value, {
-    bool emitWave = true,
-  }) {
+  void _clearPeerNotes(int row, int col, int value, {bool emitWave = true}) {
     if (emitWave) {
       final seq = ++_noteClearWaveSeq;
       _noteClearWave = NoteClearWave(
@@ -1586,7 +1766,8 @@ class GameProvider extends ChangeNotifier {
     for (var r = 0; r < gridSize; r++) {
       for (var c = 0; c < gridSize; c++) {
         if (r == row && c == col) continue;
-        final sameUnit = r == row ||
+        final sameUnit =
+            r == row ||
             c == col ||
             (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
         if (!sameUnit) continue;
@@ -1688,8 +1869,9 @@ class GameProvider extends ChangeNotifier {
     var changed = false;
     for (final (row, col) in targets) {
       final cell = _cells[row][col];
-      final next =
-          add ? cell.withNoteAdded(value) : cell.withNoteRemoved(value);
+      final next = add
+          ? cell.withNoteAdded(value)
+          : cell.withNoteRemoved(value);
       if (!identical(next, cell)) {
         _cells[row][col] = next;
         changed = true;
@@ -1915,8 +2097,9 @@ class GameProvider extends ChangeNotifier {
       _pocketSwatchOffset = 0;
       return;
     }
-    _pocketSwatchOffset =
-        Random().nextBool() ? IrodokuPalette.pocketHighSwatchOffset : 0;
+    _pocketSwatchOffset = Random().nextBool()
+        ? IrodokuPalette.pocketHighSwatchOffset
+        : 0;
   }
 
   void _prepareIroMix({required bool daily}) {
@@ -1993,10 +2176,8 @@ class GameProvider extends ChangeNotifier {
             _filledNineDistinctColorsConsecutively)) {
       unawaited(
         _achievements.recordSessionFlags(
-          completedRowColBoxSimultaneously:
-              _completedRowColBoxSimultaneously,
-          completedNineUnitsInNineSeconds:
-              _completedNineUnitsInNineSeconds,
+          completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
+          completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
           filledNineDistinctColorsConsecutively:
               _filledNineDistinctColorsConsecutively,
         ),
@@ -2037,10 +2218,8 @@ class GameProvider extends ChangeNotifier {
       if (!_isPocket && !_toBoard().isValidSolution()) {
         unawaited(
           _achievements.recordSessionFlags(
-            completedRowColBoxSimultaneously:
-                _completedRowColBoxSimultaneously,
-            completedNineUnitsInNineSeconds:
-                _completedNineUnitsInNineSeconds,
+            completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
+            completedNineUnitsInNineSeconds: _completedNineUnitsInNineSeconds,
             filledNineDistinctColorsConsecutively: true,
           ),
         );
@@ -2221,9 +2400,7 @@ class GameProvider extends ChangeNotifier {
           _heldPocketDaily = null;
           unawaited(_prefs.clearParkedPocketDailyGame());
           final completed = _snapshotLiveGame();
-          unawaited(
-            _recordPocketDailyCompletion(completedBoard: completed),
-          );
+          unawaited(_recordPocketDailyCompletion(completedBoard: completed));
         } else {
           _stats.awardPocketWin(
             elapsed: _elapsed,
@@ -2301,10 +2478,7 @@ class GameProvider extends ChangeNotifier {
     }
 
     final streak = _dailyStreakAfterThisWin(pocket: false);
-    await _prefs.setDailyProgress(
-      lastCompletedDay: dayKey,
-      streak: streak,
-    );
+    await _prefs.setDailyProgress(lastCompletedDay: dayKey, streak: streak);
     if (completedBoard != null) {
       await _prefs.saveCompletedDailyGame(completedBoard);
     }
@@ -2314,7 +2488,9 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _recordPocketDailyCompletion({PausedGame? completedBoard}) async {
+  Future<void> _recordPocketDailyCompletion({
+    PausedGame? completedBoard,
+  }) async {
     final dayKey = _dailyDayKey ?? DailyIrodoku.forDate().dayKey;
     final last = _prefs.getPocketDailyLastCompletedDay();
     if (last == dayKey) {
@@ -2749,9 +2925,9 @@ class GameProvider extends ChangeNotifier {
     });
     final sessionPalette = paused.isDaily
         ? (paused.sessionPalette ??
-            (paused.isPocket
-                ? DailyIrodoku.pocketForDate().palette
-                : DailyIrodoku.forDate().palette))
+              (paused.isPocket
+                  ? DailyIrodoku.pocketForDate().palette
+                  : DailyIrodoku.forDate().palette))
         : paused.sessionPalette;
     return _HeldGameSession(
       cells: cells,
@@ -3117,4 +3293,13 @@ class _HeldGameSession {
     required this.unitCompletionTimes,
     this.retriedAfterLoss = false,
   });
+}
+
+enum _BackgroundSlot {
+  regular,
+  chromatic,
+  daily,
+  pocket,
+  pocketChromatic,
+  pocketDaily,
 }

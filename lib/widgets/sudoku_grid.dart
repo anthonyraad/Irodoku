@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/bulk_note_rainbow_border.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/celebration_colors.dart';
 import '../core/color_cycle.dart';
 import '../core/mosaic_shimmer.dart';
@@ -31,6 +32,7 @@ class SudokuGrid extends StatefulWidget {
 }
 
 class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
+  final _paint = BulkPaintGesture(gridSize: 9);
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
 
@@ -303,7 +305,14 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     // Given / locked: unit borders only — no cell fill washes.
     final washPeers = selectedCell != null && selectedCell.isEditable;
 
-    return Column(
+    _paint.gridSize = n;
+    return Listener(
+      onPointerDown: (event) => _paint.onPointerDown(game, event),
+      onPointerMove: (event) => _paint.onPointerMove(game, event),
+      onPointerUp: (event) => _paint.onPointerUp(game, event),
+      onPointerCancel: (event) => _paint.onPointerUp(game, event),
+      child: Column(
+      key: _paint.layerKey,
       children: List.generate(n, (row) {
         return Expanded(
           child: Row(
@@ -433,6 +442,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
           ),
         );
       }),
+      ),
     );
   }
 }
