@@ -88,7 +88,7 @@ void main() {
       final before = _snapshot(a);
       expect(a.cellAt(r2, c2).notes, containsAll(<int>[3, 5]));
 
-      await a.persistLivePocketForBackground(); // app backgrounded, then killed
+      await a.persistLiveGameForBackground(); // app backgrounded, then killed
 
       final b = await _coldProvider();
       await b.bootstrap();
@@ -109,7 +109,7 @@ void main() {
     () async {
       final a = await _coldProvider();
       a.debugLoadBoards(_pocketBoards(), pocket: true);
-      await a.persistLivePocketForBackground();
+      await a.persistLiveGameForBackground();
       final prefs = await PreferencesService.create();
       expect(prefs.loadParkedPocketGame(), isNotNull);
       await a.onAppForeground();
@@ -120,15 +120,16 @@ void main() {
     },
   );
 
-  test('Classic live game does not write any Pocket key', () async {
+  test('Classic live game writes only the Classic slot', () async {
     final a = await _coldProvider();
     a.debugLoadBoards(_classicBoards(), pocket: false);
-    await a.persistLivePocketForBackground();
+    await a.persistLiveGameForBackground();
     final p = await PreferencesService.create();
     expect(p.loadParkedPocketGame(), isNull);
     expect(p.loadParkedPocketDailyGame(), isNull);
     expect(p.loadParkedPocketChromaticGame(), isNull);
     expect(p.loadPausedGame(), isNull);
+    expect(p.loadParkedRegularGame(), isNotNull);
   });
 
   for (final corrupt in <bool>[false, true]) {

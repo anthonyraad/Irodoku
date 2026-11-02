@@ -116,7 +116,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
-      game.persistLivePocketForBackground();
+      game.persistLiveGameForBackground();
     } else if (state == AppLifecycleState.resumed) {
       game.onAppForeground();
     }

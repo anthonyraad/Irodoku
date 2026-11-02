@@ -1222,8 +1222,14 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Test hook: load a generated puzzle synchronously (no isolate / prefs I/O).
   @visibleForTesting
-  void debugLoadBoards(List<List<int>> boards, {required bool pocket}) {
+  void debugLoadBoards(
+    List<List<int>> boards, {
+    required bool pocket,
+    String? dailyDayKey,
+  }) {
     _isPocket = pocket;
+    _isDaily = dailyDayKey != null;
+    _dailyDayKey = dailyDayKey;
     _isGenerating = false;
     _isWon = false;
     _isLost = false;
@@ -1282,46 +1288,86 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     await _prefs.savePausedGame(snapshot);
   }
 
-  /// Parked-pocket key written by [persistLivePocketForBackground] this
-  /// session (0 regular, 1 chromatic, 2 daily), so [onAppForeground] only
-  /// clears what it wrote.
-  int? _backgroundPocketSlot;
+  /// Parked slot written by [persistLiveGameForBackground] this session,
+  /// so [onAppForeground] only clears what it wrote.
+  _BackgroundSlot? _backgroundSlot;
 
-  /// App is leaving the foreground: Pocket has no paused_game home slot, so
-  /// a live, unfinished Pocket board is written to its existing parked key
-  /// (same format as a mode switch). Bootstrap hydrates it and
-  /// [openPocketGame] / Pocket Daily resume it after a cold restart.
-  Future<void> persistLivePocketForBackground() async {
-    if (!_isPocket || !_hasActiveGame || isGameOver || _isGenerating) return;
+  /// App is leaving the foreground: a live, unfinished board is written to
+  /// its existing parked key (same format as a mode switch). Bootstrap
+  /// hydrates it; Classic/Chromatic come back as home, Pocket via Main Menu
+  /// and Daily / Pocket Daily via their Daily entry, after a cold restart.
+  /// Iroen and Graffiti keep their own state and are not touched here.
+  Future<void> persistLiveGameForBackground() async {
+    if (!_hasActiveGame || isGameOver || _isGenerating) return;
+    // A paused Classic board is already in paused_game (restored on launch);
+    // a second parked copy would duplicate it.
+    if (!_isPocket && _isPaused) return;
+    final slot = _isPocket
+        ? (_isDaily
+              ? _BackgroundSlot.pocketDaily
+              : _settings.chromatic
+              ? _BackgroundSlot.pocketChromatic
+              : _BackgroundSlot.pocket)
+        : (_isDaily
+              ? _BackgroundSlot.daily
+              : _settings.chromatic
+              ? _BackgroundSlot.chromatic
+              : _BackgroundSlot.regular);
+    if (_isDaily) {
+      if (_dailyDayKey == null) return;
+      if (_isPocket ? isPocketDailyCompletedToday : isDailyCompletedToday) {
+        return;
+      }
+    }
+    // Never overwrite a different board parked in the same slot.
+    if (_heldFor(slot) != null) return;
     final snapshot = _snapshotLiveGame();
     if (snapshot == null) return;
-    if (_isDaily) {
-      if (_dailyDayKey == null || isPocketDailyCompletedToday) return;
-      _backgroundPocketSlot = 2;
-      await _prefs.saveParkedPocketDailyGame(snapshot);
-    } else if (_settings.chromatic) {
-      _backgroundPocketSlot = 1;
-      await _prefs.saveParkedPocketChromaticGame(snapshot);
-    } else {
-      _backgroundPocketSlot = 0;
-      await _prefs.saveParkedPocketGame(snapshot);
+    _backgroundSlot = slot;
+    switch (slot) {
+      case _BackgroundSlot.regular:
+        await _prefs.saveParkedRegularGame(snapshot);
+      case _BackgroundSlot.chromatic:
+        await _prefs.saveParkedChromaticGame(snapshot);
+      case _BackgroundSlot.daily:
+        await _prefs.saveParkedDailyGame(snapshot);
+      case _BackgroundSlot.pocket:
+        await _prefs.saveParkedPocketGame(snapshot);
+      case _BackgroundSlot.pocketChromatic:
+        await _prefs.saveParkedPocketChromaticGame(snapshot);
+      case _BackgroundSlot.pocketDaily:
+        await _prefs.saveParkedPocketDailyGame(snapshot);
     }
   }
+
+  _HeldGameSession? _heldFor(_BackgroundSlot slot) => switch (slot) {
+    _BackgroundSlot.regular => _heldRegular,
+    _BackgroundSlot.chromatic => _heldChromatic,
+    _BackgroundSlot.daily => _heldDaily,
+    _BackgroundSlot.pocket => _heldPocket,
+    _BackgroundSlot.pocketChromatic => _heldPocketChromatic,
+    _BackgroundSlot.pocketDaily => _heldPocketDaily,
+  };
 
   /// Back in the foreground with the same live board: drop the background
   /// copy so a later win/loss/new game can never be resurrected from it.
   Future<void> onAppForeground() async {
-    final slot = _backgroundPocketSlot;
-    _backgroundPocketSlot = null;
+    final slot = _backgroundSlot;
+    _backgroundSlot = null;
+    if (slot == null || _heldFor(slot) != null) return;
     switch (slot) {
-      case 0:
-        if (_heldPocket == null) await _prefs.clearParkedPocketGame();
-      case 1:
-        if (_heldPocketChromatic == null) {
-          await _prefs.clearParkedPocketChromaticGame();
-        }
-      case 2:
-        if (_heldPocketDaily == null) await _prefs.clearParkedPocketDailyGame();
+      case _BackgroundSlot.regular:
+        await _prefs.clearParkedRegularGame();
+      case _BackgroundSlot.chromatic:
+        await _prefs.clearParkedChromaticGame();
+      case _BackgroundSlot.daily:
+        await _prefs.clearParkedDailyGame();
+      case _BackgroundSlot.pocket:
+        await _prefs.clearParkedPocketGame();
+      case _BackgroundSlot.pocketChromatic:
+        await _prefs.clearParkedPocketChromaticGame();
+      case _BackgroundSlot.pocketDaily:
+        await _prefs.clearParkedPocketDailyGame();
     }
   }
 
@@ -3247,4 +3293,13 @@ class _HeldGameSession {
     required this.unitCompletionTimes,
     this.retriedAfterLoss = false,
   });
+}
+
+enum _BackgroundSlot {
+  regular,
+  chromatic,
+  daily,
+  pocket,
+  pocketChromatic,
+  pocketDaily,
 }
