@@ -192,6 +192,8 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
   assert.ok(last.body.embeds[0].description.endsWith(`\n\n${ANDROID_LINK}`));
   assert.deepEqual(last.body.allowed_mentions, { parse: [] });
   assert.equal(last.body.components[0].components[0].custom_id, 'iro_play');
+  assert.equal(last.body.components[0].components[0].label, 'Play now!');
+  assert.equal(discord[0].body.components[0].components[0].label, 'Play now!');
   assert.equal(hooks.length, 0);
   assert.equal(discord.filter((d) => d.method === 'POST').length, 1);
 });
