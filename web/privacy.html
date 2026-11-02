@@ -151,7 +151,13 @@
     <h2>Information we do not collect</h2>
     <ul>
       <li>No account is required; online play uses an anonymous player ID</li>
-      <li>No email, phone number, or payment information (beyond the display name you choose)</li>
+      <li>
+        No email address in our database: Irodoku never stores your email. If
+        you use optional Google progress sync, Google’s Firebase Authentication
+        holds your Google account email as part of that sign-in; we don’t copy
+        it anywhere else
+      </li>
+      <li>No phone number or payment information</li>
       <li>No advertising identifiers or third-party ads</li>
       <li>No analytics, crash-reporting, or tracking SDKs in the App</li>
       <li>No location data</li>
@@ -209,6 +215,52 @@
       or uninstalling the App.
     </p>
 
+    <h2 id="delete-data">Deleting your data</h2>
+    <p>
+      <strong>On your device.</strong> Game progress, settings, statistics,
+      achievements and the birth year from the one-time age check are stored
+      only on your device. Clear the App’s storage in your device settings,
+      clear site data in your browser (web version), or uninstall the App to
+      delete them. If Android device backup is on, a copy may remain in your
+      Google account backup until you delete it there.
+    </p>
+    <p>
+      <strong>Discord link.</strong> Tap <strong>Disconnect</strong> in Settings
+      to remove the link between your Discord account and the App’s player ID
+      at any time, without contacting us.
+    </p>
+    <p>
+      <strong>Online data.</strong> To ask us to delete all of your online data,
+      or only specific parts, email <a href="mailto:anthonyaraad@gmail.com">anthonyaraad@gmail.com</a> and tell us what you
+      want deleted:
+    </p>
+    <ul>
+      <li>Your display name and Daily Iro / Daily leaderboard entries</li>
+      <li>Your Daily completion times and streaks</li>
+      <li>Your Discord link (Discord user ID and name)</li>
+      <li>Discord Activity data (Daily Iro times, Graffiti results and streaks stored with your Discord ID)</li>
+      <li>Graffiti multiplayer data</li>
+      <li>Your Google progress sync (cloud save)</li>
+    </ul>
+    <p>
+      Include enough detail for us to find your data, such as your display name,
+      your Discord username, and roughly when you played. Send deletion
+      requests to <a href="mailto:anthonyaraad@gmail.com">anthonyaraad@gmail.com</a>. You can still use GitHub Issues for
+      non-private questions, but don’t post private information in public
+      issues. We may ask you to confirm the data is yours
+      before deleting it.
+    </p>
+    <p>
+      When we process a request, we delete the requested records from Firebase
+      Realtime Database. A full deletion covers your leaderboard entries and
+      times, Discord link and Activity records, Graffiti data and synced
+      progress; for Google progress sync it also removes the Firebase
+      Authentication account, including the Google email it holds. We handle
+      requests as promptly as we reasonably can. Messages the Irodoku bot has
+      already posted in Discord servers are controlled by those servers and may
+      remain there.
+    </p>
+
     <h2>Changes to this policy</h2>
     <p>
       We may update this Privacy Policy from time to time. The “Last updated”
@@ -216,11 +268,15 @@
       an update means you accept the revised policy.
     </p>
 
-    <h2>Contact</h2>
+    <h2 id="contact">Contact</h2>
     <p>
       Questions about this Privacy Policy can be sent by opening an issue on
       the project repository:
       <a href="https://github.com/anthonyraad/Irodoku/issues">github.com/anthonyraad/Irodoku/issues</a>
+    </p>
+    <p>
+      For private matters, including data deletion requests, email
+      <a href="mailto:anthonyaraad@gmail.com">anthonyaraad@gmail.com</a>.
     </p>
 
     <footer>
