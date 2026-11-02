@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../discord/discord_mode.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/palette.dart';
 import '../models/achievement.dart';
 import '../models/cell.dart';
@@ -49,7 +50,7 @@ List<List<int>> generatePocketIsolate(int seed) {
   return [generated.puzzle.toFlat(), generated.solution.toFlat()];
 }
 
-class GameProvider extends ChangeNotifier {
+class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   static const int maxMistakes = 3;
   static const int pocketMaxMistakes = 2;
 
@@ -1215,6 +1216,32 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Test hook: load a generated puzzle synchronously (no isolate / prefs I/O).
+  @visibleForTesting
+  void debugLoadBoards(List<List<int>> boards, {required bool pocket}) {
+    _isPocket = pocket;
+    _isGenerating = false;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = false;
+    _selected = null;
+    _exitBulkNoteSelect();
+    _noteMode = false;
+    _undoStack.clear();
+    final puzzle = SudokuBoard.fromFlat(boards[0], pocket: pocket);
+    _solution = SudokuBoard.fromFlat(boards[1], pocket: pocket);
+    final n = gridSize;
+    _cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
+        final value = puzzle.get(r, c);
+        return Cell(value: value, isGiven: value != 0);
+      });
+    });
+    _hasActiveGame = true;
+    _completedUnits = _successfullyCompletedUnits();
+    notifyListeners();
+  }
+
   Future<void> pauseGame() async {
     if (!_hasActiveGame || isGameOver || _isGenerating || _isPaused) return;
     _isPaused = true;
@@ -1279,10 +1306,75 @@ class GameProvider extends ChangeNotifier {
     );
   }
 
+  // Hold-and-drag multi-select — same flow as IroenProvider (BulkPaintTarget).
+  bool _bulkPainting = false;
+  bool _ignoreNextBulkTap = false;
+  bool _pendingBulkExit = false;
+
+  bool get _inputBlocked => isGameOver || _isGenerating || _isPaused;
+
+  @override
+  bool get bulkPaintEnabled => !_inputBlocked;
+
+  /// Add [row],[col] to the bulk selection (enters bulk if needed). Never toggles off.
+  @override
+  void addBulkCell(int row, int col) {
+    if (_inputBlocked) return;
+    if (!_cells[row][col].isEditable) return;
+    if (!_bulkNoteSelect) {
+      _hasInteracted = true;
+      enterBulkNoteSelect(row, col);
+      return;
+    }
+    final key = _cellKey(row, col);
+    if (_bulkSelected.contains(key)) return;
+    _bulkSelected.add(key);
+    _selected = (row, col);
+    notifyListeners();
+  }
+
+  @override
+  void prepareBulkPaintGesture() {
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
+  }
+
+  @override
+  void beginBulkPaint() {
+    _bulkPainting = true;
+    _ignoreNextBulkTap = true;
+    _pendingBulkExit = false;
+  }
+
+  @override
+  void endBulkPaint() {
+    _bulkPainting = false;
+  }
+
+  /// Stationary long-press in bulk exits to single-cell note mode on lift,
+  /// so a hold-then-swipe can still add cells.
+  @override
+  void completePendingBulkExit(int? row, int? col) {
+    if (!_pendingBulkExit || _bulkPainting || !_bulkNoteSelect) {
+      _pendingBulkExit = false;
+      return;
+    }
+    _pendingBulkExit = false;
+    _exitBulkNoteSelect();
+    _noteMode = true;
+    if (row != null && col != null) _selected = (row, col);
+    notifyListeners();
+  }
+
   void selectCell(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (_pickerHoldActive) endPickerHoldSweep();
     final cell = _cells[row][col];
+
+    if (_ignoreNextBulkTap) {
+      _ignoreNextBulkTap = false;
+      if (_bulkNoteSelect) return;
+    }
 
     // Givens and locked correct fills aren't selectable — tap pulses matches.
     if (!cell.isEditable) {
@@ -1323,12 +1415,12 @@ class GameProvider extends ChangeNotifier {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (!_cells[row][col].isEditable) return;
 
+    if (_bulkPainting) return;
     _hasInteracted = true;
     if (_bulkNoteSelect) {
-      _exitBulkNoteSelect();
-      _noteMode = true;
-      _selected = (row, col);
-      notifyListeners();
+      // Exit to single-cell note mode on lift (completePendingBulkExit),
+      // unless the hold turns into a drag.
+      _pendingBulkExit = true;
       return;
     }
 
@@ -1389,6 +1481,9 @@ class GameProvider extends ChangeNotifier {
   void _exitBulkNoteSelect() {
     _bulkNoteSelect = false;
     _bulkSelected.clear();
+    _bulkPainting = false;
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
   }
 
   bool _bulkSelectionHasNotes() {

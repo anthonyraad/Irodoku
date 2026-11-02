@@ -8,6 +8,7 @@ import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
 import '../models/iroen_state.dart';
 import '../models/palette_swatch.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/palette.dart';
 import '../services/preferences_service.dart';
 import '../services/sound_service.dart';
@@ -17,7 +18,7 @@ import 'settings_provider.dart';
 enum IroenZoomPhase { off, pickingQuadrant, zoomed }
 
 /// Free-form 9×9 coloring with optional 3× zoom per sudoku box.
-class IroenProvider extends ChangeNotifier {
+class IroenProvider extends ChangeNotifier implements BulkPaintTarget {
   static const int _maxUndo = 60;
   static const int _maxGallery = 16;
   static const int _detailSize = IroenState.detailSize;
@@ -218,6 +219,7 @@ class IroenProvider extends ChangeNotifier {
   bool _pendingBulkExit = false;
 
   /// Add [row],[col] to the bulk selection (enters bulk if needed). Never toggles off.
+  @override
   void addBulkCell(int row, int col) {
     if (isPickingQuadrant) return;
     if (!_bulkNoteSelect) {
@@ -231,22 +233,29 @@ class IroenProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  bool get bulkPaintEnabled => !isPickingQuadrant;
+
+  @override
   void prepareBulkPaintGesture() {
     _ignoreNextBulkTap = false;
     _pendingBulkExit = false;
   }
 
+  @override
   void beginBulkPaint() {
     _bulkPainting = true;
     _ignoreNextBulkTap = true;
     _pendingBulkExit = false;
   }
 
+  @override
   void endBulkPaint() {
     _bulkPainting = false;
   }
 
   /// Stationary long-press in bulk exits on lift, so a follow-up swipe can still add cells.
+  @override
   void completePendingBulkExit(int? row, int? col) {
     if (!_pendingBulkExit || _bulkPainting || !_bulkNoteSelect) {
       _pendingBulkExit = false;
