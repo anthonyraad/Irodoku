@@ -89,7 +89,15 @@ class _Grayscale extends StatelessWidget {
       surfaceTint: Colors.transparent,
       surfaceContainerHigh: bg,
     );
-    return Theme(data: base.copyWith(colorScheme: scheme), child: child);
+    return Theme(
+      data: base.copyWith(
+        colorScheme: scheme,
+        // Neutral screen: no row in the year menu may look preselected.
+        focusColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+      ),
+      child: child,
+    );
   }
 }
 
