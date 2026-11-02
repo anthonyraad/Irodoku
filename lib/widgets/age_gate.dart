@@ -42,19 +42,23 @@ abstract final class AgeGate {
 /// Returns true when the player may use [feature]. Shows the age step the
 /// first time only; afterwards answers from the saved birth year. Under-13
 /// players see a friendly note and get false.
-Future<bool> ensureAgeOk(BuildContext context, AgeGateFeature feature) async {
+Future<bool> ensureAgeOk(
+  BuildContext context,
+  AgeGateFeature feature, {
+  @visibleForTesting DateTime? now,
+}) async {
   final prefs = await SharedPreferences.getInstance();
   var year = prefs.getInt(AgeGate.prefBirthYear);
   if (year == null) {
     if (!context.mounted) return false;
     year = await showDialog<int>(
       context: context,
-      builder: (_) => AgeGateDialog(feature: feature),
+      builder: (_) => AgeGateDialog(feature: feature, now: now),
     );
     if (year == null) return false; // dismissed: ask again next time
     await prefs.setInt(AgeGate.prefBirthYear, year);
   }
-  if (AgeGate.isOldEnough(year)) return true;
+  if (AgeGate.isOldEnough(year, now: now)) return true;
   if (context.mounted) await showAgeGateBlockedNote(context, feature);
   return false;
 }

@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme.dart';
+import '../discord/discord_mode.dart';
 import '../providers/graffiti_provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/graffiti_firebase_service.dart';
+import '../widgets/age_gate.dart';
 import '../widgets/color_picker.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/graffiti_grid.dart';
@@ -278,13 +280,13 @@ class _LobbyBody extends StatelessWidget {
           MenuActionButton(
             label: game.isPocket ? '[Quick Play]' : 'Quick Play',
             enabled: !game.busy,
-            onPressed: game.quickPlay,
+            onPressed: () => _online(context, game.quickPlay),
           ),
           const SizedBox(height: 12),
           MenuActionButton(
             label: game.isPocket ? '[Create Room]' : 'Create Room',
             enabled: !game.busy,
-            onPressed: game.createRoom,
+            onPressed: () => _online(context, game.createRoom),
           ),
           const SizedBox(height: 24),
           Text('Join with code', style: Theme.of(context).textTheme.titleSmall),
@@ -315,7 +317,9 @@ class _LobbyBody extends StatelessWidget {
                 ),
                 onPressed: withMenuSelectOrNull(
                   context,
-                  game.busy ? null : () => game.joinRoom(joinController.text),
+                  game.busy
+                      ? null
+                      : () => _online(context, () => game.joinRoom(joinController.text)),
                 ),
                 child: const Text('Join'),
               ),
@@ -604,4 +608,15 @@ class _GraffitiScoreState extends State<_GraffitiScore>
       },
     );
   }
+}
+
+/// Online Graffiti (Quick Play / Create / Join) sits behind the one-time age
+/// step. Discord Activity players are already signed in to Discord (13+), so
+/// the in-Discord build skips it.
+Future<void> _online(BuildContext context, Future<void> Function() action) async {
+  if (!DiscordMode.enabled &&
+      !await ensureAgeOk(context, AgeGateFeature.graffitiRooms)) {
+    return;
+  }
+  await action();
 }
