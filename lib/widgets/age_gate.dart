@@ -8,6 +8,15 @@ enum AgeGateFeature {
 
   const AgeGateFeature(this.label);
   final String label;
+
+  /// Friendly note shown to under-13 players.
+  String get under13Message => switch (this) {
+        discordSync => 'No worries! Discord sync is intended for players '
+            'that are 13+, but you can keep enjoying the rest of Irodoku.',
+        graffitiRooms => 'No worries! Graffiti online rooms are intended for '
+            'players that are 13+, but you can keep enjoying the rest of '
+            'Irodoku.',
+      };
 }
 
 /// One-time, neutral age step (Play Families policy): asks birth year only,
@@ -125,23 +134,6 @@ class AgeGateDialog extends StatefulWidget {
 class _AgeGateDialogState extends State<AgeGateDialog> {
   int? _year;
 
-  Future<void> _pickYear() async {
-    final picked = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF1E1E1E)
-          : Colors.white,
-      builder: (_) => _Grayscale(
-        child: _YearList(
-          now: widget.now ?? DateTime.now(),
-          selected: _year,
-        ),
-      ),
-    );
-    if (picked != null) setState(() => _year = picked);
-  }
-
   @override
   Widget build(BuildContext context) {
     return _Grayscale(
@@ -159,38 +151,37 @@ class _AgeGateDialogState extends State<AgeGateDialog> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                "We ask once before ${widget.feature.label}. "
-                'Saved on this device only.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: scheme.onSurface.withValues(alpha: 0.7)),
-              ),
-              const SizedBox(height: 20),
-              InkWell(
+              Container(
                 key: const Key('age_gate_year_field'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: _pickYear,
-                child: Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
+                height: 52,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: scheme.onSurface, width: 2),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _year,
+                    isExpanded: true,
+                    menuMaxHeight: 320,
+                    dropdownColor: scheme.surface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: scheme.onSurface, width: 2),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _year?.toString() ?? 'Select year',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            color: scheme.onSurface
-                                .withValues(alpha: _year == null ? 0.45 : 1),
-                          ),
-                        ),
-                      ),
-                      Icon(Icons.expand_more, color: scheme.onSurface),
+                    icon: Icon(Icons.expand_more, color: scheme.onSurface),
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(color: scheme.onSurface),
+                    hint: Text(
+                      'Select year',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                          color: scheme.onSurface.withValues(alpha: 0.45)),
+                    ),
+                    items: [
+                      for (var y = (widget.now ?? DateTime.now()).year;
+                          y >= (widget.now ?? DateTime.now()).year -
+                              AgeGate.yearSpan;
+                          y--)
+                        DropdownMenuItem(value: y, child: Text('$y')),
                     ],
+                    onChanged: (y) => setState(() => _year = y),
                   ),
                 ),
               ),
@@ -212,67 +203,6 @@ class _AgeGateDialogState extends State<AgeGateDialog> {
   }
 }
 
-class _YearList extends StatelessWidget {
-  const _YearList({required this.now, this.selected});
-  final DateTime now;
-  final int? selected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final years = [
-      for (var y = now.year; y >= now.year - AgeGate.yearSpan; y--) y,
-    ];
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.5,
-      child: Column(
-        children: [
-          Text('Year of birth', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 1.9,
-              ),
-              itemCount: years.length,
-              itemBuilder: (context, i) {
-                final y = years[i];
-                final sel = y == selected;
-                return InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => Navigator.of(context).pop(y),
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: sel ? scheme.onSurface : null,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: scheme.onSurface.withValues(alpha: 0.35),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Text(
-                      '$y',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: sel ? scheme.surface : scheme.onSurface,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _AgeGateUnderNote extends StatelessWidget {
   const _AgeGateUnderNote({required this.feature});
   final AgeGateFeature feature;
@@ -288,12 +218,10 @@ class _AgeGateUnderNote extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(color: scheme.onSurface, width: 2),
           ),
-          title: Text('${feature.label} is for players 13 and up',
-              textAlign: TextAlign.center),
-          content: const Text(
-            'No worries! You can keep playing and use Set Name to '
-            'show your name on the boards.',
+          content: Text(
+            feature.under13Message,
             textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
