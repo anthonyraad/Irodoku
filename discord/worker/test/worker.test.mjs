@@ -119,7 +119,7 @@ test('routes accept proxy-stripped and /api path forms', async () => {
 
 // ---- Part B: interactions + single daily message ----
 import { generateKeyPairSync as gkp, sign as edSign } from 'node:crypto';
-import { dailyMessagePayload, upsertDailyMessage, verifyDiscordRequest } from '../src/discord_bot.js';
+import { dailyMessagePayload, dailyDescription, ANDROID_LINK, upsertDailyMessage, verifyDiscordRequest } from '../src/discord_bot.js';
 
 const ed = gkp('ed25519');
 const pubHex = ed.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex');
@@ -180,7 +180,7 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
   assert.equal(r1.created, 'm1');
   assert.equal(db[`irodoku_daily_msg/${day}`].id, 'm1');
   assert.equal(discord[0].method, 'POST'); assert.equal(discord[0].auth, 'Bot bt');
-  assert.match(discord[0].body.embeds[0].description, /^Today's Iro is live!$/);
+  assert.match(discord[0].body.embeds[0].description, /^Today's Iro is live!\n\n\[Download Irodoku on Android\]\(https:\/\/play\.google\.com\/store\/apps\/details\?id=com\.irodoku\.irodoku\)$/);
   db[`irodoku_daily_starts/${day}/pocket/42`] = Date.now() - 600e3;
   const w = [];
   await worker.fetch(new Request('https://w/score', { method: 'POST', headers: { Authorization: 'Bearer abcdefghijkl' },
@@ -189,6 +189,7 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
   const last = discord.at(-1);
   assert.equal(last.method, 'PATCH'); assert.match(last.url, /messages\/m1$/);
   assert.match(last.body.embeds[0].description, /1 player solved today[\s\S]*\*\*Tony\*\* — 2:14/);
+  assert.ok(last.body.embeds[0].description.endsWith(`\n\n${ANDROID_LINK}`));
   assert.deepEqual(last.body.allowed_mentions, { parse: [] });
   assert.equal(last.body.components[0].components[0].custom_id, 'iro_play');
   assert.equal(hooks.length, 0);
@@ -197,4 +198,12 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
 
 test('daily payload title', () => {
   assert.equal(dailyMessagePayload('2026-10-31', []).embeds[0].title, 'Daily Iro — 10.31.26');
+});
+
+test('daily description: link survives 4096 limit, leaderboard truncated', () => {
+  const rows = Array.from({ length: 40 }, (_, i) => ({ name: 'N'.repeat(200) + i, ms: 1000 * i }));
+  const d = dailyMessagePayload('2026-10-31', rows).embeds[0].description;
+  assert.ok(d.length <= 4096); assert.ok(d.endsWith(`\n\n${ANDROID_LINK}`));
+  const big = dailyDescription('x'.repeat(5000));
+  assert.ok(big.length <= 4096); assert.ok(big.endsWith(`\n\n${ANDROID_LINK}`));
 });

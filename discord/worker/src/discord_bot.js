@@ -36,15 +36,32 @@ const esc = (s) => String(s).replace(/([\\*_~`|>#\[\]()])/g, '\\$1');
 
 export const PLAY_BUTTON = { type: 1, components: [{ type: 2, style: 1, label: 'Play', custom_id: 'iro_play' }] };
 
+export const ANDROID_LINK = '[Download Irodoku on Android](https://play.google.com/store/apps/details?id=com.irodoku.irodoku)';
+export const DESC_LIMIT = 4096; // Discord embed description max
+
+/** Shared by the initial POST and every PATCH: body + blank line + Android link,
+ * truncating the leaderboard body (never the link) to fit Discord's limit. */
+export function dailyDescription(body, limit = DESC_LIMIT) {
+  const tail = `\n\n${ANDROID_LINK}`;
+  const max = limit - tail.length;
+  if (body.length > max) {
+    const cut = body.slice(0, max - 1);
+    const nl = cut.lastIndexOf('\n');
+    body = (nl > 0 ? cut.slice(0, nl) : cut) + '…';
+  }
+  return body + tail;
+}
+
 export function dailyMessagePayload(day, rows) {
   const n = rows.length;
   const lines = rows.slice(0, 30).map((r, i) => `${i + 1}. **${esc(r.name)}** — ${fmt(r.ms)}`);
   if (n > 30) lines.push(`…and ${n - 30} more`);
+  const body = n ? `${n} player${n === 1 ? '' : 's'} solved today\n\n` + lines.join('\n') : "Today's Iro is live!";
   return {
     allowed_mentions: { parse: [] },
     embeds: [{
       title: `Daily Iro — ${dispDay(day)}`, color: 0x7c5cff,
-      description: n ? `${n} player${n === 1 ? '' : 's'} solved today\n\n` + lines.join('\n') : "Today's Iro is live!",
+      description: dailyDescription(body),
     }],
     components: [PLAY_BUTTON],
   };
