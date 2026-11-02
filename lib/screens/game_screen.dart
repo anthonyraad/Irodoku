@@ -43,7 +43,8 @@ TextStyle? _centeredAppBarTitleStyle(
 }) {
   final base = Theme.of(context).appBarTheme.titleTextStyle;
   if (base == null) return null;
-  final maxWidth = MediaQuery.sizeOf(context).width -
+  final maxWidth =
+      MediaQuery.sizeOf(context).width -
       2 * math.max(leadingWidth, actionsWidth) -
       8;
   final baseSize = base.fontSize ?? 22;
@@ -56,7 +57,10 @@ TextStyle? _centeredAppBarTitleStyle(
   );
   while (fontSize > 13) {
     painter
-      ..text = TextSpan(text: text, style: base.copyWith(fontSize: fontSize))
+      ..text = TextSpan(
+        text: text,
+        style: base.copyWith(fontSize: fontSize),
+      )
       ..layout();
     if (painter.width <= maxWidth) break;
     fontSize -= 0.5;
@@ -74,8 +78,9 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _resultDialogShown = false;
+
   /// XP/unlocks only on the first Victory for this finished board.
   bool _offerResultXp = true;
   int _titlePlayToken = 0;
@@ -88,6 +93,7 @@ class _GameScreenState extends State<GameScreen> {
   void initState() {
     super.initState();
     if (!widget.isDailyRoute) {
+      WidgetsBinding.instance.addObserver(this);
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         final game = context.read<GameProvider>();
         await game.bootstrap();
@@ -102,6 +108,24 @@ class _GameScreenState extends State<GameScreen> {
         setState(() => _titlePlayToken++);
       });
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final game = context.read<GameProvider>();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      game.persistLivePocketForBackground();
+    } else if (state == AppLifecycleState.resumed) {
+      game.onAppForeground();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _onNewGame() async {
@@ -139,9 +163,7 @@ class _GameScreenState extends State<GameScreen> {
     final game = context.read<GameProvider>();
     if (!game.isWon || game.isGenerating || game.isPaused) return;
     game.clearCelebration();
-    game.triggerColorCycle(
-      savedMosaics: context.read<IroenProvider>().gallery,
-    );
+    game.triggerColorCycle(savedMosaics: context.read<IroenProvider>().gallery);
   }
 
   void _maybeShowResult(GameProvider game) {
@@ -154,48 +176,48 @@ class _GameScreenState extends State<GameScreen> {
       final includeXp =
           _offerResultXp && !game.isDailyReview && !DiscordMode.enabled;
       _offerResultXp = false;
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          if (!mounted) return;
-          if (includeXp) {
-            final unlocks = game.consumePendingPaletteUnlocks();
-            for (final palette in unlocks) {
-              _showPaletteUnlockedSnackBar(context, palette);
-            }
-            final award = context.read<StatsProvider>().lastXpAward;
-            if (award != null) {
-              final stats = context.read<StatsProvider>();
-              final bSides = {
-                ...PlayerXp.bSidesUnlockedByLevelUp(
-                  fromXp: award.previousTotal,
-                  toXp: award.newTotal,
-                  paletteUnlocked: stats.isPaletteUnlocked,
-                ),
-                for (final palette in unlocks)
-                  if (context.read<SettingsProvider>().isBSideUnlocked(palette))
-                    palette,
-              };
-              for (final palette in bSides) {
-                _showBSideUnlockedSnackBar(context, palette);
-              }
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        if (includeXp) {
+          final unlocks = game.consumePendingPaletteUnlocks();
+          for (final palette in unlocks) {
+            _showPaletteUnlockedSnackBar(context, palette);
+          }
+          final award = context.read<StatsProvider>().lastXpAward;
+          if (award != null) {
+            final stats = context.read<StatsProvider>();
+            final bSides = {
+              ...PlayerXp.bSidesUnlockedByLevelUp(
+                fromXp: award.previousTotal,
+                toXp: award.newTotal,
+                paletteUnlocked: stats.isPaletteUnlocked,
+              ),
+              for (final palette in unlocks)
+                if (context.read<SettingsProvider>().isBSideUnlocked(palette))
+                  palette,
+            };
+            for (final palette in bSides) {
+              _showBSideUnlockedSnackBar(context, palette);
             }
           }
-          if (widget.isDailyRoute) {
-            final settings = context.read<SettingsProvider>();
-            if (DiscordMode.enabled ||
-                DisplayName.trySanitize(settings.displayName) != null) {
-              unawaited(_submitDailyLeaderboard(game));
-            }
+        }
+        if (widget.isDailyRoute) {
+          final settings = context.read<SettingsProvider>();
+          if (DiscordMode.enabled ||
+              DisplayName.trySanitize(settings.displayName) != null) {
+            unawaited(_submitDailyLeaderboard(game));
           }
-          if (!mounted) return;
-          setState(() {
-            _victoryOpen = true;
-            _defeatOpen = false;
-            _resultTime = game.formatElapsed();
-            _resultXp = includeXp
-                ? context.read<StatsProvider>().lastXpAward
-                : null;
-          });
+        }
+        if (!mounted) return;
+        setState(() {
+          _victoryOpen = true;
+          _defeatOpen = false;
+          _resultTime = game.formatElapsed();
+          _resultXp = includeXp
+              ? context.read<StatsProvider>().lastXpAward
+              : null;
         });
+      });
     } else if (game.isLost && !_resultDialogShown) {
       _resultDialogShown = true;
       _offerResultXp = false;
@@ -240,9 +262,7 @@ class _GameScreenState extends State<GameScreen> {
     }
     Navigator.of(context).push(
       IrodokuPageRoute(
-        builder: (_) => DailyLeaderboardScreen(
-          pocket: game.isPocket,
-        ),
+        builder: (_) => DailyLeaderboardScreen(pocket: game.isPocket),
       ),
     );
   }
@@ -277,23 +297,22 @@ class _GameScreenState extends State<GameScreen> {
         final hasSelection = game.hasCellSelection;
         // Keep control-slot layout while paused / after win-loss so the board
         // doesn't resize; only the widgets themselves are removed.
-        final reserveControlsLayout = !game.isGenerating &&
-            (game.hasActiveGame || game.isGameOver);
+        final reserveControlsLayout =
+            !game.isGenerating && (game.hasActiveGame || game.isGameOver);
         final showControls =
             reserveControlsLayout && !game.isGameOver && !game.isPaused;
         final controlsEnabled = showControls;
         final canErase = game.canEraseSelection;
-        final canPause = game.hasActiveGame &&
-            !game.isGenerating &&
-            !game.isGameOver;
+        final canPause =
+            game.hasActiveGame && !game.isGenerating && !game.isGameOver;
 
         final titleText = widget.isDailyRoute
             ? (game.isPocket ? '[Daily Iro]' : 'Daily Iro')
             : game.isPocket && settings.chromatic
-                ? '[Chromatic]'
-                : game.isPocket
-                    ? 'Pocket'
-                    : (settings.chromatic ? 'Chromatic' : 'Irodoku');
+            ? '[Chromatic]'
+            : game.isPocket
+            ? 'Pocket'
+            : (settings.chromatic ? 'Chromatic' : 'Irodoku');
         final titleStyle = _centeredAppBarTitleStyle(
           context,
           text: titleText,
@@ -422,9 +441,7 @@ class _GameScreenState extends State<GameScreen> {
                           // is the same on-screen height and width.
                           const layoutN = 9;
                           final belowFixed = reserveControlsLayout
-                              ? toolbarGap +
-                                  GameToolbar.height +
-                                  pickerGap
+                              ? toolbarGap + GameToolbar.height + pickerGap
                               : 0.0;
                           const pocketSwatchScale = 0.70;
                           final pickerRows = pocketPicker
@@ -432,25 +449,28 @@ class _GameScreenState extends State<GameScreen> {
                               : (xlPicker ? xlSwatchCells * 3 : 1.0);
                           final cellFromWidth =
                               (constraints.maxWidth - boardBorder * 2) /
-                                  layoutN;
+                              layoutN;
                           final cellFromHeight = reserveControlsLayout
                               ? (constraints.maxHeight -
-                                      belowFixed -
-                                      boardBorder * 2) /
-                                  (layoutN + pickerRows)
+                                        belowFixed -
+                                        boardBorder * 2) /
+                                    (layoutN + pickerRows)
                               : (constraints.maxHeight -
-                                      belowFixed -
-                                      boardBorder * 2) /
-                                  layoutN;
-                          final cellSize =
-                              math.min(cellFromWidth, cellFromHeight);
-                          final boardSize = cellSize * layoutN + boardBorder * 2;
+                                        belowFixed -
+                                        boardBorder * 2) /
+                                    layoutN;
+                          final cellSize = math.min(
+                            cellFromWidth,
+                            cellFromHeight,
+                          );
+                          final boardSize =
+                              cellSize * layoutN + boardBorder * 2;
                           final boardInner = cellSize * layoutN;
                           final swatchSize = pocketPicker
                               ? boardInner / 3 * pocketSwatchScale
                               : (xlPicker
-                                  ? cellSize * xlSwatchCells
-                                  : cellSize);
+                                    ? cellSize * xlSwatchCells
+                                    : cellSize);
                           final pickerHeight = pocketPicker
                               ? swatchSize * 2.0
                               : swatchSize * (xlPicker ? 3.0 : 1.0);
@@ -518,21 +538,21 @@ class _GameScreenState extends State<GameScreen> {
                                               onTap: () {},
                                               behavior: HitTestBehavior.opaque,
                                               child: GameToolbar(
-                                                canUndo: controlsEnabled &&
+                                                canUndo:
+                                                    controlsEnabled &&
                                                     game.canUndo,
                                                 noteMode: game.noteMode,
                                                 bulkNoteSelect:
                                                     game.bulkNoteSelect,
-                                                canErase: controlsEnabled &&
-                                                    canErase,
+                                                canErase:
+                                                    controlsEnabled && canErase,
                                                 onUndo: game.undo,
                                                 onErase: game.clearSelectedCell,
                                                 onToggleNote:
                                                     game.toggleNoteMode,
-                                                onNoteLongPress: game
-                                                        .canEnterBulkNoteSelectFromToolbar
-                                                    ? game
-                                                        .enterBulkNoteSelectFromToolbar
+                                                onNoteLongPress:
+                                                    game.canEnterBulkNoteSelectFromToolbar
+                                                    ? game.enterBulkNoteSelectFromToolbar
                                                     : null,
                                               ),
                                             ),
@@ -563,16 +583,14 @@ class _GameScreenState extends State<GameScreen> {
                                                     game.removeSelectedNote,
                                                 onColorHoldStart:
                                                     game.selected == null &&
-                                                            !game.bulkNoteSelect
-                                                        ? game
-                                                            .beginPickerHoldSweep
-                                                        : null,
+                                                        !game.bulkNoteSelect
+                                                    ? game.beginPickerHoldSweep
+                                                    : null,
                                                 onColorHoldEnd:
                                                     game.selected == null &&
-                                                            !game.bulkNoteSelect
-                                                        ? game
-                                                            .endPickerHoldSweep
-                                                        : null,
+                                                        !game.bulkNoteSelect
+                                                    ? game.endPickerHoldSweep
+                                                    : null,
                                               ),
                                             ),
                                           )
@@ -630,10 +648,10 @@ class _GameScreenState extends State<GameScreen> {
                           showNewGame: !widget.isDailyRoute,
                           leaderboardLabel: widget.isDailyRoute
                               ? DiscordMode.enabled
-                                  ? "See today's leaderboard"
-                                  : (game.isPocket
-                                  ? '[Rankings]'
-                                  : 'Rankings')
+                                    ? "See today's leaderboard"
+                                    : (game.isPocket
+                                          ? '[Rankings]'
+                                          : 'Rankings')
                               : null,
                           onLeaderboard: widget.isDailyRoute
                               ? () => _openDailyLeaderboard(game)
@@ -666,7 +684,8 @@ class _GameScreenState extends State<GameScreen> {
             width: double.infinity,
             child: Text.rich(
               TextSpan(
-                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                style:
+                    Theme.of(context).snackBarTheme.contentTextStyle ??
                     TextStyle(
                       color: Theme.of(context).colorScheme.onInverseSurface,
                     ),
@@ -698,7 +717,8 @@ class _GameScreenState extends State<GameScreen> {
             width: double.infinity,
             child: Text.rich(
               TextSpan(
-                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                style:
+                    Theme.of(context).snackBarTheme.contentTextStyle ??
                     TextStyle(
                       color: Theme.of(context).colorScheme.onInverseSurface,
                     ),
@@ -743,12 +763,12 @@ class _PausedBoard extends StatelessWidget {
         ),
         child: ClipRect(
           child: Center(
-              child: Image.asset(
-                'assets/icons/pause_cropped.png',
-                height: _iconHeight,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.medium,
-              ),
+            child: Image.asset(
+              'assets/icons/pause_cropped.png',
+              height: _iconHeight,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
+            ),
           ),
         ),
       ),
