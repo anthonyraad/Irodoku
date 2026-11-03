@@ -5,6 +5,7 @@ import 'discord/discord_shell.dart';
 import 'core/organic_swatch_shader.dart';
 import 'services/preferences_service.dart';
 import 'sudoku/master_board_bank.dart';
+import 'widgets/age_gate.dart';
 
 /// Entrypoint for the Discord Activity ("Pocket Daily Iro").
 ///
@@ -12,6 +13,7 @@ import 'sudoku/master_board_bank.dart';
 /// (see `discord/build_web.sh`).
 Future<void> main() async {
   DiscordMode.enabled = true;
+  AgeGate.inDiscordActivity = true;
   WidgetsFlutterBinding.ensureInitialized();
   await OrganicSwatchShader.ensureLoaded();
   try {

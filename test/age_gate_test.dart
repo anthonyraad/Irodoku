@@ -129,4 +129,36 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('What year were you born?'), findsOneWidget);
   });
+
+  group('Discord Activity (Graffiti / Pocket Daily Iro)', () {
+    tearDown(() => AgeGate.inDiscordActivity = false);
+
+    test('default off (Android/web app still gated)', () {
+      expect(AgeGate.inDiscordActivity, isFalse);
+    });
+
+    for (final f in AgeGateFeature.values) {
+      testWidgets('skips the age step for ${f.name}, saves nothing', (t) async {
+        AgeGate.inDiscordActivity = true;
+        final r = <bool>[];
+        await t.pumpWidget(_Harness(r, feature: f));
+        await t.tap(find.text('go'));
+        await t.pumpAndSettle();
+        expect(find.text('What year were you born?'), findsNothing);
+        expect(r, [true]);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getInt(AgeGate.prefBirthYear), isNull);
+      });
+    }
+
+    testWidgets('skip also wins over a stored under-13 year', (t) async {
+      SharedPreferences.setMockInitialValues({AgeGate.prefBirthYear: 2014});
+      AgeGate.inDiscordActivity = true;
+      final r = <bool>[];
+      await t.pumpWidget(_Harness(r, feature: AgeGateFeature.graffitiRooms));
+      await t.tap(find.text('go'));
+      await t.pumpAndSettle();
+      expect(r, [true]);
+    });
+  });
 }

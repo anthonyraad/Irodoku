@@ -33,6 +33,11 @@ abstract final class AgeGate {
   static bool isOldEnough(int birthYear, {DateTime? now}) =>
       (now ?? DateTime.now()).year - birthYear >= minAge;
 
+  /// True inside a Discord Activity build (Pocket Daily Iro or [Graffiti]).
+  /// Discord accounts are 13+, so the age step is skipped there. Set only by
+  /// the Discord web entrypoints; never true on Android.
+  static bool inDiscordActivity = false;
+
   static Future<int?> storedBirthYear() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(prefBirthYear);
@@ -47,6 +52,7 @@ Future<bool> ensureAgeOk(
   AgeGateFeature feature, {
   @visibleForTesting DateTime? now,
 }) async {
+  if (AgeGate.inDiscordActivity) return true;
   final prefs = await SharedPreferences.getInstance();
   var year = prefs.getInt(AgeGate.prefBirthYear);
   if (year == null) {
