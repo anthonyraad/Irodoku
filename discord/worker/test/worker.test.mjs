@@ -243,3 +243,9 @@ test('results posted after midnight use the puzzle day', async () => {
     assert.notEqual(resultsTitle('2026-11-02'), resultsTitle('2026-11-03'));
   } finally { Date.now = realNow; }
 });
+
+test('results post includes the Android Play link like the daily post', async () => {
+  const out = await nightly({}, { day: '2026-11-02', rows: [{ name: 'a', ms: 1000 }], post: false });
+  assert.ok(out.embed.description.endsWith('\n\n[Get Irodoku on Android ↗](https://play.google.com/store/apps/details?id=com.irodoku.irodoku)'));
+  assert.equal(out.embed.description.split(ANDROID_LINK).length, 2);
+});

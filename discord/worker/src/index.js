@@ -8,7 +8,7 @@ import { dbConfigured, rtdb, topPocket, writeBest } from './firebase.js';
 import { leaderboardName, pstDayKey } from './names.js';
 import { leaderboardEmbed, renderPng } from './render.js';
 import { handleLinkCallback, handleLinkDisconnect, handleLinkStart } from './link.js';
-import { botApi, botEnabled, dispDay, resultsTitle, upsertDailyMessage, verifyDiscordRequest } from './discord_bot.js';
+import { ANDROID_LINK, botApi, botEnabled, dailyDescription, dispDay, resultsTitle, upsertDailyMessage, verifyDiscordRequest } from './discord_bot.js';
 
 const MIN_MS = 5000;
 const MAX_MS = 24 * 3600e3;
@@ -188,10 +188,12 @@ export async function nightly(env, { day = pstDayKey(Date.now() - 86400e3), rows
   }
   if (png) {
     if (!post) return { day, bytes: png.length, png };
-    form.append('payload_json', JSON.stringify({ content }));
+    form.append('payload_json', JSON.stringify({ content: `${content}\n\n${ANDROID_LINK}` }));
     form.append('files[0]', new Blob([png], { type: 'image/png' }), `pocket-${day}.png`);
   } else {
-    const embed = leaderboardEmbed(day, rows);
+    const base = leaderboardEmbed(day, rows);
+    // Same Android link + truncation as the daily post, at the end of the embed description.
+    const embed = { ...base, description: dailyDescription(base.description || '') };
     if (!post) return { day, embed };
     form.append('payload_json', JSON.stringify({ content, embeds: [embed] }));
   }
