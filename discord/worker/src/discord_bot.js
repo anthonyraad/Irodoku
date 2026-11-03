@@ -52,6 +52,24 @@ export function dailyDescription(body, limit = DESC_LIMIT) {
   return body + tail;
 }
 
+/** Irodoku drop application emojis (GET /applications/{id}/emojis). */
+export const IRO_EMOJIS = [
+  ['irodokublue', '1567044657123426324'], ['irodokugreen', '1567044658398371871'],
+  ['irodokugrey', '1567044659794935929'], ['irodokuorange', '1567044661384577135'],
+  ['irodokupink', '1567044662382825524'], ['irodokupurple', '1567044663943110746'],
+  ['irodokured', '1567044665159717064'], ['irodokuteal', '1567044666443042957'],
+  ['irodokuyellow', '1567044667403407360'],
+];
+
+/** Deterministic pair for a day key (same on every edit that day); may repeat. */
+export function dailyEmojiPair(day) {
+  let h = 2166136261;
+  for (const c of String(day)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  const a = h % IRO_EMOJIS.length;
+  const b = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0;
+  return [IRO_EMOJIS[a], IRO_EMOJIS[(b >>> 7) % IRO_EMOJIS.length]].map(([n, id]) => `<:${n}:${id}>`);
+}
+
 export function dailyMessagePayload(day, rows) {
   const n = rows.length;
   const lines = rows.slice(0, 30).map((r, i) => `${i + 1}. **${esc(r.name)}** — ${fmt(r.ms)}`);
@@ -60,7 +78,7 @@ export function dailyMessagePayload(day, rows) {
   return {
     allowed_mentions: { parse: [] },
     embeds: [{
-      title: `Daily Iro — ${dispDay(day)}`, color: 0x7c5cff,
+      title: (([l, r]) => `${l} Daily Iro — ${dispDay(day)} ${r}`)(dailyEmojiPair(day)), color: 0x7c5cff,
       description: dailyDescription(body),
     }],
     components: [PLAY_BUTTON],

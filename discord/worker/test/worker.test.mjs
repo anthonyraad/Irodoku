@@ -119,7 +119,7 @@ test('routes accept proxy-stripped and /api path forms', async () => {
 
 // ---- Part B: interactions + single daily message ----
 import { generateKeyPairSync as gkp, sign as edSign } from 'node:crypto';
-import { dailyMessagePayload, dailyDescription, ANDROID_LINK, upsertDailyMessage, verifyDiscordRequest } from '../src/discord_bot.js';
+import { dailyEmojiPair, IRO_EMOJIS, dailyMessagePayload, dailyDescription, ANDROID_LINK, upsertDailyMessage, verifyDiscordRequest } from '../src/discord_bot.js';
 
 const ed = gkp('ed25519');
 const pubHex = ed.publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('hex');
@@ -199,7 +199,7 @@ test('daily message: created once, edited on finishes, no webhook shoutouts', as
 });
 
 test('daily payload title', () => {
-  assert.equal(dailyMessagePayload('2026-10-31', []).embeds[0].title, 'Daily Iro — 10.31.26');
+  assert.match(dailyMessagePayload('2026-10-31', []).embeds[0].title, /^<:irodoku\w+:\d+> Daily Iro — 10\.31\.26 <:irodoku\w+:\d+>$/);
 });
 
 test('daily description: link survives 4096 limit, leaderboard truncated', () => {
@@ -208,4 +208,19 @@ test('daily description: link survives 4096 limit, leaderboard truncated', () =>
   assert.ok(d.length <= 4096); assert.ok(d.endsWith(`\n\n${ANDROID_LINK}`));
   const big = dailyDescription('x'.repeat(5000));
   assert.ok(big.length <= 4096); assert.ok(big.endsWith(`\n\n${ANDROID_LINK}`));
+});
+
+test('daily emoji pair: stable per day, valid format, link + button kept', () => {
+  const day = '2026-11-02';
+  const a = dailyMessagePayload(day, []), b = dailyMessagePayload(day, [{ name: 'X', ms: 61000 }]);
+  assert.equal(a.embeds[0].title, b.embeds[0].title);
+  assert.deepEqual(dailyEmojiPair(day), dailyEmojiPair(day));
+  const ids = new Set(IRO_EMOJIS.map(([n, id]) => `<:${n}:${id}>`));
+  for (const e of dailyEmojiPair(day)) { assert.match(e, /^<:irodoku[a-z]+:\d{17,20}>$/); assert.ok(ids.has(e)); }
+  const [l, r] = dailyEmojiPair(day);
+  assert.equal(a.embeds[0].title, `${l} Daily Iro — 11.02.26 ${r}`);
+  assert.ok(b.embeds[0].description.endsWith(ANDROID_LINK));
+  assert.equal(b.components[0].components[0].label, 'Play now!');
+  const seen = new Set(); for (let d = 1; d <= 28; d++) seen.add(dailyEmojiPair(`2026-02-${String(d).padStart(2, '0')}`).join());
+  assert.ok(seen.size > 5);
 });
