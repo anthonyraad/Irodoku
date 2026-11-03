@@ -224,3 +224,22 @@ test('daily emoji pair: stable per day, valid format, link + button kept', () =>
   const seen = new Set(); for (let d = 1; d <= 28; d++) seen.add(dailyEmojiPair(`2026-02-${String(d).padStart(2, '0')}`).join());
   assert.ok(seen.size > 5);
 });
+
+import { resultsTitle } from '../src/discord_bot.js';
+import { nightly } from '../src/index.js';
+test('results title uses same emoji pair as daily post for that day', async () => {
+  const day = '2026-11-02';
+  const [l, r] = dailyEmojiPair(day);
+  assert.equal(resultsTitle(day), `${l} Daily Iro results — 11.02.26 ${r}`);
+  const daily = dailyMessagePayload(day, []).embeds[0].title;
+  assert.ok(daily.startsWith(l + ' ') && daily.endsWith(' ' + r));
+});
+test('results posted after midnight use the puzzle day', async () => {
+  const realNow = Date.now;
+  Date.now = () => Date.parse('2026-11-03T08:05:00Z'); // 00:05 PST Nov 3
+  try {
+    const out = await nightly({}, { rows: [], post: false });
+    assert.equal(out.day, '2026-11-02');
+    assert.notEqual(resultsTitle('2026-11-02'), resultsTitle('2026-11-03'));
+  } finally { Date.now = realNow; }
+});

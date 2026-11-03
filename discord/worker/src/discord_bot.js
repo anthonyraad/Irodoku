@@ -128,3 +128,9 @@ export function dispDay(day) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day));
   return m ? `${m[2]}.${m[3]}.${m[1].slice(2)}` : String(day);
 }
+
+// Nightly results title for PUZZLE day `day` (not post time); same emoji pair as that day's daily post.
+export function resultsTitle(day) {
+  const [l, r] = dailyEmojiPair(day);
+  return `${l} Daily Iro results — ${dispDay(day)} ${r}`;
+}

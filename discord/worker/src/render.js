@@ -1,4 +1,4 @@
-import { dispDay } from './discord_bot.js';
+import { dispDay, resultsTitle } from './discord_bot.js';
 // Leaderboard image: hand-built SVG -> PNG via resvg-wasm with the bundled
 // Balatro font (no system fonts in Workers). Small canvas keeps CPU low.
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
@@ -39,5 +39,5 @@ export function leaderboardEmbed(day, rows) {
   const lines = rows.length
     ? rows.map((r, i) => `\`${String(i + 1).padStart(2)}.\` **${r.name}** — ${fmtMs(r.ms)}`).join('\n')
     : 'No times yesterday.';
-  return { title: `Daily Iro — ${dispDay(day)}`, description: lines, color: 0xa970ff };
+  return { title: resultsTitle(day), description: lines, color: 0xa970ff };
 }
