@@ -1,7 +1,9 @@
 // "<Winner> vandalized <Loser>" Discord posts for finished Graffiti matches.
 // Winner/loser come from rooms/<code> in RTDB (never from the client).
 // Dedupe: irodoku_graffiti_posts/<code>/<matchKey> claimed with ETag if-match.
-// Streaks: irodoku_graffiti_streaks/<pairKey> = { winner, loser, count, messageId }.
+// Sessions: irodoku_graffiti_sessions/<code>__<pairKey> = { messageId, lines: [...] }
+// (same two players in the same room; each decided match appends a line).
+// Legacy irodoku_graffiti_streaks/* is left untouched and no longer used.
 import { rtdb } from '../../worker/src/firebase.js';
 
 export const AVATAR_URL = 'https://cdn.discordapp.com/app-icons/1565967052047388822/3e3c1202310b13633f9ae599a7785b29.png?size=256';
@@ -14,8 +16,11 @@ export function roomName(raw) {
   return s.length >= 2 && s.length <= 10 && /^[A-Za-z0-9 ._-]+$/.test(s) ? s : 'Player';
 }
 export const escapeMd = (s) => s.replace(/([\\*_~`|>])/g, '\\$1');
-export const resultText = (w, l, count) =>
-  `**${escapeMd(w)}** vandalized **${escapeMd(l)}**${count > 1 ? ` ${count}x` : ''}`;
+export const CONTENT_LIMIT = 2000; // Discord message content max
+const score = (n) => Math.max(0, Math.floor(Number(n) || 0));
+export const resultText = (w, l, ws, ls) =>
+  `**${escapeMd(w)}** vandalized **${escapeMd(l)}** ${score(ws)} - ${score(ls)}`;
+export const sessionKey = (code, a, b) => `${code}__${pairKey(a, b)}`;
 export const pairKey = (a, b) => [a, b].sort().join('__');
 
 async function sha(s) {
@@ -38,7 +43,9 @@ export async function decide(room, callerUid) {
   if (!SAFE_KEY.test(winner) || !SAFE_KEY.test(loser)) return { skip: 'bad_uid' };
   const names = room.names || {};
   const matchKey = `${Number(room.createdAt) || 0}_${await sha(JSON.stringify(room.puzzle || []))}`;
-  return { winner, loser, winnerName: roomName(names[winner]), loserName: roomName(names[loser]), matchKey };
+  const stats = room.stats || {};
+  const correct = (uid) => score(stats[uid] && stats[uid].correct);
+  return { winner, loser, winnerScore: correct(winner), loserScore: correct(loser), winnerName: roomName(names[winner]), loserName: roomName(names[loser]), matchKey };
 }
 
 async function readTagged(env, path) {
@@ -75,22 +82,24 @@ export async function announce(env, code, m) {
   const put = await rtdb(env, claimPath, { method: 'PUT', body: Date.now(), headers: { 'if-match': claim.etag } });
   if (!put.ok) return { posted: false, reason: 'duplicate' };
   try {
-    const sPath = `irodoku_graffiti_streaks/${pairKey(m.winner, m.loser)}`;
+    const sPath = `irodoku_graffiti_sessions/${sessionKey(code, m.winner, m.loser)}`;
+    const line = resultText(m.winnerName, m.loserName, m.winnerScore, m.loserScore);
     for (let attempt = 0; attempt < 3; attempt++) {
       const { etag, val } = await readTagged(env, sPath);
-      const cont = val && val.winner === m.winner && val.messageId;
-      const count = cont ? (Number(val.count) || 1) + 1 : 1;
-      const content = resultText(m.winnerName, m.loserName, count);
+      const prev = val && val.messageId && Array.isArray(val.lines) ? val.lines.map(String) : null;
+      const joined = prev ? [...prev, line].join('\n') : '';
+      const cont = prev && joined.length <= CONTENT_LIMIT;
+      let lines = cont ? [...prev, line] : [line];
       let messageId = cont ? String(val.messageId) : '';
       let edited = false;
-      if (cont) edited = await editMsg(env, messageId, content);
-      if (!edited) messageId = await postNew(env, content); // new streak, or old message gone
-      const next = { winner: m.winner, loser: m.loser, count, messageId, at: Date.now() };
+      if (cont) edited = await editMsg(env, messageId, joined);
+      if (!edited) { lines = [line]; messageId = await postNew(env, line); } // new session, full, or message gone
+      const next = { messageId, lines, at: Date.now() };
       const w = await rtdb(env, sPath, { method: 'PUT', body: next, headers: { 'if-match': etag } });
-      if (w.ok) return { posted: true, count, edited };
+      if (w.ok) return { posted: true, lines: lines.length, edited };
       if (w.status !== 412) throw new Error(`rtdb ${w.status}`);
     }
-    throw new Error('streak contention');
+    throw new Error('session contention');
   } catch (e) {
     // Release the claim so a retry (other player's client) can post.
     await rtdb(env, claimPath, { method: 'DELETE' }).catch(() => {});

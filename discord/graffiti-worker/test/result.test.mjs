@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import worker from '../src/index.js';
-import { escapeMd, resultText, roomName, pairKey, AVATAR_URL } from '../src/result.js';
+import { escapeMd, resultText, roomName, pairKey, sessionKey, AVATAR_URL } from '../src/result.js';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const env = {
@@ -36,8 +36,10 @@ globalThis.fetch = async (url, init = {}) => {
 };
 
 let puzzleSeq = 0;
-function room(code, winner, extra = {}) {
+function room(code, winner, extra = {}, sc = [17, 8]) {
+  const [w, l] = sc, loser = winner === ME ? OPP : ME;
   db[`rooms/${code}`] = {
+    stats: { [winner]: { correct: w, mistakes: 1 }, [loser]: { correct: l } },
     app: 'irodoku_graffiti', gameState: 'finished', winner, createdAt: 1000, puzzle: [puzzleSeq++],
     players: { [ME]: true, [OPP]: true }, names: { [ME]: 'Star_scape', [OPP]: 'Sarah' }, ...extra,
   };
@@ -48,45 +50,68 @@ const result = async (code) => (await worker.fetch(new Request('https://w/result
 
 test('helpers', () => {
   assert.equal(escapeMd('a_b*c'), 'a\\_b\\*c');
-  assert.equal(resultText('A', 'B', 1), '**A** vandalized **B**');
-  assert.equal(resultText('A', 'B', 3), '**A** vandalized **B** 3x');
+  assert.equal(resultText('A', 'B', 17, 8), '**A** vandalized **B** 17 - 8');
+  assert.equal(resultText('a_b', 'c*d', '3', undefined), '**a\\_b** vandalized **c\\*d** 3 - 0');
   assert.equal(roomName('<@123>'), 'Player');
   assert.equal(pairKey('b', 'a'), 'a__b');
+  assert.equal(sessionKey('ABCDE', 'b', 'a'), 'ABCDE__a__b');
 });
 
-test('post, increment edit, dedupe, streak break', async () => {
+test('session: lines appended across rematches incl. reversed winner; dedupe', async () => {
   reset();
-  room('ABCDE', ME);
-  assert.deepEqual(await result('ABCDE'), { posted: true, count: 1, edited: false });
-  assert.equal(hooks[0].content, '**Star\\_scape** vandalized **Sarah**');
+  room('ABCDE', ME, {}, [17, 8]);
+  assert.deepEqual(await result('ABCDE'), { posted: true, lines: 1, edited: false });
+  assert.equal(hooks[0].content, '**Star\\_scape** vandalized **Sarah** 17 - 8');
   assert.equal(hooks[0].username, 'Graffiti');
   assert.equal(hooks[0].avatar_url, AVATAR_URL);
   assert.deepEqual(hooks[0].allowed_mentions, { parse: [] });
-  // Same match again (other client / retry): no new post.
-  assert.equal((await result('ABCDE')).reason, 'duplicate');
+  assert.equal((await result('ABCDE')).reason, 'duplicate'); // retry / other client
   assert.equal(hooks.length, 1);
-  // Rematch (new puzzle) in same room, same winner: edit to 2x.
-  room('ABCDE', ME);
-  assert.deepEqual(await result('ABCDE'), { posted: true, count: 2, edited: true });
-  assert.deepEqual([hooks[1].op, hooks[1].id, hooks[1].content], ['edit', '1', '**Star\\_scape** vandalized **Sarah** 2x']);
-  // Different room, same pair, same winner: 3x.
-  room('FGHJK', ME);
-  assert.equal((await result('FGHJK')).count, 3);
-  assert.equal(hooks[2].content.endsWith(' 3x'), true);
-  // Opponent wins: streak breaks, new message.
-  room('FGHJK', OPP);
-  assert.deepEqual(await result('FGHJK'), { posted: true, count: 1, edited: false });
-  assert.equal(hooks[3].op, 'post');
-  assert.equal(hooks[3].content, '**Sarah** vandalized **Star\\_scape**');
-  // Then I win again: new message, count 1.
-  room('FGHJK', ME);
-  assert.deepEqual(await result('FGHJK'), { posted: true, count: 1, edited: false });
+  room('ABCDE', ME, {}, [12, 11]);
+  assert.deepEqual(await result('ABCDE'), { posted: true, lines: 2, edited: true });
+  room('ABCDE', OPP, {}, [15, 9]);
+  assert.deepEqual(await result('ABCDE'), { posted: true, lines: 3, edited: true });
+  assert.deepEqual([hooks[2].op, hooks[2].id], ['edit', '1']);
+  assert.equal(hooks[2].content, [
+    '**Star\\_scape** vandalized **Sarah** 17 - 8',
+    '**Star\\_scape** vandalized **Sarah** 12 - 11',
+    '**Sarah** vandalized **Star\\_scape** 15 - 9'].join('\n'));
+  assert.equal((await result('ABCDE')).reason, 'duplicate');
+  assert.equal(hooks.length, 3);
+  assert.equal(db[`irodoku_graffiti_sessions/ABCDE__${pairKey(ME, OPP)}`].lines.length, 3);
+  // Legacy streak path no longer written.
+  assert.ok(!('irodoku_graffiti_streaks' in db));
 });
 
-test('edited message deleted -> posts new with count', async () => {
+test('new message when room or pair changes; old session lines kept', async () => {
+  reset();
+  room('ABCDE', ME); await result('ABCDE');
+  room('FGHJK', ME, {}, [10, 2]);
+  assert.deepEqual(await result('FGHJK'), { posted: true, lines: 1, edited: false });
+  assert.equal(hooks[1].op, 'post');
+  const third = 'android_other';
+  room('ABCDE', ME, { players: { [ME]: true, [third]: true }, names: { [ME]: 'Star_scape', [third]: 'Bob' },
+    stats: { [ME]: { correct: 9 }, [third]: { correct: 4 } } });
+  assert.deepEqual(await result('ABCDE'), { posted: true, lines: 1, edited: false });
+  assert.equal(hooks[2].content, '**Star\\_scape** vandalized **Bob** 9 - 4');
+  assert.equal(db[`irodoku_graffiti_sessions/ABCDE__${pairKey(ME, OPP)}`].lines.length, 1);
+});
+
+test('2000-char rollover starts a new message', async () => {
+  reset();
+  const k = `irodoku_graffiti_sessions/ABCDE__${pairKey(ME, OPP)}`;
+  db[k] = { messageId: '77', lines: ['x'.repeat(1990)] };
+  room('ABCDE', ME);
+  assert.deepEqual(await result('ABCDE'), { posted: true, lines: 1, edited: false });
+  assert.equal(hooks[0].op, 'post');
+  assert.ok(hooks.every((h) => h.content.length <= 2000));
+  assert.equal(db[k].messageId, '1');
+});
+
+test('edited message deleted -> posts new', async () => {
   reset(); room('LMNPQ', ME); await result('LMNPQ');
   deleted.add('1'); room('LMNPQ', ME);
-  assert.deepEqual(await result('LMNPQ'), { posted: true, count: 2, edited: false });
+  assert.deepEqual(await result('LMNPQ'), { posted: true, lines: 1, edited: false });
   assert.equal(hooks.at(-1).op, 'post');
 });
 
