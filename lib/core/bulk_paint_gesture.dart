@@ -2,8 +2,8 @@ import 'package:flutter/widgets.dart';
 
 /// Provider hooks for hold-and-drag multi-select (bulk note select).
 ///
-/// Shared by Iroen, classic Irodoku and Pocket so the drag behavior stays
-/// identical across modes.
+/// Shared by Iroen, classic Irodoku, Pocket, Graffiti, and [Graffiti]
+/// so the drag behavior stays identical across modes.
 abstract class BulkPaintTarget {
   /// Paint gestures are ignored while this is false (e.g. Iroen quadrant pick).
   bool get bulkPaintEnabled;

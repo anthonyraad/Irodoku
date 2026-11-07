@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/cell.dart';
 import '../models/difficulty.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/palette.dart';
 import '../models/game_palette.dart';
 import '../models/note_clear_wave.dart';
@@ -59,7 +60,7 @@ class _BulkNoteUndo extends _GraffitiUndo {
 }
 
 /// Multiplayer Graffiti session (Firebase RTDB). Separate from [GameProvider].
-class GraffitiProvider extends ChangeNotifier {
+class GraffitiProvider extends ChangeNotifier implements BulkPaintTarget {
   GraffitiProvider({
     required SettingsProvider settings,
     required StatsProvider stats,
@@ -121,6 +122,9 @@ class GraffitiProvider extends ChangeNotifier {
   bool _usedNotes = false;
   bool _bulkNoteSelect = false;
   final Set<int> _bulkSelected = {};
+  bool _bulkPainting = false;
+  bool _ignoreNextBulkTap = false;
+  bool _pendingBulkExit = false;
   final List<_GraffitiUndo> _undoStack = [];
 
   int _myCorrect = 0;
@@ -922,12 +926,74 @@ class GraffitiProvider extends ChangeNotifier {
     }
   }
 
+  @override
+  bool get bulkPaintEnabled => controlsEnabled;
+
+  /// Add [row],[col] to the bulk selection (enters bulk if needed). Never toggles off.
+  @override
+  void addBulkCell(int row, int col) {
+    if (!controlsEnabled) return;
+    if (!_cells[row][col].isEditable) return;
+    if (!_bulkNoteSelect) {
+      enterBulkNoteSelect(row, col);
+      return;
+    }
+    final key = _cellKey(row, col);
+    if (_bulkSelected.contains(key)) return;
+    _bulkSelected.add(key);
+    _selectedRow = row;
+    _selectedCol = col;
+    notifyListeners();
+  }
+
+  @override
+  void prepareBulkPaintGesture() {
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
+  }
+
+  @override
+  void beginBulkPaint() {
+    _bulkPainting = true;
+    _ignoreNextBulkTap = true;
+    _pendingBulkExit = false;
+  }
+
+  @override
+  void endBulkPaint() {
+    _bulkPainting = false;
+  }
+
+  /// Stationary long-press in bulk exits to single-cell note mode on lift,
+  /// so a hold-then-swipe can still add cells.
+  @override
+  void completePendingBulkExit(int? row, int? col) {
+    if (!_pendingBulkExit || _bulkPainting || !_bulkNoteSelect) {
+      _pendingBulkExit = false;
+      return;
+    }
+    _pendingBulkExit = false;
+    _exitBulkNoteSelect();
+    _noteMode = true;
+    if (row != null && col != null) {
+      _selectedRow = row;
+      _selectedCol = col;
+    }
+    notifyListeners();
+  }
+
   void selectCell(int row, int col) {
     if (_phase != GraffitiPhase.playing && _phase != GraffitiPhase.finished) {
       return;
     }
     if (_pickerHoldActive) endPickerHoldSweep();
     final cell = _cells[row][col];
+
+    if (_ignoreNextBulkTap) {
+      _ignoreNextBulkTap = false;
+      if (_bulkNoteSelect) return;
+    }
+
     if (!cell.isEditable) {
       if (cell.value != 0) triggerColorCycle(onlyValue: cell.value);
       return;
@@ -961,13 +1027,12 @@ class GraffitiProvider extends ChangeNotifier {
   void handleCellLongPress(int row, int col) {
     if (!controlsEnabled) return;
     if (!_cells[row][col].isEditable) return;
+    if (_bulkPainting) return;
 
     if (_bulkNoteSelect) {
-      _exitBulkNoteSelect();
-      _noteMode = true;
-      _selectedRow = row;
-      _selectedCol = col;
-      notifyListeners();
+      // Exit to single-cell note mode on lift (completePendingBulkExit),
+      // unless the hold turns into a drag.
+      _pendingBulkExit = true;
       return;
     }
 
@@ -1034,6 +1099,38 @@ class GraffitiProvider extends ChangeNotifier {
   void _exitBulkNoteSelect() {
     _bulkNoteSelect = false;
     _bulkSelected.clear();
+    _bulkPainting = false;
+    _ignoreNextBulkTap = false;
+    _pendingBulkExit = false;
+  }
+
+  /// Test hook: load a generated puzzle into a local playing match.
+  @visibleForTesting
+  void debugLoadBoards(List<List<int>> boards, {required bool pocket}) {
+    _pocket = pocket;
+    _solo = true;
+    _phase = GraffitiPhase.playing;
+    _outcome = GraffitiOutcome.none;
+    _lockedUntil = null;
+    _selectedRow = null;
+    _selectedCol = null;
+    _noteMode = false;
+    _exitBulkNoteSelect();
+    _undoStack.clear();
+    final puzzle = SudokuBoard.fromFlat(boards[0], pocket: pocket);
+    _solution = List<int>.from(boards[1]);
+    final n = gridSize;
+    _cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
+        final value = puzzle.get(r, c);
+        return Cell(
+          value: value,
+          isGiven: value != 0,
+          isLocked: value != 0,
+        );
+      });
+    });
+    notifyListeners();
   }
 
   bool _bulkSelectionHasNotes() {

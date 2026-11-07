@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/bulk_note_rainbow_border.dart';
+import '../core/bulk_paint_gesture.dart';
 import '../core/celebration_colors.dart';
 import '../core/color_cycle.dart';
 import '../core/organic_swatch_motion.dart';
@@ -32,6 +33,7 @@ class GraffitiGrid extends StatefulWidget {
 
 class _GraffitiGridState extends State<GraffitiGrid>
     with TickerProviderStateMixin {
+  final _paint = BulkPaintGesture(gridSize: 9);
   static const _duration = Duration(milliseconds: 1100);
   static const _staggerFraction = 0.045;
 
@@ -277,7 +279,14 @@ class _GraffitiGridState extends State<GraffitiGrid>
               c ~/ boxW == selectedCol ~/ boxW);
     }
 
-    return Column(
+    _paint.gridSize = n;
+    return Listener(
+      onPointerDown: (event) => _paint.onPointerDown(game, event),
+      onPointerMove: (event) => _paint.onPointerMove(game, event),
+      onPointerUp: (event) => _paint.onPointerUp(game, event),
+      onPointerCancel: (event) => _paint.onPointerUp(game, event),
+      child: Column(
+      key: _paint.layerKey,
       children: List.generate(n, (row) {
         return Expanded(
           child: Row(
@@ -382,6 +391,7 @@ class _GraffitiGridState extends State<GraffitiGrid>
           ),
         );
       }),
+      ),
     );
   }
 }

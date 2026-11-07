@@ -4,11 +4,13 @@ import 'package:irodoku/models/difficulty.dart';
 import 'package:irodoku/models/game_palette.dart';
 import 'package:irodoku/providers/achievements_provider.dart';
 import 'package:irodoku/providers/game_provider.dart';
+import 'package:irodoku/providers/graffiti_provider.dart';
 import 'package:irodoku/providers/iroen_provider.dart';
 import 'package:irodoku/providers/settings_provider.dart';
 import 'package:irodoku/providers/stats_provider.dart';
 import 'package:irodoku/services/preferences_service.dart';
 import 'package:irodoku/services/sound_service.dart';
+import 'package:irodoku/widgets/graffiti_grid.dart';
 import 'package:irodoku/widgets/iroen_grid.dart';
 import 'package:irodoku/widgets/sudoku_grid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -254,4 +256,102 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 2));
   });
+
+  for (final pocket in [false, true]) {
+    final mode = pocket ? '[Graffiti]' : 'Graffiti';
+
+    testWidgets('$mode: hold + drag selects multiple cells for notes', (
+      tester,
+    ) async {
+      final env = await _env();
+      final game = GraffitiProvider(
+        settings: env.settings,
+        stats: env.stats,
+        achievements: env.achievements,
+        sounds: env.sounds,
+      );
+      game.debugLoadBoards(
+        pocket
+            ? generatePocketIsolate(42)
+            : generatePuzzleIsolate(<Object>[Difficulty.easy.storageKey, 42]),
+        pocket: pocket,
+      );
+      final n = game.gridSize;
+      expect(n, pocket ? 6 : 9);
+      await _pumpGrid(
+        tester,
+        GraffitiGrid(game: game, palette: GamePalette.values.first),
+      );
+
+      final (r, c) = _graffitiEditableRun(game);
+      await _holdAndDrag(tester, [(r, c), (r, c + 1), (r, c + 2)], n);
+
+      expect(game.bulkNoteSelect, isTrue);
+      expect(game.noteMode, isTrue);
+      for (var i = 0; i < 3; i++) {
+        expect(game.isCellSelected(r, c + i), isTrue, reason: 'cell $i');
+      }
+
+      game.addNote(1);
+      for (var i = 0; i < 3; i++) {
+        expect(game.cells[r][c + i].notes, contains(1));
+        expect(game.cells[r][c + i].value, 0);
+      }
+
+      await game.undo();
+      for (var i = 0; i < 3; i++) {
+        expect(game.cells[r][c + i].hasNotes, isFalse);
+      }
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('$mode: quick drag (no hold) also paints a selection', (
+      tester,
+    ) async {
+      final env = await _env();
+      final game = GraffitiProvider(
+        settings: env.settings,
+        stats: env.stats,
+        achievements: env.achievements,
+        sounds: env.sounds,
+      );
+      game.debugLoadBoards(
+        pocket
+            ? generatePocketIsolate(42)
+            : generatePuzzleIsolate(<Object>[Difficulty.easy.storageKey, 42]),
+        pocket: pocket,
+      );
+      final n = game.gridSize;
+      await _pumpGrid(
+        tester,
+        GraffitiGrid(game: game, palette: GamePalette.values.first),
+      );
+      final (r, c) = _graffitiEditableRun(game);
+      final g = await tester.startGesture(_center(r, c, n));
+      await tester.pump(const Duration(milliseconds: 50));
+      await g.moveTo(_center(r, c + 1, n));
+      await tester.pump();
+      await g.up();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(game.bulkNoteSelect, isTrue);
+      expect(game.isCellSelected(r, c), isTrue);
+      expect(game.isCellSelected(r, c + 1), isTrue);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 2));
+    });
+  }
+}
+
+(int, int) _graffitiEditableRun(GraffitiProvider g) {
+  for (var r = 0; r < g.gridSize; r++) {
+    for (var c = 0; c + 2 < g.gridSize; c++) {
+      if (g.cells[r][c].isEditable &&
+          g.cells[r][c + 1].isEditable &&
+          g.cells[r][c + 2].isEditable) {
+        return (r, c);
+      }
+    }
+  }
+  fail('no editable run');
 }
