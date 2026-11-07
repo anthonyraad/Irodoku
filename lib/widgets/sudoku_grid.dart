@@ -20,11 +20,19 @@ class SudokuGrid extends StatefulWidget {
   /// Optional live swatches (e.g. chromatic crossfade); falls back to [palette].
   final List<PaletteSwatch>? displaySwatches;
 
+  /// Hit-test target for the cell area, inside the outer border.
+  final Key? boardKey;
+
+  /// Box index to wash while a sketch color is dragged over the board.
+  final int? sketchBox;
+
   const SudokuGrid({
     super.key,
     required this.game,
     required this.palette,
     this.displaySwatches,
+    this.boardKey,
+    this.sketchBox,
   });
 
   @override
@@ -229,6 +237,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
           color: IrodokuTheme.emptyCellFill(brightness),
         ),
         child: Stack(
+          key: widget.boardKey,
           fit: StackFit.expand,
           children: [
             AnimatedBuilder(
@@ -271,6 +280,21 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                     ),
                   );
                 },
+              ),
+            if (widget.sketchBox != null)
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: _SketchBoxPainter(
+                    box: widget.sketchBox!,
+                    n: game.gridSize,
+                    boxW: game.boxW,
+                    boxH: game.boxH,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.14),
+                  ),
+                ),
               ),
           ],
         ),
@@ -402,6 +426,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                         col: col,
                         pocket: game.isPocket,
                         noteClearWave: game.noteClearWave,
+                        noteAppearWave: game.noteAppearWave,
                         onTap: game.isGenerating ||
                                 game.isGameOver ||
                                 game.isPaused
@@ -629,5 +654,54 @@ class _PeerUnitBorderPainter extends CustomPainter {
         oldDelegate.rainbowPhase != rainbowPhase ||
         oldDelegate.rainbowBrightness != rainbowBrightness ||
         oldDelegate.rainbowMorph != rainbowMorph;
+  }
+}
+
+/// Soft wash over the 3×3 box under a dragged sketch color.
+class _SketchBoxPainter extends CustomPainter {
+  final int box;
+  final int n;
+  final int boxW;
+  final int boxH;
+  final Color color;
+
+  const _SketchBoxPainter({
+    required this.box,
+    required this.n,
+    required this.boxW,
+    required this.boxH,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final boxCols = n ~/ boxW;
+    final br = box ~/ boxCols;
+    final bc = box % boxCols;
+    final cellW = size.width / n;
+    final cellH = size.height / n;
+    final rect = Rect.fromLTWH(
+      bc * boxW * cellW,
+      br * boxH * cellH,
+      boxW * cellW,
+      boxH * cellH,
+    );
+    canvas.drawRect(rect, Paint()..color = color);
+    canvas.drawRect(
+      rect.deflate(1.2),
+      Paint()
+        ..color = color.withValues(alpha: 0.45)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SketchBoxPainter oldDelegate) {
+    return oldDelegate.box != box ||
+        oldDelegate.n != n ||
+        oldDelegate.boxW != boxW ||
+        oldDelegate.boxH != boxH ||
+        oldDelegate.color != color;
   }
 }

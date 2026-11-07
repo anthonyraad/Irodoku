@@ -113,6 +113,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   NoteClearWave? _noteClearWave;
   int _noteClearWaveSeq = 0;
   int _noteClearWaveClearToken = 0;
+  NoteAppearWave? _noteAppearWave;
+  int _noteAppearWaveSeq = 0;
+  int _noteAppearWaveClearToken = 0;
 
   // Per-game achievement tracking (not persisted across pause restore).
   int? _firstFillColor;
@@ -141,6 +144,13 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   int _hyperBoardsCleared = 0;
   int _hyperFilledOnBoard = 0;
   int _hyperEmptyOnBoard = 0;
+
+  /// Correct fills across every board in this run.
+  int _hyperCellsFilled = 0;
+
+  /// Unused sketch drops. Completing a box adds one. The count survives
+  /// board changes and resets only when the run ends or restarts.
+  int _hyperSketches = 0;
 
   /// Signed seconds of the latest fill, cleared on the next clock tick.
   int _hyperPulse = 0;
@@ -246,6 +256,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   bool get noteMode => _noteMode;
   bool get bulkNoteSelect => _bulkNoteSelect;
   NoteClearWave? get noteClearWave => _noteClearWave;
+  NoteAppearWave? get noteAppearWave => _noteAppearWave;
   bool get isDaily => _isDaily;
   bool get isPocket => _isPocket;
   bool get isHyperchroma => _hyperchroma;
@@ -253,8 +264,14 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   int get hyperchromaSeconds => _hyperRemaining.inSeconds;
   int get hyperchromaPulse => _hyperPulse;
   int get hyperchromaBoardsCleared => _hyperBoardsCleared;
-  String get hyperchromaProgressLabel =>
-      HyperchromaRules.victoryLabel(_hyperBoardsCleared);
+
+  /// 1-based board in this run. The opening Easy board is Level 1.
+  String get hyperchromaLevelLabel => 'Level ${_hyperBoardsCleared + 1}';
+
+  /// Correct fills this run. Givens and mistakes do not count.
+  int get hyperchromaScore => _hyperCellsFilled;
+
+  int get hyperchromaSketches => _hyperSketches;
   int get mistakeLimit => _isPocket ? pocketMaxMistakes : maxMistakes;
   int get gridSize => _isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
   int get boxW => _isPocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
@@ -947,6 +964,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _syncSessionBSide();
     _celebration = null;
     _noteClearWave = null;
+    _noteAppearWave = null;
     _noteMode = false;
     _undoStack.clear();
     _colorCycleFilterValue = null;
@@ -1748,6 +1766,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       if (_hyperchroma) {
         _applyHyperchromaDelta(HyperchromaRules.gainSeconds);
         _hyperFilledOnBoard++;
+        _hyperCellsFilled++;
         _hopChromaticPalette();
       }
     }
@@ -1768,6 +1787,62 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     }
     _checkWin();
     notifyListeners();
+  }
+
+  /// Spend one sketch to note [value] in every empty cell of box [box]
+  /// where that color is still a legal candidate.
+  ///
+  /// Notes are collected first, then bloom outward from the center of the box.
+  /// Nothing is committed, so the clock and score do not move.
+  bool useSketch(int box, int value) {
+    if (!_hyperchroma ||
+        _hyperSketches <= 0 ||
+        isGameOver ||
+        _isGenerating ||
+        _isPaused) {
+      return false;
+    }
+    if (box < 0 || value < 1 || value > gridSize) return false;
+
+    final board = _toBoard();
+    final positions = board.positionsForUnit('b$box');
+    if (positions.isEmpty) return false;
+    final targets = <(int, int)>[
+      for (final (row, col) in positions)
+        if (_cells[row][col].isEditable &&
+            _cells[row][col].value == 0 &&
+            !_cells[row][col].hasNote(value) &&
+            board.isValidPlacement(row, col, value))
+          (row, col),
+    ];
+    if (targets.isEmpty) return false;
+
+    _hyperSketches--;
+    if (_bulkNoteSelect) _exitBulkNoteSelect();
+    _pushUndo();
+    final center = positions[positions.length ~/ 2];
+    final seq = ++_noteAppearWaveSeq;
+    _noteAppearWave = NoteAppearWave(
+      value: value,
+      seq: seq,
+      centerRow: center.$1,
+      centerCol: center.$2,
+    );
+    final clearToken = ++_noteAppearWaveClearToken;
+    Future<void>.delayed(
+      NoteAppearWave.delayForMax +
+          const Duration(milliseconds: NoteAppearWave.bloomMs + 40),
+      () {
+        if (_noteAppearWaveClearToken != clearToken) return;
+        if (_noteAppearWave?.seq == seq) _noteAppearWave = null;
+      },
+    );
+    for (final (row, col) in targets) {
+      _cells[row][col] = _cells[row][col].withNoteAdded(value);
+    }
+    _playSound(_sounds.playNote);
+    notifyListeners();
+    return true;
   }
 
   Future<void> Function() _placementConfirmSound(int value) {
@@ -2057,7 +2132,13 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (celebrate && newly.isNotEmpty) {
       newlyCompleted = true;
       _celebration = _buildCelebration(newly);
-      _trackNewlyCompletedUnits(newly);
+      if (_hyperchroma) {
+        for (final key in newly) {
+          if (key.startsWith('b')) _hyperSketches++;
+        }
+      } else {
+        _trackNewlyCompletedUnits(newly);
+      }
       _maybeChromaticShift();
       _maybeDailyPaletteShift(now);
     }
@@ -2921,6 +3002,8 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _hyperBoardsCleared = 0;
     _hyperFilledOnBoard = 0;
     _hyperEmptyOnBoard = 0;
+    _hyperCellsFilled = 0;
+    _hyperSketches = 0;
     _hyperPulse = 0;
     _hyperLoad = null;
     _isWon = false;
@@ -3029,6 +3112,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _undoStack.clear();
     _celebration = null;
     _noteClearWave = null;
+    _noteAppearWave = null;
     _hyperPulse = 0;
     _hyperFilledOnBoard = 0;
     _colorCycleFilterValue = null;
@@ -3036,6 +3120,8 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _stopPickerHoldSweep();
     if (freshRun) {
       _hyperBoardsCleared = 0;
+      _hyperCellsFilled = 0;
+      _hyperSketches = 0;
       _hyperRemaining = const Duration(seconds: HyperchromaRules.startSeconds);
       _sessionPalette = null;
       _prepareIroMix(daily: false);
@@ -3488,6 +3574,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _isGenerating = false;
     _pendingPaletteUnlocks = [];
     _noteClearWave = null;
+    _noteAppearWave = null;
     _firstFillColor = held.firstFillColor;
     _lastFillColor = held.lastFillColor;
     _lastFillRow = held.lastFillRow;

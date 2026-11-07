@@ -25,6 +25,7 @@ import '../widgets/first_run_tutorial.dart';
 import '../widgets/game_toolbar.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/mistake_display.dart';
+import '../widgets/sketch_icon.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/sudoku_grid.dart';
 import '../widgets/timer_display.dart';
@@ -97,6 +98,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   bool _defeatOpen = false;
   String _resultTime = '';
   XpAward? _resultXp;
+  final _boardKey = GlobalKey();
+  final _overlayKey = GlobalKey();
+  int? _sketchColor;
+  Offset? _sketchGlobal;
+  int? _sketchBox;
 
   @override
   void initState() {
@@ -228,7 +234,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           _victoryOpen = true;
           _defeatOpen = false;
           _resultTime = game.isHyperchroma
-              ? game.hyperchromaProgressLabel
+              ? '${game.hyperchromaScore}'
               : game.formatElapsed();
           _resultXp = includeXp
               ? context.read<StatsProvider>().lastXpAward
@@ -261,6 +267,97 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   void _closeDefeat() {
     if (!_defeatOpen) return;
     setState(() => _defeatOpen = false);
+  }
+
+  bool _sketchHitsBoard(Offset global) => _boxAtGlobal(global) != null;
+
+  int? _boxAtGlobal(Offset global) {
+    final render = _boardKey.currentContext?.findRenderObject();
+    if (render is! RenderBox || !render.attached || !render.hasSize) {
+      return null;
+    }
+    final local = render.globalToLocal(global);
+    final size = render.size;
+    if (local.dx < 0 ||
+        local.dy < 0 ||
+        local.dx >= size.width ||
+        local.dy >= size.height) {
+      return null;
+    }
+    final game = context.read<GameProvider>();
+    final n = game.gridSize;
+    if (n <= 0 || size.width <= 0 || size.height <= 0) return null;
+    final col = (local.dx / (size.width / n)).floor().clamp(0, n - 1);
+    final row = (local.dy / (size.height / n)).floor().clamp(0, n - 1);
+    final boxCols = n ~/ game.boxW;
+    return (row ~/ game.boxH) * boxCols + (col ~/ game.boxW);
+  }
+
+  void _onSketchDragUpdate(int color, Offset global) {
+    final box = _boxAtGlobal(global);
+    if (_sketchColor == color &&
+        _sketchBox == box &&
+        _sketchGlobal == global) {
+      return;
+    }
+    setState(() {
+      _sketchColor = color;
+      _sketchGlobal = global;
+      _sketchBox = box;
+    });
+  }
+
+  void _clearSketchDrag() {
+    if (_sketchColor == null && _sketchGlobal == null && _sketchBox == null) {
+      return;
+    }
+    setState(() {
+      _sketchColor = null;
+      _sketchGlobal = null;
+      _sketchBox = null;
+    });
+  }
+
+  void _onSketchDragEnd(int color, Offset global) {
+    final box = _boxAtGlobal(global);
+    _clearSketchDrag();
+    if (box == null || !mounted) return;
+    context.read<GameProvider>().useSketch(box, color);
+  }
+
+  Widget? _sketchChip(GameProvider game) {
+    final color = _sketchColor;
+    final global = _sketchGlobal;
+    if (color == null || global == null) return null;
+    final overlay = _overlayKey.currentContext?.findRenderObject();
+    if (overlay is! RenderBox || !overlay.attached || !overlay.hasSize) {
+      return null;
+    }
+    final local = overlay.globalToLocal(global);
+    final swatches = game.displaySwatches;
+    final swatch = swatches != null && color >= 1 && color <= swatches.length
+        ? swatches[color - 1]
+        : null;
+    final ink = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35);
+    return Positioned(
+      left: local.dx - 18,
+      top: local.dy - 44,
+      child: IgnorePointer(
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: DecoratedBox(
+            decoration: swatch?.boxDecoration(
+                  border: Border.all(color: ink, width: 1),
+                ) ??
+                BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border.all(color: ink),
+                ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _openDailyLeaderboard(GameProvider game) {
@@ -425,7 +522,34 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
-                        if (!game.isHyperchroma)
+                        if (game.isHyperchroma)
+                          Semantics(
+                            label: 'Sketch ${game.hyperchromaSketches}',
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ExcludeSemantics(
+                                  child: SketchIconPulse(
+                                    count: game.hyperchromaSketches,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${game.hyperchromaSketches}x',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelLarge
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.55),
+                                      ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
                           MistakeDisplay(
                             mistakes: game.mistakes,
                             maxMistakes: game.mistakeLimit,
@@ -438,7 +562,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                 : Text(
                                     widget.isDailyRoute
                                         ? (game.dailyDateLabel ?? '')
-                                        : game.difficulty.label,
+                                        : game.isHyperchroma
+                                            ? game.hyperchromaLevelLabel
+                                            : game.difficulty.label,
                                     style: Theme.of(context)
                                         .textTheme
                                         .labelLarge
@@ -532,6 +658,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                                 game: game,
                                                 palette: palette,
                                                 displaySwatches: swatches,
+                                                boardKey: _boardKey,
+                                                sketchBox: game.isHyperchroma
+                                                    ? _sketchBox
+                                                    : null,
                                               ),
                                             ),
                                             if (game.isPaused)
@@ -620,6 +750,22 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                                         !game.bulkNoteSelect
                                                     ? game.endPickerHoldSweep
                                                     : null,
+                                                sketchHitsBoard: game
+                                                        .isHyperchroma
+                                                    ? _sketchHitsBoard
+                                                    : null,
+                                                onSketchDragUpdate: game
+                                                        .isHyperchroma
+                                                    ? _onSketchDragUpdate
+                                                    : null,
+                                                onSketchDragEnd: game
+                                                        .isHyperchroma
+                                                    ? _onSketchDragEnd
+                                                    : null,
+                                                onSketchDragCancel:
+                                                    game.isHyperchroma
+                                                    ? _clearSketchDrag
+                                                    : null,
                                               ),
                                             ),
                                           )
@@ -665,13 +811,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         // Keep this Stack even when the result is closed so the AppBar title
         // is not recreated (and retyped) on the same screen.
         return Stack(
+          key: _overlayKey,
           children: [
             page,
+            if (_sketchChip(game) case final chip?) chip,
             if (_victoryOpen || _defeatOpen)
               Positioned.fill(
                 child: ResultScrim(
                   child: _victoryOpen
                       ? VictoryPanel(
+                          title: game.isHyperchroma ? 'Score' : 'Victory',
                           time: _resultTime,
                           xp: _resultXp,
                           showNewGame: !widget.isDailyRoute,
@@ -689,6 +838,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                           onClose: _closeVictory,
                         )
                       : DefeatPanel(
+                          title: game.isHyperchroma &&
+                                  game.hyperchromaBoardsCleared == 0
+                              ? 'Game Over'
+                              : 'Defeat',
                           showNewGame: false,
                           detail: game.isHyperchroma ? "Time's up" : null,
                           onTryAgain: _onTryAgain,

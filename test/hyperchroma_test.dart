@@ -68,6 +68,7 @@ void main() {
       await game.debugBeginHyperchroma();
 
       expect(game.isHyperchroma, isTrue);
+      expect(game.hyperchromaLevelLabel, 'Level 1');
       expect(game.formatElapsed(), '01:00');
       expect(game.mistakes, 0);
       expect(game.activePalette, GamePalette.standard);
@@ -83,6 +84,7 @@ void main() {
       game.applyPickerColor(wrong);
       expect(game.mistakes, 0);
       expect(game.isLost, isFalse);
+      expect(game.hyperchromaScore, 0);
       expect(game.hyperchromaSeconds, HyperchromaRules.startSeconds - 12);
       expect(game.activePalette, GamePalette.standard);
       expect(game.hyperchromaPulse, -12);
@@ -92,6 +94,7 @@ void main() {
       expect(game.hyperchromaSeconds, HyperchromaRules.startSeconds - 12);
 
       game.applyPickerColor(game.debugSolutionAt(row, col)!);
+      expect(game.hyperchromaScore, 1);
       expect(game.activePalette, isNot(GamePalette.standard));
       expect(game.hyperchromaPulse, HyperchromaRules.gainSeconds);
       expect(
@@ -178,6 +181,8 @@ void main() {
 
       expect(game.difficulty, Difficulty.medium);
       expect(game.hyperchromaBoardsCleared, 1);
+      expect(game.hyperchromaLevelLabel, 'Level 2');
+      expect(game.hyperchromaScore, empty);
       expect(game.isGameOver, isFalse);
       expect(
         game.hyperchromaSeconds,
@@ -189,8 +194,87 @@ void main() {
       game.selectCell(row, col);
       game.applyPickerColor(game.debugSolutionAt(row, col)!);
       expect(game.hyperchromaSeconds, before + HyperchromaRules.gainSeconds);
+      expect(game.hyperchromaScore, empty + 1);
     },
   );
+
+  test('a finished box grants a sketch that carries onto the next board', () async {
+    final game = await _game();
+    addTearDown(game.dispose);
+    game.debugQueueHyperchromaBoards([
+      generatePuzzleIsolate(<Object>[Difficulty.easy.storageKey, 21]),
+      generatePuzzleIsolate(<Object>[Difficulty.medium.storageKey, 22]),
+    ]);
+    await game.debugBeginHyperchroma();
+
+    expect(game.hyperchromaSketches, 0);
+    expect(game.useSketch(0, 1), isFalse);
+    expect(game.hyperchromaSketches, 0);
+
+    final openAtStart = _openBoxes(game).length;
+    _fillBox(game, _openBoxes(game).first);
+    expect(game.hyperchromaSketches, 1);
+
+    _solve(game);
+    await game.debugSettleHyperchroma();
+    expect(game.hyperchromaLevelLabel, 'Level 2');
+    expect(game.hyperchromaSketches, openAtStart);
+  });
+
+  test('a sketch fills every candidate cell of that color in the box', () async {
+    final game = await _game();
+    addTearDown(game.dispose);
+    game.debugQueueHyperchromaBoards([
+      generatePuzzleIsolate(<Object>[Difficulty.easy.storageKey, 23]),
+    ]);
+    await game.debugBeginHyperchroma();
+
+    _fillBox(game, _openBoxes(game).first);
+    expect(game.hyperchromaSketches, 1);
+    final box = _openBoxes(game).first;
+
+    (int, List<(int, int)>)? pick;
+    for (var value = 1; value <= game.gridSize; value++) {
+      final cells = _sketchCandidates(game, box, value);
+      if (cells.isEmpty) continue;
+      if (pick == null || cells.length < pick.$2.length) {
+        pick = (value, cells);
+      }
+    }
+    expect(pick, isNotNull);
+    final value = pick!.$1;
+    final cells = pick.$2;
+    final before = game.hyperchromaSeconds;
+    final score = game.hyperchromaScore;
+    final outside = <(int, int), int>{
+      for (var r = 0; r < game.gridSize; r++)
+        for (var c = 0; c < game.gridSize; c++)
+          if (!_boxCells(game, box).contains((r, c)))
+            (r, c): game.cellAt(r, c).value,
+    };
+
+    expect(game.useSketch(box, value), isTrue);
+
+    for (final (row, col) in cells) {
+      final cell = game.cellAt(row, col);
+      expect(cell.value, 0);
+      expect(cell.hasNote(value), isTrue);
+      expect(cell.isLocked, isFalse);
+    }
+    expect(game.hyperchromaScore, score);
+    expect(game.hyperchromaSeconds, before);
+    expect(game.hyperchromaSketches, 0);
+    for (final entry in outside.entries) {
+      expect(game.cellAt(entry.key.$1, entry.key.$2).value, entry.value);
+      expect(game.cellAt(entry.key.$1, entry.key.$2).hasNote(value), isFalse);
+    }
+
+    game.undo();
+    for (final (row, col) in cells) {
+      expect(game.cellAt(row, col).hasNote(value), isFalse);
+    }
+    expect(game.hyperchromaSketches, 0);
+  });
 
   test('a cleared board turns a timeout into Hyperchroma XP', () async {
     final stats = StatsProvider(await PreferencesService.create());
@@ -218,7 +302,7 @@ void main() {
     );
     expect(stats.stats.totalXp, earned);
     expect(stats.lastXpAward?.breakdown, [(label: 'Hyperchroma', xp: earned)]);
-    expect(game.hyperchromaProgressLabel, 'Easy');
+    expect(game.hyperchromaScore, 0);
   });
 
   test('Hyperchroma parks the live puzzle and does not overwrite it', () async {
@@ -292,7 +376,7 @@ void main() {
       tester.getCenter(find.text('Chromatic')),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 2100));
+    await tester.pump(const Duration(milliseconds: 1800));
     await tester.pump();
     expect(find.text('Hyperchroma'), findsOneWidget);
     await arm.up();
@@ -312,7 +396,7 @@ void main() {
       tester.getCenter(find.text('Chromatic')),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 2100));
+    await tester.pump(const Duration(milliseconds: 1800));
     await tester.pump();
     expect(find.text('Hyperchroma'), findsOneWidget);
     await gesture.up();
@@ -350,6 +434,64 @@ List<(int, int)> _editable(GameProvider game) => [
 ];
 
 int _otherColor(int solution) => (solution % 9) + 1;
+
+List<(int, int)> _boxCells(GameProvider game, int box) {
+  final boxCols = game.gridSize ~/ game.boxW;
+  final br = box ~/ boxCols;
+  final bc = box % boxCols;
+  return [
+    for (var r = br * game.boxH; r < (br + 1) * game.boxH; r++)
+      for (var c = bc * game.boxW; c < (bc + 1) * game.boxW; c++) (r, c),
+  ];
+}
+
+bool _boxComplete(GameProvider game, int box) {
+  for (final (row, col) in _boxCells(game, box)) {
+    if (game.cellAt(row, col).value != game.debugSolutionAt(row, col)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+List<int> _openBoxes(GameProvider game) {
+  final boxes = (game.gridSize ~/ game.boxH) * (game.gridSize ~/ game.boxW);
+  return [
+    for (var box = 0; box < boxes; box++)
+      if (!_boxComplete(game, box)) box,
+  ];
+}
+
+void _fillBox(GameProvider game, int box) {
+  for (final (row, col) in _boxCells(game, box)) {
+    final cell = game.cellAt(row, col);
+    if (!cell.isEditable || cell.value != 0) continue;
+    game.selectCell(row, col);
+    game.applyPickerColor(game.debugSolutionAt(row, col)!);
+  }
+}
+
+bool _unitHas(GameProvider game, int value, bool Function(int row, int col) inUnit) {
+  for (var row = 0; row < game.gridSize; row++) {
+    for (var col = 0; col < game.gridSize; col++) {
+      if (inUnit(row, col) && game.cellAt(row, col).value == value) return true;
+    }
+  }
+  return false;
+}
+
+List<(int, int)> _sketchCandidates(GameProvider game, int box, int value) {
+  final cells = _boxCells(game, box);
+  return [
+    for (final (row, col) in cells)
+      if (game.cellAt(row, col).isEditable &&
+          game.cellAt(row, col).value == 0 &&
+          !_unitHas(game, value, (r, c) => r == row) &&
+          !_unitHas(game, value, (r, c) => c == col) &&
+          !_unitHas(game, value, (r, c) => cells.contains((r, c))))
+        (row, col),
+  ];
+}
 
 void _solve(GameProvider game) {
   for (final (row, col) in _editable(game)) {

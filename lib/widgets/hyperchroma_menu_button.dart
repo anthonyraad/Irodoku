@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'menu_action_button.dart';
 import 'menu_select_sound.dart';
 
-/// Chromatic menu button that becomes Hyperchroma after a two-second hold.
+/// Chromatic menu button that becomes Hyperchroma after a 1.7-second hold.
 ///
 /// The label eases into a shake and swaps text when the hold completes.
 /// Releasing early keeps Chromatic. Leaving the menu disposes this widget,
@@ -40,7 +40,7 @@ class HyperchromaMenuButton extends StatefulWidget {
 
 class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
     with SingleTickerProviderStateMixin {
-  static const _armDuration = Duration(seconds: 2);
+  static const _armDuration = Duration(milliseconds: 1700);
 
   /// Past this fraction of the hold, releasing is not a Chromatic tap.
   static const _tapSlop = 0.12;

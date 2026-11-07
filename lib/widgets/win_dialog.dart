@@ -26,6 +26,7 @@ Widget _resultTransition(
 }
 
 class VictoryPanel extends StatelessWidget {
+  final String title;
   final String time;
   final VoidCallback onClose;
   final VoidCallback onNewGame;
@@ -36,6 +37,7 @@ class VictoryPanel extends StatelessWidget {
 
   const VictoryPanel({
     super.key,
+    this.title = 'Victory',
     required this.time,
     required this.onClose,
     required this.onNewGame,
@@ -54,7 +56,7 @@ class VictoryPanel extends StatelessWidget {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Text(
-        'Victory',
+        title,
         textAlign: TextAlign.center,
         style: TextStyle(color: ink),
       ),
@@ -112,6 +114,7 @@ class VictoryPanel extends StatelessWidget {
 }
 
 class DefeatPanel extends StatelessWidget {
+  final String title;
   final VoidCallback onClose;
   final VoidCallback onNewGame;
   final bool showNewGame;
@@ -121,6 +124,7 @@ class DefeatPanel extends StatelessWidget {
 
   const DefeatPanel({
     super.key,
+    this.title = 'Defeat',
     required this.onClose,
     required this.onNewGame,
     this.showNewGame = true,
@@ -138,7 +142,7 @@ class DefeatPanel extends StatelessWidget {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Text(
-        'Defeat',
+        title,
         textAlign: TextAlign.center,
         style: TextStyle(color: ink),
       ),

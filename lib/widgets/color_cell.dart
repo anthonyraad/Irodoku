@@ -50,6 +50,7 @@ class ColorCell extends StatefulWidget {
   final int? col;
   final bool pocket;
   final NoteClearWave? noteClearWave;
+  final NoteAppearWave? noteAppearWave;
 
   const ColorCell({
     super.key,
@@ -80,6 +81,7 @@ class ColorCell extends StatefulWidget {
     this.col,
     this.pocket = false,
     this.noteClearWave,
+    this.noteAppearWave,
   });
 
   @override
@@ -101,6 +103,10 @@ class _ColorCellState extends State<ColorCell>
   late final Animation<double> _reveal;
   late final AnimationController _noteDismissController;
   late final Animation<double> _noteDismiss;
+  late final AnimationController _noteAppearController;
+  late final CurvedAnimation _noteAppear;
+  int? _appearingNote;
+  Timer? _noteAppearStartTimer;
   /// Notes removed from the model but still painted while shrinking out.
   final Map<int, PaletteSwatch> _departingNoteSwatches = {};
   final Map<int, Color> _departingNoteOutlines = {};
@@ -142,6 +148,19 @@ class _ColorCellState extends State<ColorCell>
       parent: _noteDismissController,
       curve: Curves.easeInCubic,
     );
+    _noteAppearController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: NoteAppearWave.bloomMs),
+    );
+    _noteAppear = CurvedAnimation(
+      parent: _noteAppearController,
+      curve: Curves.easeOutCubic,
+    );
+    _noteAppearController.addStatusListener((status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _appearingNote = null);
+      }
+    });
     _noteDismissController.addStatusListener((status) {
       if (status == AnimationStatus.completed && mounted) {
         setState(() {
@@ -194,6 +213,18 @@ class _ColorCellState extends State<ColorCell>
     if (_hasCommittedFill(widget.cell)) {
       _clearDepartingCommitted();
     }
+
+    final added = widget.cell.notes.difference(oldWidget.cell.notes);
+    final appear = widget.noteAppearWave;
+    final row = widget.row;
+    final col = widget.col;
+    if (appear != null &&
+        row != null &&
+        col != null &&
+        added.contains(appear.value)) {
+      _appearingNote = appear.value;
+      _startNoteAppear(appear.delayFor(row, col));
+    }
   }
 
   PaletteSwatch _swatchFor(int value) =>
@@ -227,6 +258,19 @@ class _ColorCellState extends State<ColorCell>
     if (wave == null || row == null || col == null) return Duration.zero;
     if (!removed.contains(wave.value)) return Duration.zero;
     return wave.delayFor(row, col);
+  }
+
+  void _startNoteAppear(Duration delay) {
+    _noteAppearStartTimer?.cancel();
+    _noteAppearController.value = 0;
+    if (delay <= Duration.zero) {
+      _noteAppearController.forward(from: 0);
+      return;
+    }
+    _noteAppearStartTimer = Timer(delay, () {
+      if (!mounted) return;
+      _noteAppearController.forward(from: 0);
+    });
   }
 
   void _startNoteDismiss(Duration delay) {
@@ -281,8 +325,11 @@ class _ColorCellState extends State<ColorCell>
   void dispose() {
     _cancelLongPressTimer();
     _noteDismissStartTimer?.cancel();
+    _noteAppearStartTimer?.cancel();
     _revealController.dispose();
     _noteDismissController.dispose();
+    _noteAppear.dispose();
+    _noteAppearController.dispose();
     super.dispose();
   }
 
@@ -322,7 +369,11 @@ class _ColorCellState extends State<ColorCell>
     Map<int, PaletteSwatch>? notes, [
     List<PaletteSwatch?>? mosaicTiles,
   ]) {
-    final listenables = <Listenable>[_revealController, _noteDismissController];
+    final listenables = <Listenable>[
+      _revealController,
+      _noteDismissController,
+      _noteAppear,
+    ];
     if (_swatchAnimates(committed, notes, mosaicTiles) ||
         _departingNoteSwatches.values.any((s) => s.animated)) {
       listenables.add(OrganicSwatchMotion.listenable);
@@ -460,11 +511,15 @@ class _ColorCellState extends State<ColorCell>
             animation: paintListenables,
             builder: (context, _) {
               final collapsing = 1.0 - _noteDismiss.value;
+              final appearing = _appearingNote;
+              final appearT = _noteAppear.value;
               final Map<int, double>? noteReveal = noteSwatches == null
                   ? null
                   : {
                       for (final value in noteSwatches.keys)
-                        value: cell.notes.contains(value) ? 1.0 : collapsing,
+                        value: cell.notes.contains(value)
+                            ? (value == appearing ? appearT : 1.0)
+                            : collapsing,
                     };
               return CustomPaint(
                 painter: _CellPainter(

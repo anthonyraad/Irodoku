@@ -64,6 +64,12 @@ class ColorPicker extends StatelessWidget {
   final ValueChanged<int>? onSwipeRight;
   final ValueChanged<int>? onColorHoldStart;
   final VoidCallback? onColorHoldEnd;
+  /// When set, a drag from a swatch onto the board is reported instead of a
+  /// note swipe. [sketchHitsBoard] is true while the pointer is over the grid.
+  final bool Function(Offset globalPosition)? sketchHitsBoard;
+  final void Function(int value, Offset globalPosition)? onSketchDragUpdate;
+  final void Function(int value, Offset globalPosition)? onSketchDragEnd;
+  final VoidCallback? onSketchDragCancel;
   final bool visible;
   final bool xlMode;
   final bool pocket;
@@ -83,6 +89,10 @@ class ColorPicker extends StatelessWidget {
     this.onSwipeRight,
     this.onColorHoldStart,
     this.onColorHoldEnd,
+    this.sketchHitsBoard,
+    this.onSketchDragUpdate,
+    this.onSketchDragEnd,
+    this.onSketchDragCancel,
     required this.visible,
     required this.palette,
     this.displaySwatches,
@@ -206,6 +216,14 @@ class ColorPicker extends StatelessWidget {
           ? null
           : () => onColorHoldStart!(value),
       onHoldEnd: onColorHoldEnd,
+      sketchHitsBoard: sketchHitsBoard,
+      onSketchDragUpdate: onSketchDragUpdate == null
+          ? null
+          : (position) => onSketchDragUpdate!(value, position),
+      onSketchDragEnd: onSketchDragEnd == null
+          ? null
+          : (position) => onSketchDragEnd!(value, position),
+      onSketchDragCancel: onSketchDragCancel,
     );
   }
 }
@@ -282,6 +300,10 @@ class _ColorSwatch extends StatefulWidget {
   final VoidCallback? onSwipeRight;
   final VoidCallback? onHoldStart;
   final VoidCallback? onHoldEnd;
+  final bool Function(Offset globalPosition)? sketchHitsBoard;
+  final ValueChanged<Offset>? onSketchDragUpdate;
+  final ValueChanged<Offset>? onSketchDragEnd;
+  final VoidCallback? onSketchDragCancel;
 
   const _ColorSwatch({
     super.key,
@@ -295,6 +317,10 @@ class _ColorSwatch extends StatefulWidget {
     this.onSwipeRight,
     this.onHoldStart,
     this.onHoldEnd,
+    this.sketchHitsBoard,
+    this.onSketchDragUpdate,
+    this.onSketchDragEnd,
+    this.onSketchDragCancel,
   });
 
   @override
@@ -309,6 +335,7 @@ class _ColorSwatchState extends State<_ColorSwatch> {
   Offset? _startGlobal;
   bool _resolved = false;
   bool _holdStarted = false;
+  bool _sketching = false;
   Timer? _holdTimer;
   Stopwatch? _pressClock;
 
@@ -355,11 +382,29 @@ class _ColorSwatchState extends State<_ColorSwatch> {
     if (_activePointer != event.pointer || _startGlobal == null) return;
 
     if (event is PointerMoveEvent) {
+      if (_sketching) {
+        widget.onSketchDragUpdate?.call(event.position);
+        return;
+      }
       if (_resolved) return;
       final delta = event.position - _startGlobal!;
       final dx = delta.dx;
       final dy = delta.dy;
+      final hitsBoard = widget.sketchHitsBoard?.call(event.position) ?? false;
+      if (hitsBoard && widget.onSketchDragUpdate != null) {
+        _sketching = true;
+        _cancelHoldTimer();
+        _finishHoldIfStarted();
+        widget.onSketchDragUpdate!(event.position);
+        return;
+      }
       if (dx.abs() < _swipeThreshold && dy.abs() < _swipeThreshold) return;
+      // A drag onto the board resolves on release, so a note swipe is not
+      // committed while the finger might still be heading for a box.
+      if (widget.onSketchDragUpdate != null) {
+        _cancelHoldTimer();
+        return;
+      }
       final horizontalEnabled =
           widget.onSwipeLeft != null || widget.onSwipeRight != null;
       // Game pickers have no horizontal handlers — keep the old vertical-only
@@ -391,16 +436,60 @@ class _ColorSwatchState extends State<_ColorSwatch> {
     }
 
     if (event is PointerUpEvent || event is PointerCancelEvent) {
+      if (_sketching) {
+        _sketching = false;
+        _cancelHoldTimer();
+        if (event is PointerUpEvent) {
+          widget.onSketchDragEnd?.call(event.position);
+        } else {
+          widget.onSketchDragCancel?.call();
+        }
+        _cleanupRoute();
+        return;
+      }
       final held = _heldLongEnough;
       _cancelHoldTimer();
       if (_holdStarted) {
         _finishHoldIfStarted();
       } else if (!held && !_resolved && event is PointerUpEvent) {
-        // No meaningful swipe — treat as a tap to commit a full color.
-        widget.onTap();
+        if (widget.onSketchDragUpdate != null && _startGlobal != null) {
+          final delta = event.position - _startGlobal!;
+          if (!_fireDeferredSwipe(delta)) widget.onTap();
+        } else {
+          widget.onTap();
+        }
       }
       _cleanupRoute();
     }
+  }
+
+  /// Note swipe for a drag that never reached the board. True when one fired.
+  bool _fireDeferredSwipe(Offset delta) {
+    final dx = delta.dx;
+    final dy = delta.dy;
+    if (dx.abs() < _swipeThreshold && dy.abs() < _swipeThreshold) return false;
+    final horizontalEnabled =
+        widget.onSwipeLeft != null || widget.onSwipeRight != null;
+    if (horizontalEnabled && dx.abs() > dy.abs()) {
+      if (dx <= -_swipeThreshold && widget.onSwipeLeft != null) {
+        widget.onSwipeLeft!();
+        return true;
+      }
+      if (dx >= _swipeThreshold && widget.onSwipeRight != null) {
+        widget.onSwipeRight!();
+        return true;
+      }
+      return false;
+    }
+    if (dy >= _swipeThreshold) {
+      widget.onSwipeDown();
+      return true;
+    }
+    if (dy <= -_swipeThreshold) {
+      widget.onSwipeUp();
+      return true;
+    }
+    return false;
   }
 
   void _cleanupRoute() {
@@ -412,6 +501,7 @@ class _ColorSwatchState extends State<_ColorSwatch> {
     _activePointer = null;
     _startGlobal = null;
     _resolved = false;
+    _sketching = false;
   }
 
   @override
@@ -421,6 +511,10 @@ class _ColorSwatchState extends State<_ColorSwatch> {
     if (_holdStarted) {
       _holdStarted = false;
       widget.onHoldEnd?.call();
+    }
+    if (_sketching) {
+      _sketching = false;
+      widget.onSketchDragCancel?.call();
     }
     _cleanupRoute();
     super.dispose();
