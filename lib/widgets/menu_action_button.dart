@@ -19,14 +19,22 @@ class MenuActionButton extends StatelessWidget {
   final bool muted;
   final bool locked;
   final VoidCallback onPressed;
+
   /// 0–1 progress; when set, the label shakes horizontally as it runs.
   final Animation<double>? labelShake;
+
+  /// 0–1 hold; the label starts still and shakes harder as this runs.
+  final Animation<double>? labelRumble;
+
   /// Horizontal label offset in logical pixels (Pocket swipe teaching nudge).
   final Animation<double>? labelSlide;
+
   /// 0–1 progress; when set, the label sweeps the selected Config palette.
   final Animation<double>? labelSweep;
+
   /// 0–1 progress; when set, the badge pill sweeps the selected Config palette.
   final Animation<double>? badgeSweep;
+
   /// Palette swatch laid over the button fill using [PlayerXp.menuPaletteWashOpacity].
   final Color? fillTint;
 
@@ -39,6 +47,7 @@ class MenuActionButton extends StatelessWidget {
     this.muted = false,
     this.locked = false,
     this.labelShake,
+    this.labelRumble,
     this.labelSlide,
     this.labelSweep,
     this.badgeSweep,
@@ -53,8 +62,9 @@ class MenuActionButton extends StatelessWidget {
     final visuallyMuted = muted || locked || !interactive;
     final ink = scheme.onSurface.withValues(alpha: visuallyMuted ? 0.55 : 1);
     final border = visuallyMuted ? scheme.outlineVariant : scheme.onSurface;
-    final baseFill =
-        visuallyMuted ? scheme.surfaceContainerHighest : scheme.surface;
+    final baseFill = visuallyMuted
+        ? scheme.surfaceContainerHighest
+        : scheme.surface;
     final tint = fillTint;
     var fill = baseFill;
     if (tint != null) {
@@ -67,10 +77,10 @@ class MenuActionButton extends StatelessWidget {
     }
 
     final labelStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: ink,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.3,
-        );
+      color: ink,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.3,
+    );
     final lineHeight =
         (labelStyle?.fontSize ?? 16) * (labelStyle?.height ?? 1.3);
 
@@ -107,8 +117,10 @@ class MenuActionButton extends StatelessWidget {
                       }
                     : null,
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -137,10 +149,7 @@ class MenuActionButton extends StatelessWidget {
               top: -8,
               right: -6,
               child: IgnorePointer(
-                child: _MenuActionBadge(
-                  label: badge!,
-                  sweep: badgeSweep,
-                ),
+                child: _MenuActionBadge(label: badge!, sweep: badgeSweep),
               ),
             ),
         ],
@@ -179,17 +188,24 @@ class MenuActionButton extends StatelessWidget {
   Widget _shakingLabel(Widget child) {
     final shake = labelShake;
     final slide = labelSlide;
-    if (shake == null && slide == null) return child;
+    final rumble = labelRumble;
+    if (shake == null && slide == null && rumble == null) return child;
     return AnimatedBuilder(
       animation: Listenable.merge([
         if (shake != null) shake,
         if (slide != null) slide,
+        if (rumble != null) rumble,
       ]),
       builder: (context, child) {
         var dx = 0.0;
         if (shake != null) {
           final t = shake.value;
           dx += math.sin(t * math.pi * 5) * 4 * (1 - t);
+        }
+        if (rumble != null) {
+          final g = rumble.value.clamp(0.0, 1.0);
+          final amp = Curves.easeInCubic.transform(g) * 7;
+          dx += math.sin(g * math.pi * (6 + 22 * g)) * amp;
         }
         if (slide != null) dx += slide.value;
         return Transform.translate(offset: Offset(dx, 0), child: child);
@@ -262,11 +278,11 @@ class _MenuActionBadge extends StatelessWidget {
         maxLines: 1,
         softWrap: false,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.surface,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-              height: 1.1,
-            ),
+          color: scheme.surface,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+          height: 1.1,
+        ),
       ),
     );
     final progress = sweep;

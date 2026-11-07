@@ -68,6 +68,15 @@ TextStyle? _centeredAppBarTitleStyle(
   return fontSize == baseSize ? base : base.copyWith(fontSize: fontSize);
 }
 
+Color? _hyperchromaClockColor(BuildContext context, GameProvider game) {
+  if (!game.isHyperchroma) return null;
+  if (game.hyperchromaPulse > 0) return Colors.lightBlueAccent;
+  if (game.hyperchromaPulse < 0 || game.hyperchromaSeconds <= 10) {
+    return Theme.of(context).colorScheme.error;
+  }
+  return null;
+}
+
 class GameScreen extends StatefulWidget {
   /// When true, this route is the nested Daily Irodoku under Main Menu.
   final bool isDailyRoute;
@@ -116,8 +125,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
+      game.holdHyperchromaForBackground(true);
       game.persistLiveGameForBackground();
     } else if (state == AppLifecycleState.resumed) {
+      game.holdHyperchromaForBackground(false);
       game.onAppForeground();
     }
   }
@@ -142,7 +153,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _offerResultXp = true;
     _victoryOpen = false;
     _defeatOpen = false;
-    await game.startNewGame();
+    if (game.isHyperchroma) {
+      await game.restartHyperchroma();
+    } else {
+      await game.startNewGame();
+    }
   }
 
   Future<void> _onTryAgain() async {
@@ -212,7 +227,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         setState(() {
           _victoryOpen = true;
           _defeatOpen = false;
-          _resultTime = game.formatElapsed();
+          _resultTime = game.isHyperchroma
+              ? game.hyperchromaProgressLabel
+              : game.formatElapsed();
           _resultXp = includeXp
               ? context.read<StatsProvider>().lastXpAward
               : null;
@@ -308,6 +325,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
         final titleText = widget.isDailyRoute
             ? (game.isPocket ? '[Daily Iro]' : 'Daily Iro')
+            : game.isHyperchroma
+            ? 'Hyperchroma'
             : game.isPocket && settings.chromatic
             ? '[Chromatic]'
             : game.isPocket
@@ -372,12 +391,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                       filterQuality: FilterQuality.none,
                     ),
                     onPressed: withMenuSelect(context, () async {
+                      final live = context.read<GameProvider>();
+                      live.holdHyperchromaForMenu(true);
                       await Navigator.of(context).push(
                         IrodokuPageRoute(
                           builder: (_) => const SettingsScreen(),
                         ),
                       );
                       if (!mounted) return;
+                      live.holdHyperchromaForMenu(false);
                       // Returning to a finished board should show Victory/Defeat again.
                       _resultDialogShown = false;
                       _victoryOpen = false;
@@ -397,13 +419,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         Expanded(
                           child: Align(
                             alignment: Alignment.centerLeft,
-                            child: TimerDisplay(time: game.formatElapsed()),
+                            child: TimerDisplay(
+                              time: game.formatElapsed(),
+                              color: _hyperchromaClockColor(context, game),
+                            ),
                           ),
                         ),
-                        MistakeDisplay(
-                          mistakes: game.mistakes,
-                          maxMistakes: game.mistakeLimit,
-                        ),
+                        if (!game.isHyperchroma)
+                          MistakeDisplay(
+                            mistakes: game.mistakes,
+                            maxMistakes: game.mistakeLimit,
+                          ),
                         Expanded(
                           child: Align(
                             alignment: Alignment.centerRight,
@@ -479,7 +505,10 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                             palette: game.activePalette,
                             swatches: game.displaySwatches,
                             swatchKey: game.iroMixKey,
-                            animate: settings.chromatic || game.isDaily,
+                            animate:
+                                settings.chromatic ||
+                                game.isDaily ||
+                                game.isHyperchroma,
                             builder: (context, palette, swatches) {
                               return Align(
                                 alignment: Alignment.topCenter,
@@ -661,6 +690,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                         )
                       : DefeatPanel(
                           showNewGame: false,
+                          detail: game.isHyperchroma ? "Time's up" : null,
                           onTryAgain: _onTryAgain,
                           onNewGame: _onNewGame,
                           maxMistakes: game.mistakeLimit,

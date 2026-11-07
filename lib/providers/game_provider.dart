@@ -11,6 +11,7 @@ import '../models/cell.dart';
 import '../models/daily_irodoku.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
+import '../models/hyperchroma.dart';
 import '../core/mosaic_shimmer.dart';
 import '../models/iro_mix.dart';
 import '../models/iroen_mosaic.dart';
@@ -134,6 +135,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   String? _dailyDayKey;
   bool _isPocket = false;
 
+  /// Arcade Chromatic run. Session-only: not parked, not restored on launch.
+  bool _hyperchroma = false;
+  Duration _hyperRemaining = Duration.zero;
+  int _hyperBoardsCleared = 0;
+  int _hyperFilledOnBoard = 0;
+  int _hyperEmptyOnBoard = 0;
+
+  /// Signed seconds of the latest fill, cleared on the next clock tick.
+  int _hyperPulse = 0;
+  bool _hyperHeldByMenu = false;
+  bool _hyperHeldByBackground = false;
+  Future<void>? _hyperLoad;
+  List<List<List<int>>>? _debugHyperchromaBoards;
+
   /// Daily-only display palette — never written to [SettingsProvider].
   GamePalette? _sessionPalette;
 
@@ -233,7 +248,13 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   NoteClearWave? get noteClearWave => _noteClearWave;
   bool get isDaily => _isDaily;
   bool get isPocket => _isPocket;
+  bool get isHyperchroma => _hyperchroma;
   bool get isPocketDaily => _isDaily && _isPocket;
+  int get hyperchromaSeconds => _hyperRemaining.inSeconds;
+  int get hyperchromaPulse => _hyperPulse;
+  int get hyperchromaBoardsCleared => _hyperBoardsCleared;
+  String get hyperchromaProgressLabel =>
+      HyperchromaRules.victoryLabel(_hyperBoardsCleared);
   int get mistakeLimit => _isPocket ? pocketMaxMistakes : maxMistakes;
   int get gridSize => _isPocket ? SudokuBoard.pocketSize : SudokuBoard.size;
   int get boxW => _isPocket ? SudokuBoard.pocketBoxWidth : SudokuBoard.boxSize;
@@ -895,6 +916,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// Restart the current Classic / Chromatic / Pocket board after a defeat.
   Future<void> retryFromDefeat() async {
     if (_isGenerating || !isLost) return;
+    if (_hyperchroma) {
+      await restartHyperchroma();
+      return;
+    }
     if (_isDaily) {
       await retryDailyGame();
       return;
@@ -1067,6 +1092,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     bool preserveHeldDaily = false,
     bool? pocket,
   }) async {
+    if (_hyperchroma) _abandonHyperchroma();
     final startingDaily = dailyDayKey != null;
     final startingPocket = pocket ?? (!startingDaily && _isPocket);
     _dailyReviewMode = false;
@@ -1259,7 +1285,8 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _selected = null;
     _exitBulkNoteSelect();
     _timer?.cancel();
-    await _savePausedGame();
+    _timer = null;
+    if (!_hyperchroma) await _savePausedGame();
     notifyListeners();
     _playSound(_sounds.playIgMenu);
   }
@@ -1298,6 +1325,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// and Daily / Pocket Daily via their Daily entry, after a cold restart.
   /// Iroen and Graffiti keep their own state and are not touched here.
   Future<void> persistLiveGameForBackground() async {
+    if (_hyperchroma) return;
     if (!_hasActiveGame || isGameOver || _isGenerating) return;
     // A paused Classic board is already in paused_game (restored on launch);
     // a second parked copy would duplicate it.
@@ -1695,8 +1723,19 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _clearPeerNotes(row, col, value);
 
     if (isMistake) {
-      _mistakes++;
       _consecutiveDistinctFillColors.clear();
+      if (_hyperchroma) {
+        _applyHyperchromaDelta(-HyperchromaRules.mistakePenaltySeconds);
+        _refreshConflicts();
+        if (_hyperRemaining <= Duration.zero) {
+          _endHyperchromaRun();
+        } else {
+          _playSound(_sounds.playMistake);
+          notifyListeners();
+        }
+        return;
+      }
+      _mistakes++;
       if (_mistakes >= mistakeLimit) {
         _playSound(_sounds.playGameLoss);
         _handleLoss();
@@ -1706,12 +1745,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _playSound(_sounds.playMistake);
     } else {
       _recordSuccessfulFill(row, col, value);
+      if (_hyperchroma) {
+        _applyHyperchromaDelta(HyperchromaRules.gainSeconds);
+        _hyperFilledOnBoard++;
+        _hopChromaticPalette();
+      }
     }
 
     _refreshConflicts();
     final unitCompleted = _syncCompletedUnits(celebrate: true);
     if (!isMistake) {
-      if (_toBoard().isValidSolution()) {
+      final solved = _toBoard().isValidSolution();
+      if (solved && _hyperchroma) {
+        _playSound(_sounds.playComplete);
+      } else if (solved) {
         _playSound(_sounds.playGameWin);
       } else {
         _playSound(
@@ -2059,12 +2106,19 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Chromatic mode: after completing any unit, hop to a different menu palette.
   ///
-  /// Includes 6×6 [Chromatic] Pocket. Hops use [_sessionPalette] only — the
-  /// user's saved Config palette is left unchanged. Iro stays Iro and remixes.
-  /// Eligible Pocket also re-rolls the 1–6 vs 4–9 swatch window.
+  /// Hyperchroma hops on every correct cell instead, so a finished unit must
+  /// not hop a second time. Includes 6×6 [Chromatic] Pocket. Hops use
+  /// [_sessionPalette] only — the user's saved Config palette is left
+  /// unchanged. Iro stays Iro and remixes. Eligible Pocket also re-rolls the
+  /// 1–6 vs 4–9 swatch window.
   void _maybeChromaticShift() {
-    if (_isDaily) return;
+    if (_isDaily || _hyperchroma) return;
     if (!_settings.chromatic) return;
+    _hopChromaticPalette();
+  }
+
+  /// Next menu palette, or a fresh Iro mix when Config is Iro.
+  void _hopChromaticPalette() {
     if (_settings.palette == GamePalette.iro) {
       _sessionPalette = GamePalette.iro;
       _settings.rerollIroMix();
@@ -2135,6 +2189,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   }
 
   void _trackNewlyCompletedUnits(Set<String> newly) {
+    if (_hyperchroma) return;
     final stamp = DateTime.now();
     var newRows = 0;
     var newCols = 0;
@@ -2190,6 +2245,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _firstFillColor ??= value;
     // Winning fill: evaluateWin records r5c5 from firstFillColor + delay SFX.
     if (isFirstFill &&
+        !_hyperchroma &&
         !_isPocket &&
         !_toBoard().isValidSolution() &&
         activePalette == GamePalette.pkmn &&
@@ -2215,7 +2271,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     }
     if (_consecutiveDistinctFillColors.length >= 9) {
       _filledNineDistinctColorsConsecutively = true;
-      if (!_isPocket && !_toBoard().isValidSolution()) {
+      if (!_hyperchroma && !_isPocket && !_toBoard().isValidSolution()) {
         unawaited(
           _achievements.recordSessionFlags(
             completedRowColBoxSimultaneously: _completedRowColBoxSimultaneously,
@@ -2366,6 +2422,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_isLost) return;
     final board = _toBoard();
     if (!board.isValidSolution()) return;
+    if (_hyperchroma) {
+      _advanceHyperchromaBoard();
+      return;
+    }
 
     _isWon = true;
     _hasActiveGame = false;
@@ -2617,6 +2677,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Park Classic, Chromatic, Pocket, or Daily so another mode can replace live.
   Future<void> _parkHomeLive() async {
+    if (_hyperchroma) {
+      _abandonHyperchroma();
+      return;
+    }
     if (_isDaily) {
       await _parkLiveDailyToHold();
     } else if (_isPocket) {
@@ -2637,6 +2701,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Park the live non-daily board into Classic or Chromatic hold.
   Future<void> _parkRegularFromLive() async {
+    if (_hyperchroma) {
+      _abandonHyperchroma();
+      return;
+    }
     if (_isDaily || _isPocket) return;
     if (!_hasActiveGame && !isGameOver && _solution == null) return;
     final held = _captureHeld();
@@ -2775,9 +2843,265 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     await _parkLiveDailyToHold();
   }
 
+  /// Hold the countdown while Main Menu covers the board, or the app backgrounds.
+  void holdHyperchromaForMenu(bool held) {
+    if (_hyperHeldByMenu == held) return;
+    _hyperHeldByMenu = held;
+    _syncHyperClock();
+  }
+
+  void holdHyperchromaForBackground(bool held) {
+    if (_hyperHeldByBackground == held) return;
+    _hyperHeldByBackground = held;
+    _syncHyperClock();
+  }
+
+  /// Fresh Hyperchroma run from Easy. Replaces a finished run in place.
+  Future<void> restartHyperchroma() => _loadHyperchromaBoard(freshRun: true);
+
+  /// Main Menu → Hyperchroma. Parks the live puzzle the way Chromatic does.
+  /// Returns false while Chromatic is locked or a board is generating.
+  Future<bool> openHyperchromaGame() async {
+    if (_isGenerating) return false;
+    if (!_stats.areAllMenuPalettesUnlocked) return false;
+    if (_hyperchroma && _hasActiveGame && !isGameOver) {
+      notifyListeners();
+      return true;
+    }
+    if (!_hyperchroma) {
+      if (_isDaily) {
+        await _parkDailyIfLive();
+      } else if (_isPocket) {
+        await _parkLivePocket();
+      } else {
+        await _parkRegularFromLive();
+      }
+    }
+    await _loadHyperchromaBoard(freshRun: true);
+    notifyListeners();
+    return true;
+  }
+
+  @visibleForTesting
+  void debugQueueHyperchromaBoards(List<List<List<int>>> boards) {
+    _debugHyperchromaBoards = [for (final board in boards) board];
+  }
+
+  @visibleForTesting
+  Future<void> debugBeginHyperchroma() => _loadHyperchromaBoard(freshRun: true);
+
+  @visibleForTesting
+  Future<void> debugSettleHyperchroma() async {
+    final pending = _hyperLoad;
+    if (pending != null) await pending;
+  }
+
+  @visibleForTesting
+  void debugTickClock() => _onClockTick();
+
+  @visibleForTesting
+  void debugSetHyperchromaProgress({
+    required int boardsCleared,
+    int filledOnCurrent = 0,
+    int emptyOnCurrent = 1,
+  }) {
+    _hyperchroma = true;
+    _hyperBoardsCleared = boardsCleared;
+    _hyperFilledOnBoard = filledOnCurrent;
+    _hyperEmptyOnBoard = emptyOnCurrent;
+  }
+
+  void _abandonHyperchroma() {
+    if (!_hyperchroma) return;
+    _timer?.cancel();
+    _timer = null;
+    _generationToken++;
+    _hyperchroma = false;
+    _hyperRemaining = Duration.zero;
+    _hyperBoardsCleared = 0;
+    _hyperFilledOnBoard = 0;
+    _hyperEmptyOnBoard = 0;
+    _hyperPulse = 0;
+    _hyperLoad = null;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = false;
+    _isGenerating = false;
+    _hasActiveGame = false;
+    _solution = null;
+  }
+
+  void _syncHyperClock() {
+    if (!_hyperchroma || isGameOver || !_hasActiveGame || _isGenerating) {
+      return;
+    }
+    final hold = _isPaused || _hyperHeldByMenu || _hyperHeldByBackground;
+    if (hold) {
+      _timer?.cancel();
+      _timer = null;
+    } else {
+      _startTimer();
+    }
+  }
+
+  void _applyHyperchromaDelta(int seconds) {
+    _hyperPulse = seconds;
+    _hyperRemaining += Duration(seconds: seconds);
+    if (_hyperRemaining < Duration.zero) {
+      _hyperRemaining = Duration.zero;
+    }
+  }
+
+  void _endHyperchromaRun() {
+    _timer?.cancel();
+    _timer = null;
+    _isPaused = false;
+    _selected = null;
+    _exitBulkNoteSelect();
+    _hasActiveGame = false;
+    _hyperPulse = 0;
+    if (_hyperRemaining < Duration.zero) {
+      _hyperRemaining = Duration.zero;
+    }
+    if (_hyperBoardsCleared <= 0) {
+      _isLost = true;
+      _isWon = false;
+      _playSound(_sounds.playGameLoss);
+      notifyListeners();
+      return;
+    }
+    final earned = HyperchromaRules.xp(
+      boardsCleared: _hyperBoardsCleared,
+      filledOnCurrent: _hyperFilledOnBoard,
+      emptyOnCurrent: _hyperEmptyOnBoard,
+    );
+    if (earned > 0) {
+      _stats.awardHyperchroma(earned);
+      unawaited(_stats.persist());
+    }
+    _isWon = true;
+    _isLost = false;
+    _winRecorded = true;
+    _playSound(_sounds.playGameWin);
+    notifyListeners();
+  }
+
+  void _advanceHyperchromaBoard() {
+    _hyperBoardsCleared++;
+    _hyperFilledOnBoard = 0;
+    _hyperLoad = _loadHyperchromaBoard(freshRun: false);
+  }
+
+  Future<List<List<int>>> _generateHyperchromaBoards(Difficulty difficulty) {
+    final queued = _debugHyperchromaBoards;
+    if (queued != null && queued.isNotEmpty) {
+      return Future<List<List<int>>>.value(queued.removeAt(0));
+    }
+    if (difficulty == Difficulty.master) {
+      return _obtainMasterBoards(seed: null);
+    }
+    return compute(generatePuzzleIsolate, <Object>[difficulty.storageKey, -1]);
+  }
+
+  Future<void> _loadHyperchromaBoard({required bool freshRun}) async {
+    _timer?.cancel();
+    _timer = null;
+    final token = ++_generationToken;
+    _hyperchroma = true;
+    _isGenerating = true;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = false;
+    _hasActiveGame = false;
+    _winRecorded = false;
+    _lossRecorded = false;
+    _retriedAfterLoss = false;
+    _hasInteracted = false;
+    _isDaily = false;
+    _isPocket = false;
+    _dailyDayKey = null;
+    _dailyReviewMode = false;
+    _mistakes = 0;
+    _pendingPaletteUnlocks = [];
+    _selected = null;
+    _exitBulkNoteSelect();
+    _noteMode = false;
+    _undoStack.clear();
+    _celebration = null;
+    _noteClearWave = null;
+    _hyperPulse = 0;
+    _hyperFilledOnBoard = 0;
+    _colorCycleFilterValue = null;
+    _colorCycleMosaic = null;
+    _stopPickerHoldSweep();
+    if (freshRun) {
+      _hyperBoardsCleared = 0;
+      _hyperRemaining = const Duration(seconds: HyperchromaRules.startSeconds);
+      _sessionPalette = null;
+      _prepareIroMix(daily: false);
+    }
+    _gameDifficulty = HyperchromaRules.difficultyForBoard(_hyperBoardsCleared);
+    _resetAchievementSession();
+    final n = SudokuBoard.size;
+    _cells = List.generate(n, (_) => List.generate(n, (_) => const Cell()));
+    _solution = null;
+    _completedUnits = {};
+    notifyListeners();
+
+    final debugQueue = _debugHyperchromaBoards;
+    final usedDebug = debugQueue != null && debugQueue.isNotEmpty;
+    final boards = await _generateHyperchromaBoards(_gameDifficulty);
+    if (token != _generationToken) {
+      if (!usedDebug && _gameDifficulty == Difficulty.master) {
+        _cachedMasterBoards ??= boards;
+      }
+      return;
+    }
+
+    final puzzle = SudokuBoard.fromFlat(boards[0]);
+    _solution = SudokuBoard.fromFlat(boards[1]);
+    _cells = List.generate(n, (r) {
+      return List.generate(n, (c) {
+        final value = puzzle.get(r, c);
+        return Cell(value: value, isGiven: value != 0);
+      });
+    });
+    _hyperEmptyOnBoard = _countPlayerCells();
+    _isGenerating = false;
+    _hasActiveGame = true;
+    _completedUnits = _successfullyCompletedUnits();
+    _syncSessionBSide();
+    _startTimer();
+    notifyListeners();
+  }
+
+  int _countPlayerCells() {
+    var count = 0;
+    for (final row in _cells) {
+      for (final cell in row) {
+        if (!cell.isGiven) count++;
+      }
+    }
+    return count;
+  }
+
   /// Switch to Classic mode for Main Menu → resume or start.
   Future<void> openClassicGame() async {
     if (_isGenerating) return;
+
+    if (_hyperchroma) {
+      _abandonHyperchroma();
+      await _settings.setChromatic(false);
+      if (_heldRegular != null) {
+        _applyHeld(_heldRegular!);
+        _heldRegular = null;
+        await _prefs.clearParkedRegularGame();
+      } else {
+        await startNewGame(preserveHeldDaily: true, pocket: false);
+      }
+      notifyListeners();
+      return;
+    }
 
     if (_isDaily) {
       await _parkDailyIfLive();
@@ -2808,6 +3132,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_isGenerating) return false;
     if (!_stats.areAllMenuPalettesUnlocked) return false;
 
+    if (_hyperchroma) {
+      _abandonHyperchroma();
+      await _settings.setChromatic(true);
+      if (_heldChromatic != null) {
+        _applyHeld(_heldChromatic!);
+        _heldChromatic = null;
+        await _prefs.clearParkedChromaticGame();
+      } else {
+        await startNewGame(preserveHeldDaily: true, pocket: false);
+      }
+      notifyListeners();
+      return true;
+    }
+
     if (_isDaily) {
       await _parkDailyIfLive();
     } else if (_isPocket) {
@@ -2835,6 +3173,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// Switch to Pocket mode for Main Menu → resume or start.
   Future<void> openPocketGame() async {
     if (_isGenerating) return;
+
+    if (_hyperchroma) {
+      _abandonHyperchroma();
+      await _settings.setChromatic(false);
+      if (_heldPocket != null) {
+        _applyHeld(_heldPocket!);
+        _heldPocket = null;
+        await _prefs.clearParkedPocketGame();
+      } else {
+        await startNewGame(pocket: true, preserveHeldDaily: true);
+      }
+      notifyListeners();
+      return;
+    }
 
     if (_isPocket && !_isDaily && !_settings.chromatic) {
       notifyListeners();
@@ -2865,6 +3217,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   Future<bool> openPocketChromaticGame() async {
     if (_isGenerating) return false;
     if (!_stats.areAllMenuPalettesUnlocked) return false;
+
+    if (_hyperchroma) {
+      _abandonHyperchroma();
+      await _settings.setChromatic(true);
+      if (_heldPocketChromatic != null) {
+        _applyHeld(_heldPocketChromatic!);
+        _heldPocketChromatic = null;
+        await _prefs.clearParkedPocketChromaticGame();
+      } else {
+        await startNewGame(pocket: true, preserveHeldDaily: true);
+      }
+      notifyListeners();
+      return true;
+    }
 
     if (_isPocket && !_isDaily && _settings.chromatic) {
       notifyListeners();
@@ -3164,16 +3530,35 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   void _startTimer() {
     // Discord has no first-run overlay to dismiss, so never hold the clock.
     if (_settings.showFirstRunTutorial && !DiscordMode.enabled) return;
+    if (_hyperchroma &&
+        (_hyperHeldByMenu || _hyperHeldByBackground || _isPaused)) {
+      return;
+    }
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (isGameOver || _isGenerating || _isPaused) return;
-      _elapsed += const Duration(seconds: 1);
-      notifyListeners();
-    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _onClockTick());
+  }
+
+  void _onClockTick() {
+    if (isGameOver || _isGenerating || _isPaused) return;
+    if (_hyperchroma) {
+      if (_hyperHeldByMenu || _hyperHeldByBackground) return;
+      _hyperPulse = 0;
+      final next = _hyperRemaining - const Duration(seconds: 1);
+      if (next <= Duration.zero) {
+        _hyperRemaining = Duration.zero;
+        _endHyperchromaRun();
+      } else {
+        _hyperRemaining = next;
+        notifyListeners();
+      }
+      return;
+    }
+    _elapsed += const Duration(seconds: 1);
+    notifyListeners();
   }
 
   String formatElapsed() {
-    final totalSeconds = _elapsed.inSeconds;
+    final totalSeconds = (_hyperchroma ? _hyperRemaining : _elapsed).inSeconds;
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
     final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';

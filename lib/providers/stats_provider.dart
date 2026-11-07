@@ -198,6 +198,18 @@ class StatsProvider extends ChangeNotifier {
     return award;
   }
 
+  /// Hyperchroma end-of-run bonus. Does not count as a difficulty win.
+  void awardHyperchroma(int earned) {
+    if (earned <= 0) return;
+    final award = PlayerXp.hyperchroma(
+      earned: earned,
+      previousTotal: _stats.totalXp,
+    );
+    _stats = _stats.copyWith(totalXp: award.newTotal);
+    _lastXpAward = award;
+    notifyListeners();
+  }
+
   void _awardGraffitiLossXp({required bool pocket}) {
     final award = PlayerXp.graffitiGoodEffort(
       previousTotal: _stats.totalXp,
@@ -536,8 +548,8 @@ class StatsProvider extends ChangeNotifier {
   void resetStreakSync({required GamePalette palette}) {
     final currentA = Map<GamePalette, int>.from(_stats.currentStreakByPalette);
     final currentB = Map<GamePalette, int>.from(_stats.currentStreakByPaletteB);
-    final hadPaletteStreak = (currentA[palette] ?? 0) > 0 ||
-        (currentB[palette] ?? 0) > 0;
+    final hadPaletteStreak =
+        (currentA[palette] ?? 0) > 0 || (currentB[palette] ?? 0) > 0;
     currentA[palette] = 0;
     currentB[palette] = 0;
     if (_stats.currentStreak == 0 && !hadPaletteStreak) return;

@@ -16,6 +16,7 @@ import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/discord_link_service.dart';
+import '../widgets/hyperchroma_menu_button.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/palette_sweep_mask.dart';
@@ -86,7 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       final unlocked = _pocketMenu
           ? stats.isPocketDailyUnlocked
           : (stats.isDailyChallengeUnlocked ||
-              GameProvider.debugDailyStreakOverride != null);
+                GameProvider.debugDailyStreakOverride != null);
       final streak = _pocketMenu
           ? game.pocketDailyStreakDisplay
           : game.dailyStreakDisplay;
@@ -179,201 +180,210 @@ class _SettingsScreenState extends State<SettingsScreen>
           if (context.mounted) Navigator.of(context).pop();
         },
         child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const BackButtonIcon(),
-            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-            onPressed: () {
-              playIgMenuSound(context);
-              Navigator.maybePop(context);
-            },
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const BackButtonIcon(),
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+              onPressed: () {
+                playIgMenuSound(context);
+                Navigator.maybePop(context);
+              },
+            ),
+            title: Consumer<SettingsProvider>(
+              builder: (context, settings, _) {
+                final iconTint = _menuPaletteColor(settings, 1);
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _MainMenuTitleIcon(
+                      visible: _titleIconsVisible,
+                      tint: iconTint,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Main Menu',
+                      style: Theme.of(context).appBarTheme.titleTextStyle,
+                    ),
+                    const SizedBox(width: 8),
+                    _MainMenuTitleIcon(
+                      visible: _titleIconsVisible,
+                      tint: iconTint,
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-          title: Consumer<SettingsProvider>(
-            builder: (context, settings, _) {
-              final iconTint = _menuPaletteColor(settings, 1);
-              return Row(
-                mainAxisSize: MainAxisSize.min,
+          body: Consumer3<SettingsProvider, StatsProvider, GameProvider>(
+            builder: (context, settings, statsProvider, game, _) {
+              final stats = statsProvider.stats;
+              final chromaticUnlocked =
+                  statsProvider.areAllMenuPalettesUnlocked;
+              final dailyUnlocked =
+                  statsProvider.isDailyChallengeUnlocked ||
+                  GameProvider.debugDailyStreakOverride != null;
+              final graffitiUnlocked = statsProvider.isGraffitiUnlocked;
+              final pocketGraffitiUnlocked =
+                  statsProvider.isPocketGraffitiUnlocked;
+              final pocketDailyUnlocked = statsProvider.isPocketDailyUnlocked;
+              final dailyFinished = game.isDailyFinishedToday;
+              final pocketDailyFinished = game.isPocketDailyFinishedToday;
+              final dailyStreak = game.dailyStreakDisplay;
+              final pocketDailyStreak = game.pocketDailyStreakDisplay;
+              return ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 children: [
-                  _MainMenuTitleIcon(
-                    visible: _titleIconsVisible,
-                    tint: iconTint,
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: _PlayModeGrid(
+                      busy: game.isGenerating,
+                      dailyUnlocked: dailyUnlocked,
+                      dailyFinished: dailyFinished,
+                      dailyStreak: dailyStreak,
+                      pocketDailyUnlocked: pocketDailyUnlocked,
+                      pocketDailyFinished: pocketDailyFinished,
+                      pocketDailyStreak: pocketDailyStreak,
+                      chromaticUnlocked: chromaticUnlocked,
+                      graffitiUnlocked: graffitiUnlocked,
+                      pocketGraffitiUnlocked: pocketGraffitiUnlocked,
+                      iroenUnlocked: statsProvider.isIroenUnlocked,
+                      irodokuTint: _menuPaletteColor(settings, 2),
+                      graffitiTint: _menuPaletteColor(settings, 3),
+                      dailyTint: _menuPaletteColor(settings, 4),
+                      chromaticTint: _menuPaletteColor(settings, 5),
+                      iroenTint: _menuPaletteColor(settings, 6),
+                      onClassic: () => _onClassicPressed(context, game),
+                      onDaily: () => _onDailyPressed(
+                        context,
+                        game,
+                        unlocked: dailyUnlocked,
+                        stats: stats,
+                      ),
+                      onPocketDaily: () => _onDailyPressed(
+                        context,
+                        game,
+                        unlocked: pocketDailyUnlocked,
+                        stats: stats,
+                        pocket: true,
+                      ),
+                      onGraffiti: () => _onGraffitiPressed(context),
+                      onPocketGraffiti: () => _onPocketGraffitiPressed(context),
+                      onChromatic: () => _onChromaticPressed(
+                        context,
+                        game,
+                        unlocked: chromaticUnlocked,
+                      ),
+                      onHyperchroma: () => _onHyperchromaPressed(
+                        context,
+                        game,
+                        unlocked: chromaticUnlocked,
+                      ),
+                      onPocketChromatic: () => _onPocketChromaticPressed(
+                        context,
+                        game,
+                        unlocked: chromaticUnlocked,
+                      ),
+                      onIroen: () => _onIroenPressed(
+                        context,
+                        stats,
+                        unlocked: statsProvider.isIroenUnlocked,
+                      ),
+                      onPocket: () => _onPocketPressed(context, game),
+                      onPocketMenuChanged: (pocket) {
+                        if (_pocketMenu == pocket) return;
+                        setState(() => _pocketMenu = pocket);
+                        _statsShake.forward(from: 0);
+                        _streakSweep.value = 0;
+                        final unlocked = pocket
+                            ? statsProvider.isPocketDailyUnlocked
+                            : (statsProvider.isDailyChallengeUnlocked ||
+                                  GameProvider.debugDailyStreakOverride !=
+                                      null);
+                        final streak = pocket
+                            ? game.pocketDailyStreakDisplay
+                            : game.dailyStreakDisplay;
+                        if (unlocked && streak > 0) {
+                          _streakSweep.forward(from: 0);
+                        }
+                      },
+                      difficultySweep: _difficultySweep,
+                      streakSweep: _streakSweep,
+                      pocketNudgeEpoch: _pocketNudgeEpoch,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Main Menu',
-                    style: Theme.of(context).appBarTheme.titleTextStyle,
+                  const Divider(height: 32),
+                  ConfigSettingsPanel(
+                    showSoundAndDarkMode: false,
+                    difficultyLocked: _pocketMenu,
+                    onDifficultyApplied: () {
+                      _difficultySweep.forward(from: 0);
+                    },
                   ),
-                  const SizedBox(width: 8),
-                  _MainMenuTitleIcon(
-                    visible: _titleIconsVisible,
-                    tint: iconTint,
+                  const Divider(height: 32),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: MenuActionButton(
+                            label: _pocketMenu ? '[Stats]' : 'Stats',
+                            fillTint: _menuPaletteColor(settings, 7),
+                            labelShake: _statsShake,
+                            onPressed: () async {
+                              _hideTitleIcons();
+                              await Navigator.of(context).push(
+                                IrodokuPageRoute(
+                                  builder: (_) =>
+                                      StatsScreen(pocket: _pocketMenu),
+                                ),
+                              );
+                              if (!mounted) return;
+                              _scheduleTitleIcons();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: MenuActionButton(
+                            label: 'Achievements',
+                            fillTint: _menuPaletteColor(settings, 8),
+                            onPressed: () async {
+                              _hideTitleIcons();
+                              await Navigator.of(context).push(
+                                IrodokuPageRoute(
+                                  builder: (_) => const AchievementsScreen(),
+                                ),
+                              );
+                              if (!mounted) return;
+                              _scheduleTitleIcons();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    child: MenuActionButton(
+                      label: 'Settings',
+                      fillTint: _menuPaletteColor(settings, 9),
+                      onPressed: () async {
+                        _hideTitleIcons();
+                        await Navigator.of(context).push(
+                          IrodokuPageRoute(
+                            builder: (_) => const AppSettingsScreen(),
+                          ),
+                        );
+                        if (!mounted) return;
+                        _scheduleTitleIcons();
+                      },
+                    ),
                   ),
                 ],
               );
             },
           ),
         ),
-        body: Consumer3<SettingsProvider, StatsProvider, GameProvider>(
-        builder: (context, settings, statsProvider, game, _) {
-          final stats = statsProvider.stats;
-          final chromaticUnlocked = statsProvider.areAllMenuPalettesUnlocked;
-          final dailyUnlocked = statsProvider.isDailyChallengeUnlocked ||
-              GameProvider.debugDailyStreakOverride != null;
-          final graffitiUnlocked = statsProvider.isGraffitiUnlocked;
-          final pocketGraffitiUnlocked = statsProvider.isPocketGraffitiUnlocked;
-          final pocketDailyUnlocked = statsProvider.isPocketDailyUnlocked;
-          final dailyFinished = game.isDailyFinishedToday;
-          final pocketDailyFinished = game.isPocketDailyFinishedToday;
-          final dailyStreak = game.dailyStreakDisplay;
-          final pocketDailyStreak = game.pocketDailyStreakDisplay;
-          return ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: _PlayModeGrid(
-                  busy: game.isGenerating,
-                  dailyUnlocked: dailyUnlocked,
-                  dailyFinished: dailyFinished,
-                  dailyStreak: dailyStreak,
-                  pocketDailyUnlocked: pocketDailyUnlocked,
-                  pocketDailyFinished: pocketDailyFinished,
-                  pocketDailyStreak: pocketDailyStreak,
-                  chromaticUnlocked: chromaticUnlocked,
-                  graffitiUnlocked: graffitiUnlocked,
-                  pocketGraffitiUnlocked: pocketGraffitiUnlocked,
-                  iroenUnlocked: statsProvider.isIroenUnlocked,
-                  irodokuTint: _menuPaletteColor(settings, 2),
-                  graffitiTint: _menuPaletteColor(settings, 3),
-                  dailyTint: _menuPaletteColor(settings, 4),
-                  chromaticTint: _menuPaletteColor(settings, 5),
-                  iroenTint: _menuPaletteColor(settings, 6),
-                  onClassic: () => _onClassicPressed(context, game),
-                  onDaily: () => _onDailyPressed(
-                    context,
-                    game,
-                    unlocked: dailyUnlocked,
-                    stats: stats,
-                  ),
-                  onPocketDaily: () => _onDailyPressed(
-                    context,
-                    game,
-                    unlocked: pocketDailyUnlocked,
-                    stats: stats,
-                    pocket: true,
-                  ),
-                  onGraffiti: () => _onGraffitiPressed(context),
-                  onPocketGraffiti: () => _onPocketGraffitiPressed(context),
-                  onChromatic: () => _onChromaticPressed(
-                    context,
-                    game,
-                    unlocked: chromaticUnlocked,
-                  ),
-                  onPocketChromatic: () => _onPocketChromaticPressed(
-                    context,
-                    game,
-                    unlocked: chromaticUnlocked,
-                  ),
-                  onIroen: () => _onIroenPressed(
-                    context,
-                    stats,
-                    unlocked: statsProvider.isIroenUnlocked,
-                  ),
-                  onPocket: () => _onPocketPressed(context, game),
-                  onPocketMenuChanged: (pocket) {
-                    if (_pocketMenu == pocket) return;
-                    setState(() => _pocketMenu = pocket);
-                    _statsShake.forward(from: 0);
-                    _streakSweep.value = 0;
-                    final unlocked = pocket
-                        ? statsProvider.isPocketDailyUnlocked
-                        : (statsProvider.isDailyChallengeUnlocked ||
-                            GameProvider.debugDailyStreakOverride != null);
-                    final streak = pocket
-                        ? game.pocketDailyStreakDisplay
-                        : game.dailyStreakDisplay;
-                    if (unlocked && streak > 0) {
-                      _streakSweep.forward(from: 0);
-                    }
-                  },
-                  difficultySweep: _difficultySweep,
-                  streakSweep: _streakSweep,
-                  pocketNudgeEpoch: _pocketNudgeEpoch,
-                ),
-              ),
-              const Divider(height: 32),
-              ConfigSettingsPanel(
-                showSoundAndDarkMode: false,
-                difficultyLocked: _pocketMenu,
-                onDifficultyApplied: () {
-                  _difficultySweep.forward(from: 0);
-                },
-              ),
-              const Divider(height: 32),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: MenuActionButton(
-                        label: _pocketMenu ? '[Stats]' : 'Stats',
-                        fillTint: _menuPaletteColor(settings, 7),
-                        labelShake: _statsShake,
-                        onPressed: () async {
-                          _hideTitleIcons();
-                          await Navigator.of(context).push(
-                            IrodokuPageRoute(
-                              builder: (_) =>
-                                  StatsScreen(pocket: _pocketMenu),
-                            ),
-                          );
-                          if (!mounted) return;
-                          _scheduleTitleIcons();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: MenuActionButton(
-                        label: 'Achievements',
-                        fillTint: _menuPaletteColor(settings, 8),
-                        onPressed: () async {
-                          _hideTitleIcons();
-                          await Navigator.of(context).push(
-                            IrodokuPageRoute(
-                              builder: (_) => const AchievementsScreen(),
-                            ),
-                          );
-                          if (!mounted) return;
-                          _scheduleTitleIcons();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                child: MenuActionButton(
-                  label: 'Settings',
-                  fillTint: _menuPaletteColor(settings, 9),
-                  onPressed: () async {
-                    _hideTitleIcons();
-                    await Navigator.of(context).push(
-                      IrodokuPageRoute(
-                        builder: (_) => const AppSettingsScreen(),
-                      ),
-                    );
-                    if (!mounted) return;
-                    _scheduleTitleIcons();
-                  },
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-      ),
       ),
     );
   }
@@ -388,10 +398,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     await Navigator.of(context).maybePop();
   }
 
-  Future<void> _onPocketPressed(
-    BuildContext context,
-    GameProvider game,
-  ) async {
+  Future<void> _onPocketPressed(BuildContext context, GameProvider game) async {
     await game.openPocketGame();
     if (!context.mounted) return;
     await Navigator.of(context).maybePop();
@@ -425,6 +432,20 @@ class _SettingsScreenState extends State<SettingsScreen>
     await Navigator.of(context).maybePop();
   }
 
+  Future<void> _onHyperchromaPressed(
+    BuildContext context,
+    GameProvider game, {
+    required bool unlocked,
+  }) async {
+    if (!unlocked) {
+      _showChromaticLockedSnackBar(context);
+      return;
+    }
+    final started = await game.openHyperchromaGame();
+    if (!context.mounted || !started) return;
+    await Navigator.of(context).maybePop();
+  }
+
   Future<void> _onIroenPressed(
     BuildContext context,
     GameStats stats, {
@@ -435,9 +456,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       return;
     }
     _hideTitleIcons();
-    await Navigator.of(context).push(
-      IrodokuPageRoute(builder: (_) => const IroenScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(IrodokuPageRoute(builder: (_) => const IroenScreen()));
     if (!mounted) return;
     _scheduleTitleIcons();
   }
@@ -521,9 +542,9 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Future<void> _onGraffitiPressed(BuildContext context) async {
     _hideTitleIcons();
-    await Navigator.of(context).push(
-      IrodokuPageRoute(builder: (_) => const GraffitiScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(IrodokuPageRoute(builder: (_) => const GraffitiScreen()));
     if (!mounted) return;
     _scheduleTitleIcons();
   }
@@ -552,7 +573,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             width: double.infinity,
             child: Text.rich(
               TextSpan(
-                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                style:
+                    Theme.of(context).snackBarTheme.contentTextStyle ??
                     TextStyle(
                       color: Theme.of(context).colorScheme.onInverseSurface,
                     ),
@@ -587,7 +609,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             width: double.infinity,
             child: Text.rich(
               TextSpan(
-                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                style:
+                    Theme.of(context).snackBarTheme.contentTextStyle ??
                     TextStyle(
                       color: Theme.of(context).colorScheme.onInverseSurface,
                     ),
@@ -621,7 +644,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: Text(
               'Unlock every palette',
               textAlign: TextAlign.center,
-              style: Theme.of(context).snackBarTheme.contentTextStyle ??
+              style:
+                  Theme.of(context).snackBarTheme.contentTextStyle ??
                   TextStyle(
                     color: Theme.of(context).colorScheme.onInverseSurface,
                   ),
@@ -643,7 +667,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             width: double.infinity,
             child: Text.rich(
               TextSpan(
-                style: Theme.of(context).snackBarTheme.contentTextStyle ??
+                style:
+                    Theme.of(context).snackBarTheme.contentTextStyle ??
                     TextStyle(
                       color: Theme.of(context).colorScheme.onInverseSurface,
                     ),
@@ -665,7 +690,6 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
       );
   }
-
 }
 
 class _MainMenuTitleIcon extends StatelessWidget {
@@ -706,9 +730,7 @@ class _MainMenuTitleIcon extends StatelessWidget {
       child: AnimatedScale(
         scale: visible ? 1 : 0,
         // Snap off instantly so a replay never leaves leftover icons.
-        duration: visible
-            ? const Duration(milliseconds: 180)
-            : Duration.zero,
+        duration: visible ? const Duration(milliseconds: 180) : Duration.zero,
         curve: Curves.easeOutBack,
         child: icon,
       ),
@@ -739,6 +761,7 @@ class _PlayModeGrid extends StatefulWidget {
   final VoidCallback onGraffiti;
   final VoidCallback onPocketGraffiti;
   final VoidCallback onChromatic;
+  final VoidCallback onHyperchroma;
   final VoidCallback onPocketChromatic;
   final VoidCallback onIroen;
   final VoidCallback onPocket;
@@ -770,6 +793,7 @@ class _PlayModeGrid extends StatefulWidget {
     required this.onGraffiti,
     required this.onPocketGraffiti,
     required this.onChromatic,
+    required this.onHyperchroma,
     required this.onPocketChromatic,
     required this.onIroen,
     required this.onPocket,
@@ -812,21 +836,25 @@ class _PlayModeGridState extends State<_PlayModeGrid>
 
   @override
   Widget build(BuildContext context) {
-    final chromaticLabel =
-        widget.chromaticUnlocked && _pocket ? '[Chromatic]' : 'Chromatic';
-    final graffitiLabel =
-        widget.pocketGraffitiUnlocked && _pocket ? '[Graffiti]' : 'Graffiti';
+    final chromaticLabel = widget.chromaticUnlocked && _pocket
+        ? '[Chromatic]'
+        : 'Chromatic';
+    final graffitiLabel = widget.pocketGraffitiUnlocked && _pocket
+        ? '[Graffiti]'
+        : 'Graffiti';
     final dailyLabel = widget.pocketDailyUnlocked && _pocket
         ? '[Daily Iro]'
         : 'Daily Iro';
-    final graffitiUnlocked =
-        _pocket ? widget.pocketGraffitiUnlocked : widget.graffitiUnlocked;
-    final dailyUnlocked =
-        _pocket ? widget.pocketDailyUnlocked : widget.dailyUnlocked;
-    final dailyFinished =
-        _pocket ? widget.pocketDailyFinished : widget.dailyFinished;
-    final dailyStreak =
-        _pocket ? widget.pocketDailyStreak : widget.dailyStreak;
+    final graffitiUnlocked = _pocket
+        ? widget.pocketGraffitiUnlocked
+        : widget.graffitiUnlocked;
+    final dailyUnlocked = _pocket
+        ? widget.pocketDailyUnlocked
+        : widget.dailyUnlocked;
+    final dailyFinished = _pocket
+        ? widget.pocketDailyFinished
+        : widget.dailyFinished;
+    final dailyStreak = _pocket ? widget.pocketDailyStreak : widget.dailyStreak;
     return Column(
       children: [
         _ClassicOrPocketButton(
@@ -868,9 +896,7 @@ class _PlayModeGridState extends State<_PlayModeGrid>
                 muted: dailyUnlocked && dailyFinished,
                 locked: !dailyUnlocked,
                 onPressed: _pocket ? widget.onPocketDaily : widget.onDaily,
-                labelShake: widget.pocketDailyUnlocked
-                    ? _chromaticShake
-                    : null,
+                labelShake: widget.pocketDailyUnlocked ? _chromaticShake : null,
               ),
             ),
           ],
@@ -879,18 +905,21 @@ class _PlayModeGridState extends State<_PlayModeGrid>
         Row(
           children: [
             Expanded(
-              child: MenuActionButton(
+              child: HyperchromaMenuButton(
                 label: chromaticLabel,
                 fillTint: widget.chromaticTint,
                 enabled: !widget.busy,
                 locked: !widget.chromaticUnlocked,
+                holdEnabled:
+                    !_pocket && widget.chromaticUnlocked && !widget.busy,
                 onPressed: _pocket && widget.chromaticUnlocked
                     ? widget.onPocketChromatic
                     : widget.onChromatic,
-                labelShake:
-                    widget.chromaticUnlocked ? _chromaticShake : null,
-                labelSweep:
-                    widget.chromaticUnlocked ? widget.difficultySweep : null,
+                onHyperchroma: widget.onHyperchroma,
+                labelShake: widget.chromaticUnlocked ? _chromaticShake : null,
+                labelSweep: widget.chromaticUnlocked
+                    ? widget.difficultySweep
+                    : null,
               ),
             ),
             const SizedBox(width: 12),
@@ -1093,4 +1122,3 @@ class _PocketNudgeSlide extends Animatable<double> {
     return _peak * math.exp(-5.2 * u) * math.cos(u * math.pi * 1.05);
   }
 }
-

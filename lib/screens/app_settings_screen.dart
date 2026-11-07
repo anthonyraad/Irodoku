@@ -115,11 +115,8 @@ Future<void> showHowToPlayDialog(BuildContext context) {
   final palette = settings.palette;
   final paletteColors = settings.colorsFor(palette);
 
-  Widget irodokuLabel() => _PaletteSweepLabel(
-        text: 'Irodoku',
-        style: bold,
-        colors: paletteColors,
-      );
+  Widget irodokuLabel() =>
+      _PaletteSweepLabel(text: 'Irodoku', style: bold, colors: paletteColors);
 
   final classicPage = Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,10 +158,7 @@ Future<void> showHowToPlayDialog(BuildContext context) {
               text:
                   ' is played with a 6×6 board that is divided into six 2×3 boxes.\n\nEach row, column, and box must contain each of the 6 colors exactly once.\n\nAccess Pocket mode for Irodoku, Graffiti, and more by ',
             ),
-            TextSpan(
-              text: 'swiping right on the Irodoku button',
-              style: bold,
-            ),
+            TextSpan(text: 'swiping right on the Irodoku button', style: bold),
             const TextSpan(text: ' from the main menu.'),
           ],
         ),
@@ -174,10 +168,8 @@ Future<void> showHowToPlayDialog(BuildContext context) {
 
   return showDialog<void>(
     context: context,
-    builder: (context) => _HowToPlayDialog(
-      classicPage: classicPage,
-      pocketPage: pocketPage,
-    ),
+    builder: (context) =>
+        _HowToPlayDialog(classicPage: classicPage, pocketPage: pocketPage),
   );
 }
 
@@ -228,8 +220,7 @@ class _PaletteSweepLabelState extends State<_PaletteSweepLabel>
   Widget build(BuildContext context) {
     final style = widget.style;
     final colors = widget.colors;
-    final ink = style?.color ??
-        Theme.of(context).colorScheme.onSurface;
+    final ink = style?.color ?? Theme.of(context).colorScheme.onSurface;
     // Always paint through ShaderMask so pre/post glyphs match mid-animation.
     final maskedStyle = style?.copyWith(color: Colors.white);
     if (colors.length < 2) {
@@ -295,28 +286,16 @@ Future<void> showControlsHelpDialog(BuildContext context) {
       children: [
         section('Cells', [
           bullet(TextSpan(text: 'Tap a cell', style: bold), ' to select'),
-          bullet(
-            TextSpan(text: 'Hold down', style: bold),
-            ' to multi-select',
-          ),
+          bullet(TextSpan(text: 'Hold down', style: bold), ' to multi-select'),
           bullet(
             TextSpan(text: 'Tap an empty space', style: bold),
             ' to deselect',
           ),
         ]),
         section('Colors', [
-          bullet(
-            TextSpan(text: 'Tap a color', style: bold),
-            ' to apply',
-          ),
-          bullet(
-            TextSpan(text: 'Swipe down', style: bold),
-            ' to note a color',
-          ),
-          bullet(
-            TextSpan(text: 'Swipe up', style: bold),
-            ' to remove note',
-          ),
+          bullet(TextSpan(text: 'Tap a color', style: bold), ' to apply'),
+          bullet(TextSpan(text: 'Swipe down', style: bold), ' to note a color'),
+          bullet(TextSpan(text: 'Swipe up', style: bold), ' to remove note'),
         ]),
         section('Actions', [
           bullet(
@@ -337,11 +316,7 @@ Future<void> showControlsHelpDialog(BuildContext context) {
   );
 }
 
-Widget _helpBulletRich(
-  TextStyle? style,
-  InlineSpan lead,
-  String rest,
-) {
+Widget _helpBulletRich(TextStyle? style, InlineSpan lead, String rest) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(
@@ -373,9 +348,7 @@ Future<void> _showHelpDialog({
     context: context,
     builder: (context) {
       return AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titlePadding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
         title: SizedBox(
           width: double.infinity,
@@ -389,9 +362,9 @@ Future<void> _showHelpDialog({
                 child: Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        height: 1.25,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(height: 1.25),
                 ),
               ),
               Positioned(
@@ -416,10 +389,7 @@ class _HowToPlayDialog extends StatefulWidget {
   final Widget classicPage;
   final Widget pocketPage;
 
-  const _HowToPlayDialog({
-    required this.classicPage,
-    required this.pocketPage,
-  });
+  const _HowToPlayDialog({required this.classicPage, required this.pocketPage});
 
   @override
   State<_HowToPlayDialog> createState() => _HowToPlayDialogState();
@@ -471,8 +441,10 @@ class _HowToPlayDialogState extends State<_HowToPlayDialog> {
   @override
   Widget build(BuildContext context) {
     final ink = Theme.of(context).colorScheme.onSurface;
-    final height =
-        (MediaQuery.sizeOf(context).height * 0.42).clamp(220.0, 340.0);
+    final height = (MediaQuery.sizeOf(context).height * 0.42).clamp(
+      220.0,
+      340.0,
+    );
     final pages = [widget.classicPage, widget.pocketPage];
 
     return GestureDetector(
@@ -481,9 +453,7 @@ class _HowToPlayDialogState extends State<_HowToPlayDialog> {
       onHorizontalDragUpdate: (details) => _dragDx += details.delta.dx,
       onHorizontalDragEnd: _onDragEnd,
       child: AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titlePadding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
         title: SizedBox(
           width: double.infinity,
@@ -496,9 +466,9 @@ class _HowToPlayDialogState extends State<_HowToPlayDialog> {
                 child: Text(
                   'How to Play',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        height: 1.25,
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(height: 1.25),
                 ),
               ),
               Positioned(
@@ -526,10 +496,7 @@ class _HowToPlayDialogState extends State<_HowToPlayDialog> {
                   children: [
                     for (final page in pages)
                       SingleChildScrollView(
-                        child: Align(
-                          alignment: Alignment.topLeft,
-                          child: page,
-                        ),
+                        child: Align(alignment: Alignment.topLeft, child: page),
                       ),
                   ],
                 ),
@@ -686,8 +653,12 @@ class ConfigSettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer4<SettingsProvider, StatsProvider, GameProvider,
-        AchievementsProvider>(
+    return Consumer4<
+      SettingsProvider,
+      StatsProvider,
+      GameProvider,
+      AchievementsProvider
+    >(
       builder: (context, settings, statsProvider, game, _, _) {
         final stats = statsProvider.stats;
         return Column(
@@ -716,10 +687,7 @@ class ConfigSettingsPanel extends StatelessWidget {
                 onChanged: settings.setDarkMode,
               ),
             ],
-            _PaletteBlock(
-              settings: settings,
-              statsProvider: statsProvider,
-            ),
+            _PaletteBlock(settings: settings, statsProvider: statsProvider),
           ],
         );
       },
@@ -790,13 +758,10 @@ class _DifficultyTrailingState extends State<_DifficultyTrailing>
   @override
   Widget build(BuildContext context) {
     final xxStyle = Theme.of(context).textTheme.bodyLarge?.copyWith(
-          color: Theme.of(context)
-              .colorScheme
-              .onSurface
-              .withValues(alpha: 0.35),
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.2,
-        );
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+      fontWeight: FontWeight.w600,
+      letterSpacing: 1.2,
+    );
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -837,11 +802,7 @@ class _DifficultyTrailingState extends State<_DifficultyTrailing>
               onChanged: (difficulty) {
                 if (difficulty == null) return;
                 if (!widget.statsProvider.isUnlocked(difficulty)) {
-                  _showUnlockSnackBar(
-                    context,
-                    difficulty,
-                    widget.stats,
-                  );
+                  _showUnlockSnackBar(context, difficulty, widget.stats);
                   return;
                 }
                 if (difficulty == widget.settings.difficulty) return;
@@ -882,13 +843,10 @@ Future<void> _onDifficultyChosen(
   if (game.isGenerating) return;
 
   final preserveDaily = game.hasResumableDaily;
-  final liveClassicOrChromatic =
-      !game.isDaily && !game.isPocket;
+  final liveClassicOrChromatic = !game.isDaily && !game.isPocket;
 
   // Mid-game Classic/Chromatic: keep the old difficulty unless they start over.
-  if (liveClassicOrChromatic &&
-      game.hasInteracted &&
-      !game.isGameOver) {
+  if (liveClassicOrChromatic && game.hasInteracted && !game.isGameOver) {
     final startNew = await showStartNewGameDialog(context);
     if (!context.mounted || startNew != true) return;
     await settings.setDifficulty(difficulty);
@@ -904,8 +862,7 @@ Future<void> _onDifficultyChosen(
 
   // Daily / Pocket: only the setting changes so parked Classic/Chromatic
   // progress is not wiped. Untouched or finished Classic/Chromatic regenerate.
-  if (liveClassicOrChromatic &&
-      (game.hasActiveGame || game.isGameOver)) {
+  if (liveClassicOrChromatic && (game.hasActiveGame || game.isGameOver)) {
     await game.startNewGame(preserveHeldDaily: preserveDaily);
   }
 }
@@ -918,9 +875,12 @@ Future<void> _onPaletteChosen(
   final game = context.read<GameProvider>();
   if (game.isGenerating) return;
 
-  // Daily / Chromatic nested under menu: update the saved Config palette only.
-  // Live Chromatic hops use a session palette and must not be overwritten here.
-  if (game.isDaily || game.isPocket || settings.chromatic) {
+  // Daily / Chromatic / Hyperchroma under the menu: update the saved Config
+  // palette only. Live hops use a session palette and must not be overwritten.
+  if (game.isDaily ||
+      game.isPocket ||
+      settings.chromatic ||
+      game.isHyperchroma) {
     await settings.setPalette(palette);
     return;
   }
@@ -959,7 +919,8 @@ void _showUnlockSnackBar(
           width: double.infinity,
           child: Text.rich(
             TextSpan(
-              style: Theme.of(context).snackBarTheme.contentTextStyle ??
+              style:
+                  Theme.of(context).snackBarTheme.contentTextStyle ??
                   TextStyle(
                     color: Theme.of(context).colorScheme.onInverseSurface,
                   ),
@@ -987,7 +948,8 @@ void _showPaletteLockedSnackBar(BuildContext context, GamePalette palette) {
     color: Colors.lightBlueAccent,
     fontWeight: FontWeight.w600,
   );
-  final baseStyle = Theme.of(context).snackBarTheme.contentTextStyle ??
+  final baseStyle =
+      Theme.of(context).snackBarTheme.contentTextStyle ??
       TextStyle(color: Theme.of(context).colorScheme.onInverseSurface);
 
   ScaffoldMessenger.of(context)
@@ -1031,10 +993,7 @@ class _CompactSwitchRow extends StatelessWidget {
     // Match Difficulty / Palette ListTile height (no dense/compact).
     return ListTile(
       title: Text(label),
-      trailing: _BlockySwitch(
-        value: value,
-        onChanged: onChanged,
-      ),
+      trailing: _BlockySwitch(value: value, onChanged: onChanged),
       onTap: () => onChanged(!value),
     );
   }
@@ -1053,10 +1012,7 @@ class _BlockySwitch extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
 
-  const _BlockySwitch({
-    required this.value,
-    required this.onChanged,
-  });
+  const _BlockySwitch({required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -1091,9 +1047,7 @@ class _BlockySwitch extends StatelessWidget {
               decoration: BoxDecoration(
                 color: thumbFill,
                 borderRadius: const BorderRadius.all(Radius.circular(1)),
-                border: value
-                    ? null
-                    : Border.all(color: ink, width: 1.5),
+                border: value ? null : Border.all(color: ink, width: 1.5),
               ),
             ),
           ),
@@ -1108,10 +1062,7 @@ class _PaletteBlock extends StatelessWidget {
   final SettingsProvider settings;
   final StatsProvider statsProvider;
 
-  const _PaletteBlock({
-    required this.settings,
-    required this.statsProvider,
-  });
+  const _PaletteBlock({required this.settings, required this.statsProvider});
 
   @override
   Widget build(BuildContext context) {
@@ -1202,7 +1153,8 @@ class _PaletteTrailingState extends State<_PaletteTrailing>
     final settings = widget.settings;
     final statsProvider = widget.statsProvider;
     final iroSelected = settings.palette == GamePalette.iro;
-    final reserveSide = iroSelected ||
+    final reserveSide =
+        iroSelected ||
         settings.isIroUnlocked ||
         GamePalette.menuValues.any(settings.isBSideUnlocked);
     final showSide = settings.isBSideUnlocked(settings.palette);
@@ -1221,14 +1173,14 @@ class _PaletteTrailingState extends State<_PaletteTrailing>
                     onTap: _rerollIro,
                   )
                 : showSide
-                    ? _PaletteSideButton(
-                        bSide: bSide,
-                        shake: _shake,
-                        borderWidth: _borderWidth,
-                        radius: _radius,
-                        onTap: _toggleSide,
-                      )
-                    : null,
+                ? _PaletteSideButton(
+                    bSide: bSide,
+                    shake: _shake,
+                    borderWidth: _borderWidth,
+                    radius: _radius,
+                    onTap: _toggleSide,
+                  )
+                : null,
           ),
           const SizedBox(width: _sideGap),
         ],
@@ -1392,10 +1344,7 @@ class _LockedMenuItem extends StatelessWidget {
   final String label;
   final bool unlocked;
 
-  const _LockedMenuItem({
-    required this.label,
-    required this.unlocked,
-  });
+  const _LockedMenuItem({required this.label, required this.unlocked});
 
   @override
   Widget build(BuildContext context) {
@@ -1412,7 +1361,9 @@ class _LockedMenuItem extends StatelessWidget {
             label,
             style: unlocked
                 ? null
-                : Theme.of(context).textTheme.bodyMedium?.copyWith(color: muted),
+                : Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: muted),
           ),
           if (!unlocked) ...[
             const SizedBox(width: 8),
@@ -1539,10 +1490,9 @@ class _PalettePreviewRowState extends State<_PalettePreviewRow>
                           border: Border.all(
                             color:
                                 IrodokuPalette.outlineForSwatch(swatches[i]) ??
-                                    line,
-                            width: IrodokuPalette.outlineForSwatch(
-                                      swatches[i],
-                                    ) !=
+                                line,
+                            width:
+                                IrodokuPalette.outlineForSwatch(swatches[i]) !=
                                     null
                                 ? 1.0
                                 : 0.6,
@@ -1559,7 +1509,6 @@ class _PalettePreviewRowState extends State<_PalettePreviewRow>
     );
   }
 }
-
 
 /// 'Set Name' + 'Sync Discord' (Android). Linked: 'Connected as [name]' +
 /// Disconnect. Non-Android builds keep the single centered Set Name button.
@@ -1653,20 +1602,20 @@ class _NameAndDiscordSectionState extends State<_NameAndDiscordSection> {
           backgroundColor: scheme.surface,
           foregroundColor: scheme.onSurface,
           elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           side: BorderSide(color: scheme.onSurface, width: 2),
           visualDensity: VisualDensity.compact,
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
           minimumSize: const Size(112, 37),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.3,
-              ),
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
         ),
-        onPressed: onPressed == null ? null : withMenuSelect(context, onPressed),
+        onPressed: onPressed == null
+            ? null
+            : withMenuSelect(context, onPressed),
         child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
       ),
     );

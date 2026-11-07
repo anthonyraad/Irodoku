@@ -67,7 +67,9 @@ class VictoryPanel extends StatelessWidget {
             Text(
               time,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: ink),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: ink),
             ),
             if (xp != null) ...[
               const SizedBox(height: 16),
@@ -115,6 +117,7 @@ class DefeatPanel extends StatelessWidget {
   final bool showNewGame;
   final VoidCallback? onTryAgain;
   final int maxMistakes;
+  final String? detail;
 
   const DefeatPanel({
     super.key,
@@ -123,6 +126,7 @@ class DefeatPanel extends StatelessWidget {
     this.showNewGame = true,
     this.onTryAgain,
     this.maxMistakes = 3,
+    this.detail,
   });
 
   @override
@@ -138,13 +142,21 @@ class DefeatPanel extends StatelessWidget {
         textAlign: TextAlign.center,
         style: TextStyle(color: ink),
       ),
-      content: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          for (var i = 0; i < maxMistakes; i++)
-            Icon(Icons.close, size: 48, weight: 700, color: ink),
-        ],
-      ),
+      content: detail != null
+          ? Text(
+              detail!,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: ink),
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < maxMistakes; i++)
+                  Icon(Icons.close, size: 48, weight: 700, color: ink),
+              ],
+            ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
         if (onTryAgain != null)
@@ -391,12 +403,7 @@ class _GraffitiResultDialogState extends State<_GraffitiResultDialog> {
               const SizedBox(height: 16),
             ] else if (outcome == GraffitiOutcome.lose ||
                 outcome == GraffitiOutcome.defeat) ...[
-              Icon(
-                Icons.close,
-                size: 52,
-                weight: 700,
-                color: ink,
-              ),
+              Icon(Icons.close, size: 52, weight: 700, color: ink),
               const SizedBox(height: 16),
             ],
             Text(

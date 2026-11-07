@@ -7,24 +7,27 @@ import 'game_stats.dart';
 /// Prestige XP: stored as [totalXp]; level / progress are derived.
 abstract final class PlayerXp {
   static const firstWinOfDayBonus = 50;
+
   /// 9×9 Chromatic: 75% of that difficulty's finish XP, rounded down.
   static const chromaticModifier = 0.75;
+
   /// Pocket [Chromatic] unit-hop games grant a smaller Chromatic line.
   static const pocketChromaticBonus = 20;
   static const flawlessModifier = 0.25;
   static const fastModifier = 0.25;
   static const notelessModifier = 0.40;
   static const wetPaintModifier = 0.25;
+
   /// Iro doubles the pre-Iro receipt total (finish + every bonus/penalty).
   static const iroMultiplier = 2;
 
   static int baseXp(Difficulty difficulty) => switch (difficulty) {
-        Difficulty.easy => 50,
-        Difficulty.medium => 100,
-        Difficulty.hard => 175,
-        Difficulty.expert => 275,
-        Difficulty.master => 400,
-      };
+    Difficulty.easy => 50,
+    Difficulty.medium => 100,
+    Difficulty.hard => 175,
+    Difficulty.expert => 275,
+    Difficulty.master => 400,
+  };
 
   static int chromaticBonusFor(Difficulty difficulty) =>
       (baseXp(difficulty) * chromaticModifier).floor();
@@ -52,6 +55,7 @@ abstract final class PlayerXp {
   /// Flat jackpot; rolled independently on each eligible victory.
   static const luckyXp = 400;
   static const luckyChance = 0.04;
+
   /// Career wins that must already be finished before Lucky can roll.
   /// Graffiti is excluded from this count.
   static const luckyMinPriorWins = 3;
@@ -59,16 +63,20 @@ abstract final class PlayerXp {
   /// Pocket is a flat base; Speedy is under 2:00. Lazy is over 3:00.
   static const pocketBaseXp = 25;
   static const pocketDailyBaseXp = 50;
+
   /// Pocket [Graffiti] uses Graffiti rules with a smaller finish.
   static const pocketGraffitiBaseXp = 50;
+
   /// Win bonus for filling many cells yourself (givens do not count).
   static const graffitiVandalXp = 12;
   static const pocketGraffitiVandalXp = 6;
   static const graffitiVandalMinFills = 34;
   static const pocketGraffitiVandalMinFills = 17;
+
   /// Consolation XP on a Graffiti loss (Defeat screen).
   static const graffitiGoodEffortXp = 10;
   static const pocketGraffitiGoodEffortXp = 5;
+
   /// Consolation XP on a Graffiti draw (Draw screen).
   static const graffitiDrawerXp = 30;
   static const pocketGraffitiDrawerXp = 15;
@@ -110,12 +118,12 @@ abstract final class PlayerXp {
   static const graffitiDifficulty = Difficulty.medium;
 
   static Duration fastThreshold(Difficulty difficulty) => switch (difficulty) {
-        Difficulty.easy => const Duration(minutes: 5),
-        Difficulty.medium => const Duration(minutes: 8),
-        Difficulty.hard => const Duration(minutes: 12),
-        Difficulty.expert => const Duration(minutes: 20),
-        Difficulty.master => const Duration(minutes: 30),
-      };
+    Difficulty.easy => const Duration(minutes: 5),
+    Difficulty.medium => const Duration(minutes: 8),
+    Difficulty.hard => const Duration(minutes: 12),
+    Difficulty.expert => const Duration(minutes: 20),
+    Difficulty.master => const Duration(minutes: 30),
+  };
 
   /// XP to go from [level] to [level]+1 (not cumulative).
   static int xpToReach(int level) {
@@ -214,59 +222,64 @@ abstract final class PlayerXp {
     final base = pocketDaily
         ? pocketDailyBaseXp
         : graffiti
-            ? (pocket ? pocketGraffitiBaseXp : baseXp(graffitiDifficulty))
-            : pocket
-                ? pocketBaseXp
-                : daily
-                    ? dailyBaseXp
-                    : baseXp(difficulty);
+        ? (pocket ? pocketGraffitiBaseXp : baseXp(graffitiDifficulty))
+        : pocket
+        ? pocketBaseXp
+        : daily
+        ? dailyBaseXp
+        : baseXp(difficulty);
     final flawless = mistakes == 0 && !suppressSpeedAndFlawless;
     final sloppy = !graffiti && pocket ? mistakes == 1 : mistakes == 2;
-    final fast = !graffiti &&
+    final fast =
+        !graffiti &&
         !suppressSpeedAndFlawless &&
         (pocket
             ? elapsed < pocketFastThreshold
             : elapsed < fastThreshold(difficulty));
-    final lazyXp = pocket && !daily && !graffiti && elapsed > pocketLazyThreshold
+    final lazyXp =
+        pocket && !daily && !graffiti && elapsed > pocketLazyThreshold
         ? pocketLazyXp
         : !pocket &&
-                !daily &&
-                !graffiti &&
-                difficulty == Difficulty.easy &&
-                elapsed > easyLazyThreshold
-            ? easyLazyXp
-            : 0;
+              !daily &&
+              !graffiti &&
+              difficulty == Difficulty.easy &&
+              elapsed > easyLazyThreshold
+        ? easyLazyXp
+        : 0;
     final lazy = lazyXp != 0;
     final flawlessXp = flawless ? (base * flawlessModifier).floor() : 0;
     final sloppyXp = sloppy ? -(base * flawlessModifier).floor() : 0;
     final fastXp = fast ? (base * fastModifier).floor() : 0;
-    final notelessXp =
-        (!pocket || graffiti) && noteless ? (base * notelessModifier).floor() : 0;
-    final vandalMin =
-        pocket ? pocketGraffitiVandalMinFills : graffitiVandalMinFills;
+    final notelessXp = (!pocket || graffiti) && noteless
+        ? (base * notelessModifier).floor()
+        : 0;
+    final vandalMin = pocket
+        ? pocketGraffitiVandalMinFills
+        : graffitiVandalMinFills;
     final vandal = graffiti && playerFills >= vandalMin;
     final vandalXp = !vandal
         ? 0
         : pocket
-            ? pocketGraffitiVandalXp
-            : graffitiVandalXp;
+        ? pocketGraffitiVandalXp
+        : graffitiVandalXp;
     final wetPaintXp = !daily && !chromatic && !pocket && !graffiti && wetPaint
         ? (base * wetPaintModifier).floor()
         : 0;
     final firstOfDay = firstWinOfDay ? firstWinOfDayBonus : 0;
     final streak = daily
         ? (pocket
-            ? pocketDailyStreakBonusFor(dailyStreak)
-            : streakBonusFor(dailyStreak))
+              ? pocketDailyStreakBonusFor(dailyStreak)
+              : streakBonusFor(dailyStreak))
         : 0;
     final chromaticXp = !chromatic
         ? 0
         : pocket
-            ? pocketChromaticBonus
-            : chromaticBonusFor(difficulty);
+        ? pocketChromaticBonus
+        : chromaticBonusFor(difficulty);
     final artistryXp = pocket ? 0 : achievedXp;
     final luckyBonus = lucky ? luckyXp : 0;
-    final subtotal = base +
+    final subtotal =
+        base +
         flawlessXp +
         sloppyXp +
         fastXp +
@@ -284,14 +297,15 @@ abstract final class PlayerXp {
     return XpAward(
       baseXp: base,
       difficulty: difficulty,
-      sourceLabel: sourceLabel ??
+      sourceLabel:
+          sourceLabel ??
           (pocket && daily
               ? '[Daily]'
               : pocket
-                  ? 'Pocket'
-                  : daily
-                      ? 'Daily'
-                      : difficulty.label),
+              ? 'Pocket'
+              : daily
+              ? 'Daily'
+              : difficulty.label),
       flawless: flawless,
       sloppy: sloppy,
       fast: fast,
@@ -350,6 +364,29 @@ abstract final class PlayerXp {
       previousTotal: previousTotal,
       newTotal: previousTotal + xp,
       goodEffort: true,
+    );
+  }
+
+  /// One Hyperchroma receipt line. No finish bonus, Lucky, or Iro.
+  static XpAward hyperchroma({
+    required int earned,
+    required int previousTotal,
+  }) {
+    return XpAward(
+      baseXp: earned,
+      difficulty: Difficulty.easy,
+      sourceLabel: 'Hyperchroma',
+      flawless: false,
+      fast: false,
+      firstWinOfDay: false,
+      streak: false,
+      chromatic: false,
+      flawlessXp: 0,
+      fastXp: 0,
+      earned: earned,
+      previousTotal: previousTotal,
+      newTotal: previousTotal + earned,
+      hyperchroma: true,
     );
   }
 
@@ -412,6 +449,7 @@ class XpAward {
   final int iroXp;
   final bool goodEffort;
   final bool drawer;
+  final bool hyperchroma;
 
   const XpAward({
     required this.baseXp,
@@ -447,6 +485,7 @@ class XpAward {
     this.iroXp = 0,
     this.goodEffort = false,
     this.drawer = false,
+    this.hyperchroma = false,
   });
 
   int get previousLevel => PlayerXp.levelFor(previousTotal);
@@ -455,6 +494,7 @@ class XpAward {
 
   /// Receipt lines that sum to [earned].
   List<({String label, int xp})> get breakdown {
+    if (hyperchroma) return [(label: 'Hyperchroma', xp: earned)];
     if (goodEffort) return [(label: 'Good effort', xp: earned)];
     if (drawer) return [(label: 'Drawer', xp: earned)];
     return [
