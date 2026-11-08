@@ -189,6 +189,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     game.triggerColorCycle(savedMosaics: context.read<IroenProvider>().gallery);
   }
 
+  void _maybeShowCoopToast(GameProvider game) {
+    final toast = game.takeCoopToast();
+    if (toast == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(toast), duration: const Duration(seconds: 3)),
+      );
+    });
+  }
+
   void _maybeShowResult(GameProvider game) {
     // Home and Daily routes share one provider — only the matching route
     // should present win/loss dialogs.
@@ -410,6 +421,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     return Consumer2<GameProvider, SettingsProvider>(
       builder: (context, game, settings, _) {
         _maybeShowResult(game);
+        _maybeShowCoopToast(game);
         final hasSelection = game.hasCellSelection;
         // Keep control-slot layout while paused / after win-loss so the board
         // doesn't resize; only the widgets themselves are removed.
@@ -478,7 +490,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 ),
                 if (!widget.isDailyRoute)
                   DiceNewGameButton(
-                    onPressed: game.isGenerating ? null : _onNewGame,
+                    onPressed: game.isGenerating || game.isHyperchromaCoop
+                        ? null
+                        : _onNewGame,
                   ),
                 if (!widget.isDailyRoute)
                   IconButton(
@@ -491,6 +505,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ),
                     onPressed: withMenuSelect(context, () async {
                       final live = context.read<GameProvider>();
+                      if (live.isHyperchromaCoop) {
+                        await live.leaveHyperchromaCoop();
+                      }
                       live.holdHyperchromaForMenu(true);
                       await Navigator.of(context).push(
                         IrodokuPageRoute(

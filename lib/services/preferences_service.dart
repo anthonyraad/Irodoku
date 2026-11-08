@@ -35,6 +35,7 @@ class PreferencesService {
   static const _keyPocketDailyWins = 'stats_pocket_daily_wins';
   static const _keyPocketDailyBestTime = 'stats_pocket_daily_best_time';
   static const _keyHyperchromaBestScore = 'stats_hyperchroma_best_score';
+  static const _keyHyperchromaBestPoints = 'stats_hyperchroma_best_points';
   static const _keyPocketWins = 'stats_pocket_wins';
   static const _keyPocketBestTime = 'stats_pocket_best_time';
   static const _keyPocketChromaticWins = 'stats_pocket_chromatic_wins';
@@ -197,6 +198,10 @@ class PreferencesService {
   }
 
   bool get hasTotalXp => _prefs.containsKey(_keyTotalXp);
+
+  /// True once the best Hyperchroma score is stored as points, not cell count.
+  bool get hasHyperchromaPointScore =>
+      _prefs.containsKey(_keyHyperchromaBestPoints);
 
   String? getXpLastAwardDay() => _prefs.getString(_keyXpLastAwardDay);
 
@@ -408,7 +413,9 @@ class PreferencesService {
       pocketDailyWins: _prefs.getInt(_keyPocketDailyWins) ?? 0,
       pocketDailyBestTime:
           _durationFromMs(_prefs.getInt(_keyPocketDailyBestTime)),
-      hyperchromaBestScore: _prefs.getInt(_keyHyperchromaBestScore) ?? 0,
+      hyperchromaBestScore: _prefs.getInt(_keyHyperchromaBestPoints) ??
+          _prefs.getInt(_keyHyperchromaBestScore) ??
+          0,
     );
   }
 
@@ -429,7 +436,10 @@ class PreferencesService {
       _keyPocketDailyBestTime,
       stats.pocketDailyBestTime,
     );
-    await _prefs.setInt(_keyHyperchromaBestScore, stats.hyperchromaBestScore);
+    await _prefs.setInt(
+      _keyHyperchromaBestPoints,
+      stats.hyperchromaBestScore,
+    );
     await _prefs.setInt(_keyTotalXp, stats.totalXp);
     await _prefs.setInt(_keyPocketWins, stats.pocketWins);
     await _setOptionalDuration(_keyPocketBestTime, stats.pocketBestTime);

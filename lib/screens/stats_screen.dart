@@ -130,6 +130,7 @@ class _StatsScreenState extends State<StatsScreen> {
                     chromatic: _showChromatic,
                     gamesWon: stats.gamesWon,
                     chromaticGamesWon: stats.chromaticGamesWon,
+                    hyperchromaScore: stats.hyperchromaBestScore,
                     bestStreak: stats.bestStreak,
                     dailyBestStreak: game.dailyBestStreak,
                     graffitiRecord: stats.graffitiRecordLabel,
@@ -148,15 +149,6 @@ class _StatsScreenState extends State<StatsScreen> {
                             ),
                             wins: '${stats.chromaticWinsFor(difficulty)}',
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    _StatCard(
-                      children: [
-                        _StatRow(
-                          label: 'Hyperchroma Score',
-                          value: '${stats.hyperchromaBestScore}',
-                        ),
                       ],
                     ),
                   ] else ...[
@@ -284,6 +276,7 @@ class _GamesWonCard extends StatefulWidget {
   final bool chromatic;
   final int gamesWon;
   final int chromaticGamesWon;
+  final int hyperchromaScore;
   final int bestStreak;
   final int dailyBestStreak;
   final String graffitiRecord;
@@ -292,6 +285,7 @@ class _GamesWonCard extends StatefulWidget {
     required this.chromatic,
     required this.gamesWon,
     required this.chromaticGamesWon,
+    required this.hyperchromaScore,
     required this.bestStreak,
     required this.dailyBestStreak,
     required this.graffitiRecord,
@@ -398,6 +392,28 @@ class _GamesWonCardState extends State<_GamesWonCard>
             label: 'Games won',
             value:
                 '${widget.chromatic ? widget.chromaticGamesWon : widget.gamesWon}',
+          ),
+          SizeTransition(
+            sizeFactor: _controller,
+            axisAlignment: -1,
+            child: FadeTransition(
+              opacity: _controller,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Divider(
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
+                    color: Theme.of(context).dividerColor,
+                  ),
+                  _StatRow(
+                    label: 'Hyperchroma',
+                    value: '${widget.hyperchromaScore}',
+                  ),
+                ],
+              ),
+            ),
           ),
           _collapsingExtra(
             extraIndex: 0,

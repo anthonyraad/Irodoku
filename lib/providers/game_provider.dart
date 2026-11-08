@@ -19,6 +19,7 @@ import '../models/palette_swatch.dart';
 import '../models/note_clear_wave.dart';
 import '../models/paused_game.dart';
 import '../models/unit_celebration.dart';
+import '../services/hyperchroma_coop_service.dart';
 import '../services/preferences_service.dart';
 import '../services/sound_service.dart';
 import '../sudoku/master_board_bank.dart';
@@ -49,6 +50,17 @@ List<List<int>> generatePocketIsolate(int seed) {
   final random = seed < 0 ? Random() : Random(seed);
   final generated = SudokuGenerator(random: random).generatePocket();
   return [generated.puzzle.toFlat(), generated.solution.toFlat()];
+}
+
+/// Which parked board a co-op player should see after they leave the match.
+enum _HyperchromaReturnBoard {
+  none,
+  daily,
+  pocketDaily,
+  pocket,
+  pocketChromatic,
+  regular,
+  chromatic,
 }
 
 class GameProvider extends ChangeNotifier implements BulkPaintTarget {
@@ -157,6 +169,21 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// The next tapped box receives every legal candidate note.
   bool _traceArmed = false;
+
+  /// Co-op shares one clock and board. Correct fills stay at +5s.
+  bool _hyperCoop = false;
+
+  /// Board parked when this co-op match started, restored if the player leaves.
+  _HyperchromaReturnBoard _coopReturnBoard = _HyperchromaReturnBoard.none;
+  HyperchromaCoopLink? _coopLink;
+  int _coopBoardId = -1;
+  int? _coopEndsAt;
+  bool _coopFinished = false;
+  bool _coopTimeoutSent = false;
+  bool _coopAdvancing = false;
+  bool _coopBuying = false;
+  bool _sawPartnerLeft = false;
+  String? _coopToast;
 
   /// The next sketch drag locks the solution cell for that color.
   bool _telepathyArmed = false;
@@ -272,6 +299,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   bool get isDaily => _isDaily;
   bool get isPocket => _isPocket;
   bool get isHyperchroma => _hyperchroma;
+
+  /// Shared board. Correct fills stay at +5s even after a partner leaves.
+  bool get isHyperchromaCoop => _hyperCoop;
   bool get isPocketDaily => _isDaily && _isPocket;
   int get hyperchromaSeconds => _hyperRemaining.inSeconds;
   int get hyperchromaPulse => _hyperPulse;
@@ -280,8 +310,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// 1-based board in this run. The opening Easy board is Level 1.
   String get hyperchromaLevelLabel => 'Level ${_hyperBoardsCleared + 1}';
 
-  /// Correct fills this run. Givens and mistakes do not count.
-  int get hyperchromaScore => _hyperCellsFilled;
+  /// Correct fills this run, 10 points each. Givens and mistakes do not count.
+  int get hyperchromaScore =>
+      _hyperCellsFilled * HyperchromaRules.pointsPerCell;
 
   int get hyperchromaSketches => _hyperSketches;
   int get mistakeLimit => _isPocket ? pocketMaxMistakes : maxMistakes;
@@ -498,7 +529,8 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     return pending;
   }
 
-  bool get canUndo => _undoStack.isNotEmpty && !_isGenerating;
+  bool get canUndo =>
+      _undoStack.isNotEmpty && !_isGenerating && !_hyperCoop;
 
   bool isCellSelected(int row, int col) {
     if (_bulkNoteSelect) {
@@ -1337,6 +1369,32 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Buy a pause-shop effect and return to the board with it armed.
   bool buyHyperchromaEffect(HyperchromaEffect effect) {
+    if (_hyperCoop) {
+      final link = _coopLink;
+      final code = link?.roomCode;
+      if (link == null || code == null) return false;
+      if (!_hyperchroma || !_isPaused || isGameOver || _isGenerating) {
+        return false;
+      }
+      if (_hyperSketches < effect.cost || _coopBuying) return false;
+      _coopBuying = true;
+      unawaited(() async {
+        try {
+          final ok = await HyperchromaCoopService.buy(
+            roomCode: code,
+            effect: effect.name,
+            cost: effect.cost,
+          );
+          if (!ok) return;
+          _isPaused = false;
+          notifyListeners();
+          _playSound(_sounds.playIgMenu);
+        } finally {
+          _coopBuying = false;
+        }
+      }());
+      return true;
+    }
     if (!_hyperchroma || !_isPaused || isGameOver || _isGenerating) {
       return false;
     }
@@ -1546,7 +1604,18 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   void selectCell(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (_pickerHoldActive) endPickerHoldSweep();
-    if (_traceArmed) _applyTrace(row, col);
+    if (_traceArmed && _hyperCoop) {
+      final code = _coopLink?.roomCode;
+      if (code != null) {
+        unawaited(HyperchromaCoopService.traceBox(
+          roomCode: code,
+          row: row,
+          col: col,
+        ));
+      }
+    } else if (_traceArmed) {
+      _applyTrace(row, col);
+    }
     final cell = _cells[row][col];
 
     if (_ignoreNextBulkTap) {
@@ -1738,6 +1807,25 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   }
 
   void setSelectedColor(int value) {
+    if (_hyperCoop) {
+      final sel = _selected;
+      final code = _coopLink?.roomCode;
+      if (sel == null || code == null || isGameOver || _isGenerating || _isPaused) {
+        return;
+      }
+      final cell = _cells[sel.$1][sel.$2];
+      if (!cell.isEditable) return;
+      if (cell.value == value) _selected = null;
+      unawaited(HyperchromaCoopService.placeColor(
+        roomCode: code,
+        playerId: _coopLink?.playerId ?? '',
+        row: sel.$1,
+        col: sel.$2,
+        value: value,
+        hopPalette: _coopHopPalette(),
+      ));
+      return;
+    }
     final sel = _selected;
     if (sel == null || isGameOver || _isGenerating || _isPaused) return;
     final (row, col) = sel;
@@ -1841,6 +1929,26 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// Notes are collected first, then bloom outward from the center of the box.
   /// Nothing is committed, so the clock and score do not move.
   bool useSketch(int box, int value) {
+    if (_hyperCoop) {
+      final code = _coopLink?.roomCode;
+      if (code == null || isGameOver || _isGenerating || _isPaused) return false;
+      if (_telepathyArmed) {
+        unawaited(HyperchromaCoopService.telepathy(
+          roomCode: code,
+          box: box,
+          value: value,
+          hopPalette: _coopHopPalette(),
+        ));
+        return true;
+      }
+      if (_hyperSketches <= 0) return false;
+      unawaited(HyperchromaCoopService.sketchBox(
+        roomCode: code,
+        box: box,
+        value: value,
+      ));
+      return true;
+    }
     if (_telepathyArmed) return _applyTelepathy(box, value);
     if (!_hyperchroma ||
         _hyperSketches <= 0 ||
@@ -1983,25 +2091,24 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     return _sounds.playConfirm;
   }
 
+  void _showNoteClearWave(int row, int col, int value) {
+    final seq = ++_noteClearWaveSeq;
+    _noteClearWave = NoteClearWave(
+      row: row,
+      col: col,
+      value: value,
+      seq: seq,
+    );
+    final clearToken = ++_noteClearWaveClearToken;
+    Future<void>.delayed(const Duration(milliseconds: 520), () {
+      if (_noteClearWaveClearToken != clearToken) return;
+      if (_noteClearWave?.seq == seq) _noteClearWave = null;
+    });
+  }
+
   /// Removes [value] from notes in peer cells of (row, col).
   void _clearPeerNotes(int row, int col, int value, {bool emitWave = true}) {
-    if (emitWave) {
-      final seq = ++_noteClearWaveSeq;
-      _noteClearWave = NoteClearWave(
-        row: row,
-        col: col,
-        value: value,
-        seq: seq,
-      );
-      // Drop the wave after the farthest ring can finish animating.
-      final clearToken = ++_noteClearWaveClearToken;
-      Future<void>.delayed(const Duration(milliseconds: 520), () {
-        if (_noteClearWaveClearToken != clearToken) return;
-        if (_noteClearWave?.seq == seq) {
-          _noteClearWave = null;
-        }
-      });
-    }
+    if (emitWave) _showNoteClearWave(row, col, value);
 
     final boxRow = row ~/ boxH;
     final boxCol = col ~/ boxW;
@@ -2023,6 +2130,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Adds a color note in its fixed 3×3 slot. Does not count as a mistake.
   void addSelectedNote(int value) {
+    if (_hyperCoop) {
+      _sendCoopNotes(value, add: true);
+      return;
+    }
     if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
       _applyNoteToBulk(value, add: true);
       return;
@@ -2046,6 +2157,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Removes a color note from the selected cell. Does not count as a mistake.
   void removeSelectedNote(int value) {
+    if (_hyperCoop) {
+      _sendCoopNotes(value, add: false);
+      return;
+    }
     if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
       _applyNoteToBulk(value, add: false);
       return;
@@ -2067,6 +2182,23 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Toggles a note on the selected cell (used by note-mode picker taps).
   void toggleSelectedNote(int value) {
+    if (_hyperCoop) {
+      if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
+        final targets = _bulkEditableCells().toList();
+        if (targets.isEmpty || isGameOver || _isGenerating || _isPaused) return;
+        final allHave = targets.every(
+          (rc) => _cells[rc.$1][rc.$2].hasNote(value),
+        );
+        _sendCoopNotes(value, add: !allHave);
+        return;
+      }
+      final sel = _selected;
+      if (sel == null || isGameOver || _isGenerating || _isPaused) return;
+      final cell = _cells[sel.$1][sel.$2];
+      if (!cell.isEditable) return;
+      _sendCoopNotes(value, add: !cell.hasNote(value));
+      return;
+    }
     if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
       final targets = _bulkEditableCells();
       if (targets.isEmpty) return;
@@ -2101,6 +2233,43 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       final col = key % gridSize;
       if (_cells[row][col].isEditable) yield (row, col);
     }
+  }
+
+  void _sendCoopNotes(int value, {required bool add}) {
+    final code = _coopLink?.roomCode;
+    if (code == null || isGameOver || _isGenerating || _isPaused) return;
+    final targets = <(int, int)>[];
+    if (_bulkNoteSelect && _bulkSelected.isNotEmpty) {
+      for (final spot in _bulkEditableCells()) {
+        final cell = _cells[spot.$1][spot.$2];
+        if (add) {
+          if (!cell.hasNote(value) || cell.value != 0) targets.add(spot);
+        } else if (cell.hasNote(value)) {
+          targets.add(spot);
+        }
+      }
+    } else {
+      final sel = _selected;
+      if (sel == null) return;
+      final cell = _cells[sel.$1][sel.$2];
+      if (!cell.isEditable) return;
+      if (add) {
+        if (cell.hasNote(value) && cell.value == 0) return;
+      } else if (!cell.hasNote(value)) {
+        return;
+      }
+      targets.add(sel);
+    }
+    if (targets.isEmpty) return;
+    unawaited(
+      HyperchromaCoopService.changeNotes(
+        roomCode: code,
+        changes: [
+          for (final (row, col) in targets)
+            HyperchromaNoteChange(row: row, col: col, value: value, add: add),
+        ],
+      ),
+    );
   }
 
   void _applyNoteToBulk(int value, {required bool add}) {
@@ -2148,6 +2317,19 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         .where((rc) => _cells[rc.$1][rc.$2].hasNotes)
         .toList();
     if (targets.isEmpty) return;
+    if (_hyperCoop) {
+      final code = _coopLink?.roomCode;
+      if (code == null) return;
+      unawaited(
+        HyperchromaCoopService.clearNotes(
+          roomCode: code,
+          cells: [
+            for (final (row, col) in targets) (row: row, col: col),
+          ],
+        ),
+      );
+      return;
+    }
 
     _pushUndo();
     for (final (row, col) in targets) {
@@ -2159,6 +2341,16 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Clears committed color and notes from an editable cell.
   void clearCell(int row, int col, {bool clearSelection = true}) {
+    if (_hyperCoop) {
+      final code = _coopLink?.roomCode;
+      if (code == null || isGameOver || _isGenerating || _isPaused) return;
+      unawaited(HyperchromaCoopService.clearCell(
+        roomCode: code,
+        row: row,
+        col: col,
+      ));
+      return;
+    }
     if (isGameOver || _isGenerating || _isPaused) return;
     final cell = _cells[row][col];
     if (!cell.isEditable || cell.isEmpty) return;
@@ -3044,6 +3236,83 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     await _parkLiveDailyToHold();
   }
 
+  /// Leave the shared match. The partner keeps playing at +5s and sees a toast.
+  /// The leaver returns to the board that was parked for this match.
+  Future<void> leaveHyperchromaCoop() async {
+    if (!_hyperCoop) return;
+    final parked = _coopReturnBoard;
+    _abandonHyperchroma();
+    await _restoreCoopReturnBoard(parked);
+    notifyListeners();
+  }
+
+  Future<void> _restoreCoopReturnBoard(_HyperchromaReturnBoard parked) async {
+    final restored = await _resumeReturnBoard(parked);
+    if (!restored) {
+      await _restoreHomeFromParkedHolds(preserveDaily: true);
+    }
+  }
+
+  Future<bool> _resumeReturnBoard(_HyperchromaReturnBoard parked) async {
+    switch (parked) {
+      case _HyperchromaReturnBoard.none:
+        return false;
+      case _HyperchromaReturnBoard.daily:
+        final held = _heldDaily;
+        if (held == null) return false;
+        _applyHeld(held);
+        _heldDaily = null;
+        await _prefs.clearParkedDailyGame();
+        return true;
+      case _HyperchromaReturnBoard.pocketDaily:
+        final held = _heldPocketDaily;
+        if (held == null) return false;
+        _applyHeld(held);
+        _heldPocketDaily = null;
+        await _prefs.clearParkedPocketDailyGame();
+        return true;
+      case _HyperchromaReturnBoard.pocket:
+        final held = _heldPocket;
+        if (held == null) return false;
+        await _settings.setChromatic(false);
+        _applyHeld(held);
+        _heldPocket = null;
+        await _prefs.clearParkedPocketGame();
+        return true;
+      case _HyperchromaReturnBoard.pocketChromatic:
+        final held = _heldPocketChromatic;
+        if (held == null) return false;
+        await _settings.setChromatic(true);
+        _applyHeld(held);
+        _heldPocketChromatic = null;
+        await _prefs.clearParkedPocketChromaticGame();
+        return true;
+      case _HyperchromaReturnBoard.regular:
+        final held = _heldRegular;
+        if (held == null) return false;
+        await _settings.setChromatic(false);
+        _applyHeld(held);
+        _heldRegular = null;
+        await _prefs.clearParkedRegularGame();
+        return true;
+      case _HyperchromaReturnBoard.chromatic:
+        final held = _heldChromatic;
+        if (held == null) return false;
+        await _settings.setChromatic(true);
+        _applyHeld(held);
+        _heldChromatic = null;
+        await _prefs.clearParkedChromaticGame();
+        return true;
+    }
+  }
+
+  /// One-shot status line for the board, such as a partner leaving.
+  String? takeCoopToast() {
+    final toast = _coopToast;
+    _coopToast = null;
+    return toast;
+  }
+
   /// Hold the countdown while Main Menu covers the board, or the app backgrounds.
   void holdHyperchromaForMenu(bool held) {
     if (_hyperHeldByMenu == held) return;
@@ -3100,6 +3369,21 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   @visibleForTesting
   void debugTickClock() => _onClockTick();
 
+  /// Arms a co-op clock so the next tick can clear a fill or mistake pulse.
+  @visibleForTesting
+  void debugSetCoopPulse({required int endsAtMillis, required int pulse}) {
+    _hyperchroma = true;
+    _hyperCoop = true;
+    _hasActiveGame = true;
+    _isWon = false;
+    _isLost = false;
+    _coopEndsAt = endsAtMillis;
+    _hyperPulse = pulse;
+    _hyperRemaining = Duration(
+      milliseconds: endsAtMillis - HyperchromaCoopService.now(),
+    );
+  }
+
   @visibleForTesting
   void debugGrantSketches(int count) {
     _hyperSketches += count;
@@ -3117,8 +3401,336 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _hyperEmptyOnBoard = emptyOnCurrent;
   }
 
+  /// Fresh board for a co-op host. Same generator as a solo Hyperchroma run.
+  Future<List<List<int>>> generateHyperchromaCoopBoard(Difficulty difficulty) {
+    return _generateHyperchromaBoards(difficulty);
+  }
+
+  /// Take over a match that the lobby already started.
+  Future<bool> adoptHyperchromaCoop(HyperchromaCoopLink link) async {
+    if (!_stats.areAllMenuPalettesUnlocked) return false;
+    if (!_hyperchroma) {
+      if (_isDaily) {
+        _coopReturnBoard = _isPocket
+            ? _HyperchromaReturnBoard.pocketDaily
+            : _HyperchromaReturnBoard.daily;
+        await _parkDailyIfLive();
+      } else if (_isPocket) {
+        _coopReturnBoard = _settings.chromatic
+            ? _HyperchromaReturnBoard.pocketChromatic
+            : _HyperchromaReturnBoard.pocket;
+        await _parkLivePocket();
+      } else {
+        _coopReturnBoard = _settings.chromatic
+            ? _HyperchromaReturnBoard.chromatic
+            : _HyperchromaReturnBoard.regular;
+        await _parkRegularFromLive();
+      }
+    }
+    _hyperCoop = true;
+    _coopFinished = false;
+    _coopTimeoutSent = false;
+    _coopBoardId = -1;
+    _sawPartnerLeft = false;
+    _coopToast = null;
+    _coopLink = link;
+    link.handoff(_applyCoopRoom);
+    notifyListeners();
+    return true;
+  }
+
+  String? _coopHopPalette() {
+    final options = GamePalette.menuValues
+        .where((palette) => palette != activePalette && palette != GamePalette.iro)
+        .toList();
+    if (options.isEmpty) return null;
+    return options[Random().nextInt(options.length)].storageKey;
+  }
+
+  void _syncCoopClock() {
+    if (isGameOver) return;
+    final ends = _coopEndsAt;
+    if (ends == null) return;
+    final leftMs = ends - HyperchromaCoopService.now();
+    if (leftMs <= 0) {
+      _hyperRemaining = Duration.zero;
+      _hyperPulse = 0;
+      if (!_coopTimeoutSent && !_isGenerating) {
+        _coopTimeoutSent = true;
+        final code = _coopLink?.roomCode;
+        if (code != null) unawaited(HyperchromaCoopService.timeout(code));
+      }
+    } else {
+      _hyperRemaining = Duration(milliseconds: leftMs);
+      _hyperPulse = 0;
+    }
+    notifyListeners();
+  }
+
+  void _applyCoopRoom(Map<dynamic, dynamic> room) {
+    if (!_hyperCoop || _coopFinished) return;
+    final state = room['gameState']?.toString();
+    if (state == 'finished') {
+      _syncCoopMeta(room);
+      _finishCoopRun();
+      return;
+    }
+    if (state != 'playing') return;
+    if (room['partnerLeft'] == true && !_sawPartnerLeft) {
+      _sawPartnerLeft = true;
+      _coopToast = 'Teammate left';
+    }
+    final boardId = (room['boardId'] as num?)?.toInt() ?? 0;
+    final dealing = room['dealing'] == true;
+    if (!dealing && boardId != 0 && boardId != _coopBoardId) {
+      _installCoopBoard(room);
+    } else if (!dealing && boardId == _coopBoardId) {
+      _patchCoopCells(room);
+    }
+    _isGenerating = dealing;
+    _syncCoopMeta(room);
+    unawaited(_maybeAdvanceCoop(room));
+    notifyListeners();
+  }
+
+  void _installCoopBoard(Map<dynamic, dynamic> room) {
+    final puzzleFlat = [
+      for (final value in room['puzzle'] as List? ?? const [])
+        (value as num).toInt(),
+    ];
+    final solutionFlat = [
+      for (final value in room['solution'] as List? ?? const [])
+        (value as num).toInt(),
+    ];
+    if (puzzleFlat.length != 81 || solutionFlat.length != 81) return;
+    _timer?.cancel();
+    _generationToken++;
+    _hyperchroma = true;
+    _isDaily = false;
+    _isPocket = false;
+    _dailyDayKey = null;
+    _dailyReviewMode = false;
+    _isWon = false;
+    _isLost = false;
+    _isPaused = false;
+    _hasActiveGame = true;
+    _selected = null;
+    _exitBulkNoteSelect();
+    _noteMode = false;
+    _undoStack.clear();
+    _mistakes = 0;
+    final puzzle = SudokuBoard.fromFlat(puzzleFlat);
+    _solution = SudokuBoard.fromFlat(solutionFlat);
+    _cells = List.generate(9, (r) {
+      return List.generate(9, (c) {
+        final value = puzzle.get(r, c);
+        return Cell(value: value, isGiven: value != 0);
+      });
+    });
+    _overlayCoopCells(room);
+    _coopBoardId = (room['boardId'] as num?)?.toInt() ?? 0;
+    _hyperBoardsCleared = (room['boardsCleared'] as num?)?.toInt() ?? 0;
+    _gameDifficulty = HyperchromaRules.difficultyForBoard(_hyperBoardsCleared);
+    _hyperEmptyOnBoard = (room['emptyOnBoard'] as num?)?.toInt() ?? _countPlayerCells();
+    _completedUnits = _successfullyCompletedUnits();
+    _isGenerating = false;
+    _syncSessionBSide();
+    _startTimer();
+  }
+
+  void _patchCoopCells(Map<dynamic, dynamic> room) {
+    final before = _cloneCells();
+    _overlayCoopCells(room);
+    var addedNote = false;
+    int? noteRow;
+    int? noteCol;
+    int? noteValue;
+    int? placedRow;
+    int? placedCol;
+    int? placedValue;
+    var removedNote = false;
+    for (var r = 0; r < 9; r++) {
+      for (var c = 0; c < 9; c++) {
+        final previous = before[r][c];
+        final next = _cells[r][c];
+        if (!previous.isLocked && next.isLocked) {
+          _playSound(_placementConfirmSound(next.value));
+        } else if (previous.value != next.value &&
+            next.value != 0 &&
+            !next.isLocked) {
+          _playSound(_sounds.playMistake);
+        }
+        if (previous.value != next.value && next.value != 0) {
+          placedRow = r;
+          placedCol = c;
+          placedValue = next.value;
+        }
+        if (next.notes.length > previous.notes.length) {
+          addedNote = true;
+          noteRow ??= r;
+          noteCol ??= c;
+          final added = next.notes.difference(previous.notes);
+          noteValue ??= added.isEmpty ? next.notes.first : added.first;
+        } else if (previous.value == next.value &&
+            next.notes.length < previous.notes.length) {
+          removedNote = true;
+        }
+      }
+    }
+    if (addedNote && noteRow != null && noteCol != null && noteValue != null) {
+      final seq = ++_noteAppearWaveSeq;
+      _noteAppearWave = NoteAppearWave(
+        value: noteValue,
+        seq: seq,
+        centerRow: (noteRow ~/ 3) * 3 + 1,
+        centerCol: (noteCol ~/ 3) * 3 + 1,
+      );
+      _playSound(_sounds.playNote);
+    } else if (removedNote && placedValue == null) {
+      _playSound(_sounds.playNoteDeselect);
+    }
+    if (placedRow != null && placedCol != null && placedValue != null) {
+      _showNoteClearWave(placedRow, placedCol, placedValue);
+    }
+    _refreshConflicts();
+    _syncCompletedUnits(celebrate: true);
+  }
+
+  void _overlayCoopCells(Map<dynamic, dynamic> room) {
+    for (var r = 0; r < 9; r++) {
+      for (var c = 0; c < 9; c++) {
+        if (_cells[r][c].isGiven) continue;
+        _cells[r][c] = const Cell();
+      }
+    }
+    final raw = room['cells'];
+    if (raw is! Map) return;
+    for (final entry in raw.entries) {
+      final parts = entry.key.toString().split('_');
+      if (parts.length != 2) continue;
+      final r = int.tryParse(parts[0]);
+      final c = int.tryParse(parts[1]);
+      if (r == null || c == null || r > 8 || c > 8) continue;
+      if (_cells[r][c].isGiven) continue;
+      final cell = entry.value;
+      if (cell is! Map) continue;
+      final notes = HyperchromaCoopService.readNotes(cell['notes']);
+      _cells[r][c] = Cell(
+        value: (cell['v'] as num?)?.toInt() ?? 0,
+        notes: notes,
+        isLocked: cell['locked'] == true,
+      );
+    }
+  }
+
+  void _syncCoopMeta(Map<dynamic, dynamic> room) {
+    final previousEnd = _coopEndsAt;
+    _hyperSketches = (room['sketches'] as num?)?.toInt() ?? _hyperSketches;
+    _steadfastFills = (room['steadfast'] as num?)?.toInt() ?? 0;
+    _traceArmed = room['trace'] == true;
+    _telepathyArmed = room['telepathy'] == true;
+    _hyperCellsFilled = (room['cellsFilled'] as num?)?.toInt() ?? _hyperCellsFilled;
+    _hyperFilledOnBoard = (room['filledOnBoard'] as num?)?.toInt() ?? _hyperFilledOnBoard;
+    _hyperBoardsCleared = (room['boardsCleared'] as num?)?.toInt() ?? _hyperBoardsCleared;
+    _coopEndsAt = (room['endsAt'] as num?)?.toInt();
+    final palette = GamePalette.fromStorageKey(room['palette']?.toString());
+    if (_sessionPalette != palette) {
+      _sessionPalette = palette;
+      _iroMix = null;
+      _syncSessionBSide();
+    }
+    if (previousEnd != null && _coopEndsAt != null && _coopEndsAt != previousEnd) {
+      _hyperPulse = _coopEndsAt! > previousEnd
+          ? HyperchromaRules.coopGainSeconds
+          : -HyperchromaRules.mistakePenaltySeconds;
+    }
+    final ends = _coopEndsAt;
+    if (ends != null) {
+      final left = ends - HyperchromaCoopService.now();
+      _hyperRemaining = Duration(milliseconds: left < 0 ? 0 : left);
+    }
+  }
+
+  Future<void> _maybeAdvanceCoop(Map<dynamic, dynamic> room) async {
+    final link = _coopLink;
+    final code = link?.roomCode;
+    final id = link?.playerId;
+    if (link == null || code == null || id == null || _coopAdvancing) return;
+    final players = Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
+    final host = room['host']?.toString();
+    if (host == id) {
+      link.isHost = true;
+    } else if (host == null || !players.containsKey(host)) {
+      link.isHost = await HyperchromaCoopService.claimHost(
+        roomCode: code,
+        playerId: id,
+      );
+    }
+    if (room['dealing'] != true || !link.isHost) return;
+    _coopAdvancing = true;
+    try {
+      final cleared = ((room['boardsCleared'] as num?)?.toInt() ?? 0) + 1;
+      final boards = await _generateHyperchromaBoards(
+        HyperchromaRules.difficultyForBoard(cleared),
+      );
+      await HyperchromaCoopService.publishBoard(
+        roomCode: code,
+        puzzle: boards[0],
+        solution: boards[1],
+        boardId: ((room['boardId'] as num?)?.toInt() ?? 1) + 1,
+        boardsCleared: cleared,
+        endsAt: (room['endsAt'] as num?)?.toInt() ?? HyperchromaCoopService.now(),
+        sketches: (room['sketches'] as num?)?.toInt() ?? 0,
+        steadfast: (room['steadfast'] as num?)?.toInt() ?? 0,
+        trace: room['trace'] == true,
+        telepathy: room['telepathy'] == true,
+        palette: room['palette']?.toString() ?? GamePalette.standard.storageKey,
+        cellsFilled: (room['cellsFilled'] as num?)?.toInt() ?? 0,
+        emptyOnBoard: HyperchromaCoopService.emptyCount(boards[0]),
+        partnerLeft: room['partnerLeft'] == true,
+      );
+    } finally {
+      _coopAdvancing = false;
+    }
+  }
+
+  void _finishCoopRun() {
+    if (_coopFinished) return;
+    _coopFinished = true;
+    final link = _coopLink;
+    _coopLink = null;
+    unawaited(link?.stop());
+    _endHyperchromaRun();
+  }
+
+  void _releaseCoop({required bool tellPartner}) {
+    final link = _coopLink;
+    _coopLink = null;
+    _hyperCoop = false;
+    _coopEndsAt = null;
+    _coopBoardId = -1;
+    _coopFinished = false;
+    _coopTimeoutSent = false;
+    _coopAdvancing = false;
+    _coopBuying = false;
+    _sawPartnerLeft = false;
+    _coopToast = null;
+    _coopReturnBoard = _HyperchromaReturnBoard.none;
+    if (link == null) return;
+    unawaited(link.stop());
+    final code = link.roomCode;
+    final id = link.playerId;
+    if (tellPartner && code != null && id != null) {
+      unawaited(HyperchromaCoopService.roomRef(code).update({
+        'players/$id': null,
+        'partnerLeft': true,
+      }));
+    }
+  }
+
   void _abandonHyperchroma() {
-    if (!_hyperchroma) return;
+    if (!_hyperchroma && !_hyperCoop) return;
+    _releaseCoop(tellPartner: true);
     _timer?.cancel();
     _timer = null;
     _generationToken++;
@@ -3143,6 +3755,11 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   }
 
   void _syncHyperClock() {
+    if (_hyperCoop) {
+      if (isGameOver || !_hasActiveGame) return;
+      _startTimer();
+      return;
+    }
     if (!_hyperchroma || isGameOver || !_hasActiveGame || _isGenerating) {
       return;
     }
@@ -3177,7 +3794,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_hyperBoardsCleared <= 0) {
       _isLost = true;
       _isWon = false;
-      _stats.recordHyperchromaScore(_hyperCellsFilled);
+      if (!_hyperCoop) _stats.recordHyperchromaScore(hyperchromaScore);
       _playSound(_sounds.playHyperchromaGameOver);
       notifyListeners();
       return;
@@ -3191,7 +3808,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _stats.awardHyperchroma(earned);
       unawaited(_stats.persist());
     }
-    _stats.recordHyperchromaScore(_hyperCellsFilled);
+    if (!_hyperCoop) _stats.recordHyperchromaScore(hyperchromaScore);
     _isWon = true;
     _isLost = false;
     _winRecorded = true;
@@ -3217,6 +3834,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   }
 
   Future<void> _loadHyperchromaBoard({required bool freshRun}) async {
+    if (_hyperCoop) _releaseCoop(tellPartner: true);
     _timer?.cancel();
     _timer = null;
     final token = ++_generationToken;
@@ -3749,8 +4367,13 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   void _startTimer() {
     // Discord has no first-run overlay to dismiss, so never hold the clock.
+    if (_hyperCoop) {
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _onClockTick());
+      return;
+    }
     if (_settings.showFirstRunTutorial && !DiscordMode.enabled) return;
-    if (_hyperchroma) {
+    if (_hyperchroma && !_hyperCoop) {
       if (_hyperHeldByMenu || _hyperHeldByBackground) return;
     } else if (_isPaused) {
       return;
@@ -3760,6 +4383,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   }
 
   void _onClockTick() {
+    if (_hyperCoop) {
+      _syncCoopClock();
+      return;
+    }
     if (isGameOver || _isGenerating) return;
     if (_hyperchroma) {
       if (_hyperHeldByMenu || _hyperHeldByBackground) return;

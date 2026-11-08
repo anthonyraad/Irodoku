@@ -23,7 +23,7 @@ class SudokuGrid extends StatefulWidget {
   /// Hit-test target for the cell area, inside the outer border.
   final Key? boardKey;
 
-  /// Box index to wash while a sketch color is dragged over the board.
+  /// Box index to outline while a sketch color is dragged over the board.
   final int? sketchBox;
 
   /// When false, the outer frame is transparent. Used while the shop covers it.
@@ -50,6 +50,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
 
   late final AnimationController _controller;
   late final BulkNoteBorderAnimation _unitBorders;
+  late final AnimationController _sketchRainbow;
   late final AnimationController _colorCycleController;
   late final PickerHoldSweep _holdSweep;
   int _lastCelebrationId = 0;
@@ -70,6 +71,10 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
       }
     });
     _unitBorders = BulkNoteBorderAnimation(this);
+    _sketchRainbow = AnimationController(
+      vsync: this,
+      duration: BulkNoteRainbowBorder.duration,
+    );
     _colorCycleController = AnimationController(
       vsync: this,
       duration: ColorCycle.oneShotDuration,
@@ -82,6 +87,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _holdSweep = PickerHoldSweep(this);
     widget.game.addListener(_onGameChanged);
     _syncUnitBorders();
+    _syncSketchRainbow();
     _syncHoldSweep();
   }
 
@@ -95,6 +101,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _maybeStartCelebration();
     _maybeStartColorCycle();
     _syncUnitBorders();
+    _syncSketchRainbow();
     _syncHoldSweep();
     _syncGlassMotion();
   }
@@ -105,6 +112,7 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
     _syncGlassMotion(forceOff: true);
     _controller.dispose();
     _unitBorders.dispose();
+    _sketchRainbow.dispose();
     _colorCycleController.dispose();
     _holdSweep.dispose();
     super.dispose();
@@ -162,6 +170,15 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
       showPulse: selected && !widget.game.bulkNoteSelect,
       showRainbow: selected && widget.game.bulkNoteSelect,
     );
+  }
+
+  void _syncSketchRainbow() {
+    if (widget.sketchBox != null) {
+      if (!_sketchRainbow.isAnimating) _sketchRainbow.repeat(reverse: true);
+      return;
+    }
+    _sketchRainbow.stop();
+    _sketchRainbow.value = 0;
   }
 
   void _maybeStartCelebration() {
@@ -289,19 +306,22 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
                 },
               ),
             if (widget.sketchBox != null)
-              IgnorePointer(
-                child: CustomPaint(
-                  painter: _SketchBoxPainter(
-                    box: widget.sketchBox!,
-                    n: game.gridSize,
-                    boxW: game.boxW,
-                    boxH: game.boxH,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.14),
-                  ),
-                ),
+              AnimatedBuilder(
+                animation: _sketchRainbow,
+                builder: (context, _) {
+                  return IgnorePointer(
+                    child: CustomPaint(
+                      painter: _SketchBoxPainter(
+                        box: widget.sketchBox!,
+                        n: game.gridSize,
+                        boxW: game.boxW,
+                        boxH: game.boxH,
+                        phase: _sketchRainbow.value,
+                        brightness: brightness,
+                      ),
+                    ),
+                  );
+                },
               ),
           ],
         ),
@@ -664,20 +684,22 @@ class _PeerUnitBorderPainter extends CustomPainter {
   }
 }
 
-/// Soft wash over the 3×3 box under a dragged sketch color.
+/// Rainbow outline around the 3×3 box under a dragged Hyperchroma color.
 class _SketchBoxPainter extends CustomPainter {
   final int box;
   final int n;
   final int boxW;
   final int boxH;
-  final Color color;
+  final double phase;
+  final Brightness brightness;
 
   const _SketchBoxPainter({
     required this.box,
     required this.n,
     required this.boxW,
     required this.boxH,
-    required this.color,
+    required this.phase,
+    required this.brightness,
   });
 
   @override
@@ -693,13 +715,13 @@ class _SketchBoxPainter extends CustomPainter {
       boxW * cellW,
       boxH * cellH,
     );
-    canvas.drawRect(rect, Paint()..color = color);
     canvas.drawRect(
-      rect.deflate(1.2),
-      Paint()
-        ..color = color.withValues(alpha: 0.45)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
+      rect,
+      BulkNoteRainbowBorder.strokePaint(
+        size: size,
+        phase: phase,
+        brightness: brightness,
+      ),
     );
   }
 
@@ -709,6 +731,7 @@ class _SketchBoxPainter extends CustomPainter {
         oldDelegate.n != n ||
         oldDelegate.boxW != boxW ||
         oldDelegate.boxH != boxH ||
-        oldDelegate.color != color;
+        oldDelegate.phase != phase ||
+        oldDelegate.brightness != brightness;
   }
 }

@@ -8,6 +8,7 @@ import 'package:irodoku/providers/achievements_provider.dart';
 import 'package:irodoku/providers/game_provider.dart';
 import 'package:irodoku/providers/settings_provider.dart';
 import 'package:irodoku/providers/stats_provider.dart';
+import 'package:irodoku/services/hyperchroma_coop_service.dart';
 import 'package:irodoku/services/preferences_service.dart';
 import 'package:irodoku/services/sound_service.dart';
 import 'package:irodoku/widgets/hyperchroma_menu_button.dart';
@@ -94,7 +95,7 @@ void main() {
       expect(game.hyperchromaSeconds, HyperchromaRules.startSeconds - 12);
 
       game.applyPickerColor(game.debugSolutionAt(row, col)!);
-      expect(game.hyperchromaScore, 1);
+      expect(game.hyperchromaScore, HyperchromaRules.pointsPerCell);
       expect(game.activePalette, isNot(GamePalette.standard));
       expect(game.hyperchromaPulse, HyperchromaRules.gainSeconds);
       expect(
@@ -182,7 +183,7 @@ void main() {
       expect(game.difficulty, Difficulty.medium);
       expect(game.hyperchromaBoardsCleared, 1);
       expect(game.hyperchromaLevelLabel, 'Level 2');
-      expect(game.hyperchromaScore, empty);
+      expect(game.hyperchromaScore, empty * HyperchromaRules.pointsPerCell);
       expect(game.isGameOver, isFalse);
       expect(
         game.hyperchromaSeconds,
@@ -194,7 +195,10 @@ void main() {
       game.selectCell(row, col);
       game.applyPickerColor(game.debugSolutionAt(row, col)!);
       expect(game.hyperchromaSeconds, before + HyperchromaRules.gainSeconds);
-      expect(game.hyperchromaScore, empty + 1);
+      expect(
+        game.hyperchromaScore,
+        (empty + 1) * HyperchromaRules.pointsPerCell,
+      );
     },
   );
 
@@ -456,7 +460,7 @@ void main() {
     expect(game.cellAt(row, col).value, value);
     expect(game.cellAt(row, col).isLocked, isTrue);
     expect(game.hyperchromaSketches, 0);
-    expect(game.hyperchromaScore, score + 1);
+    expect(game.hyperchromaScore, score + HyperchromaRules.pointsPerCell);
     expect(game.hyperchromaSeconds, seconds);
   });
 
@@ -477,7 +481,7 @@ void main() {
       tester.getCenter(find.text('Chromatic')),
     );
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 400));
     await held.up();
     await tester.pump();
     expect(find.text('Chromatic'), findsOneWidget);
@@ -487,7 +491,7 @@ void main() {
       tester.getCenter(find.text('Chromatic')),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1600));
+    await tester.pump(const Duration(milliseconds: 1050));
     await tester.pump();
     expect(find.text('Hyperchroma'), findsOneWidget);
     await arm.up();
@@ -517,7 +521,7 @@ void main() {
       tester.getCenter(find.text('Chromatic')),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1600));
+    await tester.pump(const Duration(milliseconds: 1050));
     await tester.pump();
     expect(find.text('Hyperchroma'), findsOneWidget);
     await gesture.up();
@@ -538,7 +542,7 @@ void main() {
       tester.getCenter(find.text('Chromatic')),
     );
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1600));
+    await tester.pump(const Duration(milliseconds: 1050));
     await tester.pump();
     expect(find.text('Hyperchroma'), findsOneWidget);
     await gesture.up();
@@ -548,6 +552,131 @@ void main() {
     await tester.pump();
     expect(find.text('Chromatic'), findsOneWidget);
     expect(find.text('Hyperchroma'), findsNothing);
+  });
+
+  test('co-op clock pulse clears on the next tick', () async {
+    final game = await _game();
+    addTearDown(game.dispose);
+    final endsAt = HyperchromaCoopService.now() + 30000;
+    game.debugSetCoopPulse(
+      endsAtMillis: endsAt,
+      pulse: HyperchromaRules.coopGainSeconds,
+    );
+    game.debugTickClock();
+    expect(game.hyperchromaPulse, 0);
+    expect(game.hyperchromaSeconds, greaterThan(10));
+
+    game.debugSetCoopPulse(
+      endsAtMillis: endsAt,
+      pulse: -HyperchromaRules.mistakePenaltySeconds,
+    );
+    game.debugTickClock();
+    expect(game.hyperchromaPulse, 0);
+    expect(game.hyperchromaSeconds, greaterThan(10));
+  });
+
+  test('co-op fill clears peer notes and a repeated mistake erases', () {
+    final puzzle = List<int>.filled(81, 1);
+    final solution = List<int>.filled(81, 1);
+    for (final index in [0, 1, 8, 9, 40]) {
+      puzzle[index] = 0;
+    }
+    solution[0] = 5;
+    solution[1] = 6;
+    solution[8] = 7;
+    solution[9] = 8;
+    solution[40] = 9;
+    final data = <String, Object?>{
+      'puzzle': puzzle,
+      'solution': solution,
+      'cells': {
+        '0_1': {
+          'v': 0,
+          'locked': false,
+          'notes': {'5': true, '6': true},
+        },
+        '0_8': {
+          'v': 0,
+          'locked': false,
+          'notes': {'5': true},
+        },
+        '1_0': {
+          'v': 0,
+          'locked': false,
+          'notes': {'5': true},
+        },
+        '4_4': {
+          'v': 0,
+          'locked': false,
+          'notes': {'5': true},
+        },
+      },
+      'endsAt': 50000,
+      'sketches': 0,
+      'steadfast': 0,
+      'cellsFilled': 0,
+      'filledOnBoard': 0,
+    };
+
+    expect(
+      HyperchromaCoopService.applyPlacement(
+        data,
+        1000,
+        row: 0,
+        col: 0,
+        value: 4,
+        hopPalette: 'neon',
+      ),
+      isTrue,
+    );
+    expect(data['endsAt'], 50000 - 12000);
+    var cells = data['cells']! as Map;
+    expect(cells['0_0']['v'], 4);
+    expect(
+      HyperchromaCoopService.readNotes(cells['0_1']['notes']),
+      contains(5),
+    );
+
+    expect(
+      HyperchromaCoopService.applyPlacement(
+        data,
+        1000,
+        row: 0,
+        col: 0,
+        value: 4,
+        hopPalette: 'neon',
+      ),
+      isTrue,
+    );
+    expect(data['endsAt'], 50000 - 12000);
+    cells = data['cells']! as Map;
+    expect(cells.containsKey('0_0'), isFalse);
+
+    expect(
+      HyperchromaCoopService.applyPlacement(
+        data,
+        1000,
+        row: 0,
+        col: 0,
+        value: 5,
+        hopPalette: 'neon',
+      ),
+      isTrue,
+    );
+    expect(data['endsAt'], 50000 - 12000 + 5000);
+    expect(data['cellsFilled'], 1);
+    cells = data['cells']! as Map;
+    expect(cells['0_0']['locked'], isTrue);
+    expect(
+      HyperchromaCoopService.readNotes(cells['0_1']['notes']),
+      {6},
+    );
+    expect(cells.containsKey('0_8'), isFalse);
+    expect(cells.containsKey('1_0'), isFalse);
+    expect(
+      HyperchromaCoopService.readNotes(cells['4_4']['notes']),
+      contains(5),
+    );
   });
 }
 

@@ -197,4 +197,37 @@ abstract final class IrodokuTheme {
       ),
     );
   }
+
+  /// Grey used by the old Graffiti lobby field outline and Join button.
+  static Color joinChrome(Brightness brightness) =>
+      brightness == Brightness.dark ? settingsPrimaryDark : settingsPrimaryLight;
+
+  static InputDecoration joinCodeDecoration(BuildContext context) {
+    final grey = joinChrome(Theme.of(context).brightness);
+    final border = OutlineInputBorder(borderSide: BorderSide(color: grey));
+    return InputDecoration(
+      counterText: '',
+      hintText: 'Join with code',
+      border: border,
+      enabledBorder: border,
+      focusedBorder: border.copyWith(borderSide: BorderSide(color: grey, width: 2)),
+    );
+  }
+
+  static ButtonStyle joinButtonStyle(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // Darker than the settings accent the field outline uses.
+    final grey = dark ? settingsPrimaryLight : const Color(0xFF212121);
+    return FilledButton.styleFrom(
+      backgroundColor: grey,
+      foregroundColor: Colors.white,
+      disabledBackgroundColor: grey.withValues(alpha: 0.38),
+      disabledForegroundColor: Colors.white.withValues(alpha: 0.38),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      minimumSize: const Size(64, 52),
+    );
+  }
 }

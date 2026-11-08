@@ -16,6 +16,8 @@ import '../providers/settings_provider.dart';
 import '../providers/stats_provider.dart';
 import '../services/daily_leaderboard_service.dart';
 import '../services/discord_link_service.dart';
+import '../widgets/graffiti_match_dialog.dart';
+import '../widgets/hyperchroma_coop_dialog.dart';
 import '../widgets/hyperchroma_menu_button.dart';
 import '../widgets/menu_action_button.dart';
 import '../widgets/menu_select_sound.dart';
@@ -441,6 +443,16 @@ class _SettingsScreenState extends State<SettingsScreen>
       _showChromaticLockedSnackBar(context);
       return;
     }
+    final mode = await showDialog<HyperchromaMenuResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const HyperchromaModeDialog(),
+    );
+    if (!context.mounted || mode == null) return;
+    if (mode == HyperchromaMenuResult.started) {
+      await Navigator.of(context).maybePop();
+      return;
+    }
     final started = await game.openHyperchromaGame();
     if (!context.mounted || !started) return;
     await Navigator.of(context).maybePop();
@@ -540,19 +552,26 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _onGraffitiPressed(BuildContext context) async {
-    _hideTitleIcons();
-    await Navigator.of(
-      context,
-    ).push(IrodokuPageRoute(builder: (_) => const GraffitiScreen()));
-    if (!mounted) return;
-    _scheduleTitleIcons();
+  Future<void> _onGraffitiPressed(BuildContext context) {
+    return _openGraffiti(context, pocket: false);
   }
 
-  Future<void> _onPocketGraffitiPressed(BuildContext context) async {
+  Future<void> _onPocketGraffitiPressed(BuildContext context) {
+    return _openGraffiti(context, pocket: true);
+  }
+
+  Future<void> _openGraffiti(BuildContext context, {required bool pocket}) async {
+    final started = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => GraffitiMatchDialog(pocket: pocket),
+    );
+    if (!context.mounted || started != true) return;
     _hideTitleIcons();
     await Navigator.of(context).push(
-      IrodokuPageRoute(builder: (_) => const GraffitiScreen(pocket: true)),
+      IrodokuPageRoute(
+        builder: (_) => GraffitiScreen(pocket: pocket),
+      ),
     );
     if (!mounted) return;
     _scheduleTitleIcons();

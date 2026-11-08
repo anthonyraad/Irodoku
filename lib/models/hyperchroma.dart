@@ -19,7 +19,7 @@ enum HyperchromaEffect {
   telepathy(
     7,
     'Telepathy',
-    'Your next color drag into a box locks the correct cell for that color.',
+    'The next color you drag into a box locks that color in its correct place.',
   );
 
   final int cost;
@@ -42,6 +42,12 @@ abstract final class HyperchromaRules {
 
   /// Seconds added for every correct fill, on every difficulty.
   static const gainSeconds = 10;
+
+  /// Co-op correct fills add half as much. Stays at 5 even if a partner leaves.
+  static const coopGainSeconds = 5;
+
+  /// Points awarded for each correct fill.
+  static const pointsPerCell = 10;
 
   /// Correct fills Steadfast can hold the palette still.
   static const steadfastFills = 4;

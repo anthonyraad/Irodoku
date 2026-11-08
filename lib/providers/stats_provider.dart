@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/difficulty.dart';
 import '../models/game_palette.dart';
 import '../models/game_stats.dart';
+import '../models/hyperchroma.dart';
 import '../models/player_xp.dart';
 import '../services/preferences_service.dart';
 
@@ -16,6 +17,13 @@ class StatsProvider extends ChangeNotifier {
   Future<void> _writeQueue = Future.value();
 
   StatsProvider(this._prefs) : _stats = _prefs.loadStats() {
+    if (!_prefs.hasHyperchromaPointScore) {
+      _stats = _stats.copyWith(
+        hyperchromaBestScore:
+            _stats.hyperchromaBestScore * HyperchromaRules.pointsPerCell,
+      );
+      unawaited(persist());
+    }
     if (!_prefs.hasTotalXp) {
       _stats = _stats.copyWith(totalXp: PlayerXp.backfillFrom(_stats));
       unawaited(persist());

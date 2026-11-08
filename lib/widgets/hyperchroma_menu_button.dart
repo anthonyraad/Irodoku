@@ -40,7 +40,7 @@ class HyperchromaMenuButton extends StatefulWidget {
 
 class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
     with SingleTickerProviderStateMixin {
-  static const _armDuration = Duration(milliseconds: 1500);
+  static const _armDuration = Duration(milliseconds: 950);
 
   /// Past this fraction of the hold, releasing is not a Chromatic tap.
   static const _tapSlop = 0.12;
