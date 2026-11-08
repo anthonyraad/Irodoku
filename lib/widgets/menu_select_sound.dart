@@ -13,6 +13,13 @@ void playMenuSelectSound(BuildContext context) {
   unawaited(context.read<SoundService>().playMenuSelect());
 }
 
+/// Sting when a Chromatic hold becomes Hyperchroma, if sound is on.
+void playHyperchromaSelectSound(BuildContext context) {
+  final settings = context.read<SettingsProvider>();
+  if (!settings.soundEnabled) return;
+  unawaited(context.read<SoundService>().playHyperchromaSelect());
+}
+
 /// In-game pause / resume / dice sting, if sound is on.
 void playIgMenuSound(BuildContext context) {
   final settings = context.read<SettingsProvider>();

@@ -3,6 +3,32 @@ import 'dart:math' as math;
 import 'difficulty.dart';
 import 'player_xp.dart';
 
+/// Pause-shop powers. The sketch cost is paid up front; the effect waits
+/// until the player aims it on the board.
+enum HyperchromaEffect {
+  steadfast(
+    3,
+    'Steadfast',
+    "The palette doesn't hop for your next 4 fills, or until you complete a unit.",
+  ),
+  trace(
+    5,
+    'Trace',
+    'The next box you tap into gets filled with all color notes.',
+  ),
+  telepathy(
+    7,
+    'Telepathy',
+    'Your next color drag into a box locks the correct cell for that color.',
+  );
+
+  final int cost;
+  final String title;
+  final String description;
+
+  const HyperchromaEffect(this.cost, this.title, this.description);
+}
+
 /// Clock and score for Hyperchroma, the escalating Chromatic arcade run.
 ///
 /// The clock counts down. Every correct fill adds the same amount of time,
@@ -16,6 +42,9 @@ abstract final class HyperchromaRules {
 
   /// Seconds added for every correct fill, on every difficulty.
   static const gainSeconds = 10;
+
+  /// Correct fills Steadfast can hold the palette still.
+  static const steadfastFills = 4;
 
   /// Twice the normal finish XP for that difficulty.
   static int boardXp(Difficulty difficulty) => PlayerXp.baseXp(difficulty) * 2;

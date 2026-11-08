@@ -150,6 +150,15 @@ class _StatsScreenState extends State<StatsScreen> {
                           ),
                       ],
                     ),
+                    const SizedBox(height: 20),
+                    _StatCard(
+                      children: [
+                        _StatRow(
+                          label: 'Hyperchroma Score',
+                          value: '${stats.hyperchromaBestScore}',
+                        ),
+                      ],
+                    ),
                   ] else ...[
                     _StatCard(
                       children: [

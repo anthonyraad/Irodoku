@@ -152,6 +152,18 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// board changes and resets only when the run ends or restarts.
   int _hyperSketches = 0;
 
+  /// Remaining correct fills that skip the per-cell palette hop.
+  int _steadfastFills = 0;
+
+  /// The next tapped box receives every legal candidate note.
+  bool _traceArmed = false;
+
+  /// The next sketch drag locks the solution cell for that color.
+  bool _telepathyArmed = false;
+
+  /// Telepathy fills score a cell without the usual +10 seconds.
+  bool _suppressHyperchromaTime = false;
+
   /// Signed seconds of the latest fill, cleared on the next clock tick.
   int _hyperPulse = 0;
   bool _hyperHeldByMenu = false;
@@ -529,7 +541,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_isGenerating || _isPaused || _isLost) return;
     if (!_hasActiveGame && !_isWon) return;
     if (_celebration != null) return;
-    _colorCycleMosaic = onlyValue == null
+    // Hyperchroma boards are unfinished when the run ends, so a mosaic
+    // would paint over empty cells.
+    _colorCycleMosaic = onlyValue == null && !_hyperchroma
         ? _mosaicForTitleShimmer(savedMosaics)
         : null;
     if (_colorCycleMosaic != null) {
@@ -1302,9 +1316,12 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _pausedThisGame = true;
     _selected = null;
     _exitBulkNoteSelect();
-    _timer?.cancel();
-    _timer = null;
-    if (!_hyperchroma) await _savePausedGame();
+    // Hyperchroma keeps counting under the shop. Classic pause still stops.
+    if (!_hyperchroma) {
+      _timer?.cancel();
+      _timer = null;
+      await _savePausedGame();
+    }
     notifyListeners();
     _playSound(_sounds.playIgMenu);
   }
@@ -1313,9 +1330,30 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (!_isPaused || isGameOver) return;
     _isPaused = false;
     await _prefs.clearPausedGame();
-    _startTimer();
+    if (!_hyperchroma || _timer == null) _startTimer();
     notifyListeners();
     _playSound(_sounds.playIgMenu);
+  }
+
+  /// Buy a pause-shop effect and return to the board with it armed.
+  bool buyHyperchromaEffect(HyperchromaEffect effect) {
+    if (!_hyperchroma || !_isPaused || isGameOver || _isGenerating) {
+      return false;
+    }
+    if (_hyperSketches < effect.cost) return false;
+    _hyperSketches -= effect.cost;
+    switch (effect) {
+      case HyperchromaEffect.steadfast:
+        _steadfastFills = HyperchromaRules.steadfastFills;
+      case HyperchromaEffect.trace:
+        _traceArmed = true;
+      case HyperchromaEffect.telepathy:
+        _telepathyArmed = true;
+    }
+    _isPaused = false;
+    notifyListeners();
+    _playSound(_sounds.playIgMenu);
+    return true;
   }
 
   Future<void> togglePause() async {
@@ -1508,6 +1546,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   void selectCell(int row, int col) {
     if (isGameOver || _isGenerating || _isPaused) return;
     if (_pickerHoldActive) endPickerHoldSweep();
+    if (_traceArmed) _applyTrace(row, col);
     final cell = _cells[row][col];
 
     if (_ignoreNextBulkTap) {
@@ -1764,15 +1803,22 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     } else {
       _recordSuccessfulFill(row, col, value);
       if (_hyperchroma) {
-        _applyHyperchromaDelta(HyperchromaRules.gainSeconds);
+        if (!_suppressHyperchromaTime) {
+          _applyHyperchromaDelta(HyperchromaRules.gainSeconds);
+        }
         _hyperFilledOnBoard++;
         _hyperCellsFilled++;
-        _hopChromaticPalette();
+        if (_steadfastFills > 0) {
+          _steadfastFills--;
+        } else {
+          _hopChromaticPalette();
+        }
       }
     }
 
     _refreshConflicts();
     final unitCompleted = _syncCompletedUnits(celebrate: true);
+    if (_hyperchroma && unitCompleted) _steadfastFills = 0;
     if (!isMistake) {
       final solved = _toBoard().isValidSolution();
       if (solved && _hyperchroma) {
@@ -1795,6 +1841,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// Notes are collected first, then bloom outward from the center of the box.
   /// Nothing is committed, so the clock and score do not move.
   bool useSketch(int box, int value) {
+    if (_telepathyArmed) return _applyTelepathy(box, value);
     if (!_hyperchroma ||
         _hyperSketches <= 0 ||
         isGameOver ||
@@ -1843,6 +1890,79 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _playSound(_sounds.playNote);
     notifyListeners();
     return true;
+  }
+
+  /// Note every still-legal color in the tapped box. Keeps the charge when
+  /// the box has nothing left to pencil.
+  bool _applyTrace(int row, int col) {
+    final board = _toBoard();
+    final positions = board.positionsForUnit('b${_boxIndex(row, col)}');
+    final additions = <(int, int), List<int>>{};
+    for (final (r, c) in positions) {
+      final cell = _cells[r][c];
+      if (!cell.isEditable || cell.value != 0) continue;
+      final values = <int>[
+        for (var value = 1; value <= gridSize; value++)
+          if (!cell.hasNote(value) && board.isValidPlacement(r, c, value))
+            value,
+      ];
+      if (values.isNotEmpty) additions[(r, c)] = values;
+    }
+    if (additions.isEmpty) return false;
+
+    _traceArmed = false;
+    _pushUndo();
+    for (final entry in additions.entries) {
+      var cell = _cells[entry.key.$1][entry.key.$2];
+      for (final value in entry.value) {
+        cell = cell.withNoteAdded(value);
+      }
+      _cells[entry.key.$1][entry.key.$2] = cell;
+    }
+    _playSound(_sounds.playNote);
+    return true;
+  }
+
+  /// Lock the solution cell for [value] inside [box]. A color that is already
+  /// placed there keeps the charge for another drag.
+  bool _applyTelepathy(int box, int value) {
+    if (!_hyperchroma ||
+        isGameOver ||
+        _isGenerating ||
+        _isPaused ||
+        box < 0 ||
+        value < 1 ||
+        value > gridSize) {
+      return false;
+    }
+    final solution = _solution;
+    if (solution == null) return false;
+    final positions = _toBoard().positionsForUnit('b$box');
+    (int, int)? target;
+    for (final (row, col) in positions) {
+      if (solution.get(row, col) == value) {
+        target = (row, col);
+        break;
+      }
+    }
+    if (target == null) return false;
+    final cell = _cells[target.$1][target.$2];
+    if (!cell.isEditable || cell.value == value) return false;
+
+    _telepathyArmed = false;
+    _suppressHyperchromaTime = true;
+    _selected = target;
+    try {
+      setSelectedColor(value);
+    } finally {
+      _suppressHyperchromaTime = false;
+    }
+    return true;
+  }
+
+  int _boxIndex(int row, int col) {
+    final boxCols = gridSize ~/ boxW;
+    return (row ~/ boxH) * boxCols + (col ~/ boxW);
   }
 
   Future<void> Function() _placementConfirmSound(int value) {
@@ -2981,6 +3101,11 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   void debugTickClock() => _onClockTick();
 
   @visibleForTesting
+  void debugGrantSketches(int count) {
+    _hyperSketches += count;
+  }
+
+  @visibleForTesting
   void debugSetHyperchromaProgress({
     required int boardsCleared,
     int filledOnCurrent = 0,
@@ -3004,6 +3129,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _hyperEmptyOnBoard = 0;
     _hyperCellsFilled = 0;
     _hyperSketches = 0;
+    _steadfastFills = 0;
+    _traceArmed = false;
+    _telepathyArmed = false;
     _hyperPulse = 0;
     _hyperLoad = null;
     _isWon = false;
@@ -3018,7 +3146,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (!_hyperchroma || isGameOver || !_hasActiveGame || _isGenerating) {
       return;
     }
-    final hold = _isPaused || _hyperHeldByMenu || _hyperHeldByBackground;
+    final hold = _hyperHeldByMenu || _hyperHeldByBackground;
     if (hold) {
       _timer?.cancel();
       _timer = null;
@@ -3049,7 +3177,8 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_hyperBoardsCleared <= 0) {
       _isLost = true;
       _isWon = false;
-      _playSound(_sounds.playGameLoss);
+      _stats.recordHyperchromaScore(_hyperCellsFilled);
+      _playSound(_sounds.playHyperchromaGameOver);
       notifyListeners();
       return;
     }
@@ -3062,10 +3191,11 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _stats.awardHyperchroma(earned);
       unawaited(_stats.persist());
     }
+    _stats.recordHyperchromaScore(_hyperCellsFilled);
     _isWon = true;
     _isLost = false;
     _winRecorded = true;
-    _playSound(_sounds.playGameWin);
+    _playSound(_sounds.playHyperchromaGameOver);
     notifyListeners();
   }
 
@@ -3122,6 +3252,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _hyperBoardsCleared = 0;
       _hyperCellsFilled = 0;
       _hyperSketches = 0;
+      _steadfastFills = 0;
+      _traceArmed = false;
+      _telepathyArmed = false;
       _hyperRemaining = const Duration(seconds: HyperchromaRules.startSeconds);
       _sessionPalette = null;
       _prepareIroMix(daily: false);
@@ -3617,8 +3750,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   void _startTimer() {
     // Discord has no first-run overlay to dismiss, so never hold the clock.
     if (_settings.showFirstRunTutorial && !DiscordMode.enabled) return;
-    if (_hyperchroma &&
-        (_hyperHeldByMenu || _hyperHeldByBackground || _isPaused)) {
+    if (_hyperchroma) {
+      if (_hyperHeldByMenu || _hyperHeldByBackground) return;
+    } else if (_isPaused) {
       return;
     }
     _timer?.cancel();
@@ -3626,7 +3760,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   }
 
   void _onClockTick() {
-    if (isGameOver || _isGenerating || _isPaused) return;
+    if (isGameOver || _isGenerating) return;
     if (_hyperchroma) {
       if (_hyperHeldByMenu || _hyperHeldByBackground) return;
       _hyperPulse = 0;
@@ -3640,6 +3774,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       }
       return;
     }
+    if (_isPaused) return;
     _elapsed += const Duration(seconds: 1);
     notifyListeners();
   }

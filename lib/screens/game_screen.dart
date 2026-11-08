@@ -23,6 +23,7 @@ import '../widgets/color_picker.dart';
 import '../widgets/dice_new_game_button.dart';
 import '../widgets/first_run_tutorial.dart';
 import '../widgets/game_toolbar.dart';
+import '../widgets/hyperchroma_shop.dart';
 import '../widgets/menu_select_sound.dart';
 import '../widgets/mistake_display.dart';
 import '../widgets/sketch_icon.dart';
@@ -71,6 +72,7 @@ TextStyle? _centeredAppBarTitleStyle(
 
 Color? _hyperchromaClockColor(BuildContext context, GameProvider game) {
   if (!game.isHyperchroma) return null;
+  if (game.hyperchromaSeconds <= 0) return null;
   if (game.hyperchromaPulse > 0) return Colors.lightBlueAccent;
   if (game.hyperchromaPulse < 0 || game.hyperchromaSeconds <= 10) {
     return Theme.of(context).colorScheme.error;
@@ -662,13 +664,25 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                                 sketchBox: game.isHyperchroma
                                                     ? _sketchBox
                                                     : null,
+                                                showFrame: !(game.isHyperchroma &&
+                                                    game.isPaused),
                                               ),
                                             ),
                                             if (game.isPaused)
                                               Positioned.fill(
-                                                child: _PausedBoard(
-                                                  onResume: game.resumeGame,
-                                                ),
+                                                child: game.isHyperchroma
+                                                    ? HyperchromaShop(
+                                                        sketches: game
+                                                            .hyperchromaSketches,
+                                                        onBuy: (effect) => game
+                                                            .buyHyperchromaEffect(
+                                                              effect,
+                                                            ),
+                                                      )
+                                                    : _PausedBoard(
+                                                        onResume:
+                                                            game.resumeGame,
+                                                      ),
                                               ),
                                             if (game.isGenerating)
                                               Container(
@@ -820,8 +834,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 child: ResultScrim(
                   child: _victoryOpen
                       ? VictoryPanel(
-                          title: game.isHyperchroma ? 'Score' : 'Victory',
-                          time: _resultTime,
+                          title: game.isHyperchroma ? 'Game Over' : 'Victory',
+                          time: game.isHyperchroma
+                              ? 'Score: $_resultTime'
+                              : _resultTime,
+                          mark: game.isHyperchroma
+                              ? const SketchIcon(pixel: 6)
+                              : null,
                           xp: _resultXp,
                           showNewGame: !widget.isDailyRoute,
                           leaderboardLabel: widget.isDailyRoute
@@ -843,7 +862,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                               ? 'Game Over'
                               : 'Defeat',
                           showNewGame: false,
-                          detail: game.isHyperchroma ? "Time's up" : null,
+                          detail: game.isHyperchroma
+                              ? 'Score: ${game.hyperchromaScore}'
+                              : null,
                           onTryAgain: _onTryAgain,
                           onNewGame: _onNewGame,
                           maxMistakes: game.mistakeLimit,

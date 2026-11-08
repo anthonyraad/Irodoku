@@ -34,6 +34,7 @@ class VictoryPanel extends StatelessWidget {
   final String? leaderboardLabel;
   final VoidCallback? onLeaderboard;
   final XpAward? xp;
+  final Widget? mark;
 
   const VictoryPanel({
     super.key,
@@ -45,6 +46,7 @@ class VictoryPanel extends StatelessWidget {
     this.leaderboardLabel,
     this.onLeaderboard,
     this.xp,
+    this.mark,
   });
 
   @override
@@ -64,7 +66,7 @@ class VictoryPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _VictoryIcon(dark: dark),
+            mark ?? _VictoryIcon(dark: dark),
             const SizedBox(height: 16),
             Text(
               time,

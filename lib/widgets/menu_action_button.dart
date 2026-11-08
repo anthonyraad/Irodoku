@@ -38,6 +38,9 @@ class MenuActionButton extends StatelessWidget {
   /// Palette swatch laid over the button fill using [PlayerXp.menuPaletteWashOpacity].
   final Color? fillTint;
 
+  /// When false, the tap still runs [onPressed] without the menu sting.
+  final bool playTapSound;
+
   const MenuActionButton({
     super.key,
     required this.label,
@@ -52,6 +55,7 @@ class MenuActionButton extends StatelessWidget {
     this.labelSweep,
     this.badgeSweep,
     this.fillTint,
+    this.playTapSound = true,
   });
 
   @override
@@ -112,7 +116,7 @@ class MenuActionButton extends StatelessWidget {
               child: InkWell(
                 onTap: interactive
                     ? () {
-                        playMenuSelectSound(context);
+                        if (playTapSound) playMenuSelectSound(context);
                         onPressed();
                       }
                     : null,

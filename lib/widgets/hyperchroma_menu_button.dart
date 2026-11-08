@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'menu_action_button.dart';
 import 'menu_select_sound.dart';
 
-/// Chromatic menu button that becomes Hyperchroma after a 1.7-second hold.
+/// Chromatic menu button that becomes Hyperchroma after a 1.5-second hold.
 ///
 /// The label eases into a shake and swaps text when the hold completes.
 /// Releasing early keeps Chromatic. Leaving the menu disposes this widget,
@@ -40,13 +40,17 @@ class HyperchromaMenuButton extends StatefulWidget {
 
 class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
     with SingleTickerProviderStateMixin {
-  static const _armDuration = Duration(milliseconds: 1700);
+  static const _armDuration = Duration(milliseconds: 1500);
 
   /// Past this fraction of the hold, releasing is not a Chromatic tap.
   static const _tapSlop = 0.12;
 
   late final AnimationController _rumble;
   bool _armed = false;
+
+  /// Stay on the Hyperchroma label after the tap that enters the mode.
+  /// Turning the hold off for the loading transition must not flash Chromatic.
+  bool _keepHyperchromaLabel = false;
   bool _suppressTap = false;
   int? _pointer;
 
@@ -61,17 +65,18 @@ class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
     if (status != AnimationStatus.completed || _armed || !mounted) return;
     if (!widget.holdEnabled) return;
     setState(() => _armed = true);
-    playMenuSelectSound(context);
+    playHyperchromaSelectSound(context);
   }
 
   @override
   void didUpdateWidget(covariant HyperchromaMenuButton oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.holdEnabled || (!_armed && !_rumble.isAnimating)) return;
-    _armed = false;
     _pointer = null;
     _rumble.stop();
     _rumble.value = 0;
+    if (_keepHyperchromaLabel) return;
+    _armed = false;
   }
 
   @override
@@ -126,7 +131,9 @@ class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
       _suppressTap = false;
       return;
     }
+    playMenuSelectSound(context);
     if (_armed) {
+      _keepHyperchromaLabel = true;
       widget.onHyperchroma();
     } else {
       widget.onPressed();
@@ -140,7 +147,7 @@ class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
       child: MenuActionButton(
-        label: _armed ? 'Hyperchroma' : widget.label,
+        label: _armed || _keepHyperchromaLabel ? 'Hyperchroma' : widget.label,
         fillTint: widget.fillTint,
         enabled: widget.enabled,
         locked: widget.locked,
@@ -148,6 +155,7 @@ class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
         labelShake: widget.labelShake,
         labelRumble: _rumble,
         labelSweep: widget.labelSweep,
+        playTapSound: false,
       ),
     );
   }

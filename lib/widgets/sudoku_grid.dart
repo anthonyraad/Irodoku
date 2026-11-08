@@ -26,6 +26,9 @@ class SudokuGrid extends StatefulWidget {
   /// Box index to wash while a sketch color is dragged over the board.
   final int? sketchBox;
 
+  /// When false, the outer frame is transparent. Used while the shop covers it.
+  final bool showFrame;
+
   const SudokuGrid({
     super.key,
     required this.game,
@@ -33,6 +36,7 @@ class SudokuGrid extends StatefulWidget {
     this.displaySwatches,
     this.boardKey,
     this.sketchBox,
+    this.showFrame = true,
   });
 
   @override
@@ -233,7 +237,10 @@ class _SudokuGridState extends State<SudokuGrid> with TickerProviderStateMixin {
       aspectRatio: 1,
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: thick, width: 2.5),
+          border: Border.all(
+            color: widget.showFrame ? thick : const Color(0x00000000),
+            width: 2.5,
+          ),
           color: IrodokuTheme.emptyCellFill(brightness),
         ),
         child: Stack(

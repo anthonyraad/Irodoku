@@ -46,6 +46,7 @@ class GameStats {
   final int pocketGraffitiDraws;
   final int pocketDailyWins;
   final Duration? pocketDailyBestTime;
+  final int hyperchromaBestScore;
 
   const GameStats({
     this.currentStreak = 0,
@@ -83,6 +84,7 @@ class GameStats {
     this.pocketGraffitiDraws = 0,
     this.pocketDailyWins = 0,
     this.pocketDailyBestTime,
+    this.hyperchromaBestScore = 0,
   });
 
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
@@ -243,6 +245,7 @@ class GameStats {
     int? pocketGraffitiDraws,
     int? pocketDailyWins,
     Duration? pocketDailyBestTime,
+    int? hyperchromaBestScore,
   }) {
     return GameStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -290,6 +293,7 @@ class GameStats {
       pocketGraffitiDraws: pocketGraffitiDraws ?? this.pocketGraffitiDraws,
       pocketDailyWins: pocketDailyWins ?? this.pocketDailyWins,
       pocketDailyBestTime: pocketDailyBestTime ?? this.pocketDailyBestTime,
+      hyperchromaBestScore: hyperchromaBestScore ?? this.hyperchromaBestScore,
     );
   }
 }

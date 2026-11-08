@@ -122,6 +122,7 @@ Map<String, dynamic> _statsToJson(GameStats stats) => {
       'pocketGraffitiDraws': stats.pocketGraffitiDraws,
       'pocketDailyWins': stats.pocketDailyWins,
       'pocketDailyBestTimeMs': stats.pocketDailyBestTime?.inMilliseconds,
+      'hyperchromaBestScore': stats.hyperchromaBestScore,
     };
 
 GameStats _statsFromJson(Map<String, dynamic> json) {
@@ -173,6 +174,7 @@ GameStats _statsFromJson(Map<String, dynamic> json) {
     pocketGraffitiDraws: _asInt(json['pocketGraffitiDraws']),
     pocketDailyWins: _asInt(json['pocketDailyWins']),
     pocketDailyBestTime: _asDuration(json['pocketDailyBestTimeMs']),
+    hyperchromaBestScore: _asInt(json['hyperchromaBestScore']),
   );
 }
 

@@ -53,6 +53,8 @@ class SoundService {
   static const _gameLoss = 'sounds/gameloss.mp3';
   static const _complete = 'sounds/complete.mp3';
   static const _gameWin = 'sounds/gamewin.mp3';
+  static const _hyperchromaGameOver = 'sounds/hcgameover.mp3';
+  static const _hyperchromaSelect = 'sounds/hcselect.mp3';
   static const _achievement = 'sounds/achievement.mp3';
   static const _igMenu = 'sounds/igmenu.mp3';
   static const _menuSelect1 = 'sounds/menuselect1.mp3';
@@ -94,6 +96,8 @@ class SoundService {
     _gameLoss,
     _complete,
     _gameWin,
+    _hyperchromaGameOver,
+    _hyperchromaSelect,
     _achievement,
     _igMenu,
     ..._menuSelects,
@@ -128,6 +132,8 @@ class SoundService {
     _slide: 0.62,
     _complete: 0.57,
     _gameWin: 0.72,
+    _hyperchromaGameOver: 1.0,
+    _hyperchromaSelect: 0.7,
     _achievement: 0.79,
     _igMenu: 0.4,
     _menuSelect1: 0.3,
@@ -192,7 +198,9 @@ class SoundService {
     // Achievement is a longer overlay sting; mediaPlayer mixes more
     // reliably with concurrent SFX than SoundPool/lowLatency.
     await player.setPlayerMode(
-      asset == _achievement
+      asset == _achievement ||
+          asset == _hyperchromaGameOver ||
+          asset == _hyperchromaSelect
           ? PlayerMode.mediaPlayer
           : PlayerMode.lowLatency,
     );
@@ -238,6 +246,8 @@ class SoundService {
   Future<void> playGameLoss() => _play(_gameLoss);
   Future<void> playComplete() => _play(_complete);
   Future<void> playGameWin() => _play(_gameWin);
+  Future<void> playHyperchromaGameOver() => _play(_hyperchromaGameOver);
+  Future<void> playHyperchromaSelect() => _play(_hyperchromaSelect);
   Future<void> playAchievement() => _play(_achievement);
   Future<void> playIgMenu() => _play(_igMenu);
   Future<void> playMenuSelect() => _play(_nextMenuSelect());

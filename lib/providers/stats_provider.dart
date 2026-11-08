@@ -210,6 +210,14 @@ class StatsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Keeps the highest Hyperchroma cell-fill score.
+  void recordHyperchromaScore(int score) {
+    if (score <= _stats.hyperchromaBestScore) return;
+    _stats = _stats.copyWith(hyperchromaBestScore: score);
+    notifyListeners();
+    unawaited(persist());
+  }
+
   void _awardGraffitiLossXp({required bool pocket}) {
     final award = PlayerXp.graffitiGoodEffort(
       previousTotal: _stats.totalXp,
