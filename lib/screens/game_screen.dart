@@ -505,9 +505,24 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ),
                     onPressed: withMenuSelect(context, () async {
                       final live = context.read<GameProvider>();
+                      if (live.isHyperchroma && !live.isGameOver) {
+                        // Solo used to freeze the moment the menu opened. Hold
+                        // it through the prompt so the run cannot time out
+                        // while Cancel and Yes are on screen. Co-op time is
+                        // the shared room clock and stays running.
+                        final freezeSolo = !live.isHyperchromaCoop;
+                        if (freezeSolo) live.holdHyperchromaForMenu(true);
+                        final leave = await showLeaveGameDialog(context);
+                        if (!mounted || leave != true) {
+                          if (freezeSolo) live.holdHyperchromaForMenu(false);
+                          return;
+                        }
+                      }
+                      if (!mounted) return;
                       if (live.isHyperchromaCoop) {
                         await live.leaveHyperchromaCoop();
                       }
+                      if (!mounted) return;
                       live.holdHyperchromaForMenu(true);
                       await Navigator.of(context).push(
                         IrodokuPageRoute(

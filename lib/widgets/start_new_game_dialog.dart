@@ -5,6 +5,15 @@ import 'typing_title.dart';
 
 /// Minimal confirm used when starting a new game would discard mid-match progress.
 Future<bool?> showStartNewGameDialog(BuildContext context) {
+  return _showYesCancelDialog(context, 'Start new game?');
+}
+
+/// Confirm before the Main Menu button leaves an in-progress Hyperchroma run.
+Future<bool?> showLeaveGameDialog(BuildContext context) {
+  return _showYesCancelDialog(context, 'Leave game?');
+}
+
+Future<bool?> _showYesCancelDialog(BuildContext context, String title) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   final ink = dark ? Colors.white : Colors.black;
   final onInk = dark ? Colors.black : Colors.white;
@@ -19,7 +28,7 @@ Future<bool?> showStartNewGameDialog(BuildContext context) {
         title: SizedBox(
           width: double.infinity,
           child: TypingTitle(
-            text: 'Start new game?',
+            text: title,
             textAlign: TextAlign.center,
             style: TextStyle(color: ink),
             // Faster than the app-bar title so the modal feels snappy.

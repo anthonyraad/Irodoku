@@ -56,6 +56,7 @@ class SoundService {
   static const _hyperchromaGameOver = 'sounds/hcgameover.mp3';
   static const _hyperchromaSelect = 'sounds/hcselect.mp3';
   static const _hyperchromaRiser = 'sounds/hcriser.mp3';
+  static const _hyperchromaTimer = 'sounds/timer.mp3';
   static const _achievement = 'sounds/achievement.mp3';
   static const _igMenu = 'sounds/igmenu.mp3';
   static const _menuSelect1 = 'sounds/menuselect1.mp3';
@@ -100,6 +101,7 @@ class SoundService {
     _hyperchromaGameOver,
     _hyperchromaSelect,
     _hyperchromaRiser,
+    _hyperchromaTimer,
     _achievement,
     _igMenu,
     ..._menuSelects,
@@ -137,6 +139,7 @@ class SoundService {
     _hyperchromaGameOver: 1.0,
     _hyperchromaSelect: 0.7,
     _hyperchromaRiser: 0.3,
+    _hyperchromaTimer: 0.9,
     _achievement: 0.79,
     _igMenu: 0.4,
     _menuSelect1: 0.3,
@@ -257,6 +260,7 @@ class SoundService {
   Future<void> playGameWin() => _play(_gameWin);
   Future<void> playHyperchromaGameOver() => _play(_hyperchromaGameOver);
   Future<void> playHyperchromaSelect() => _play(_hyperchromaSelect);
+  Future<void> playHyperchromaTimer() => _play(_hyperchromaTimer);
 
   /// The riser's last frames fall away, and the select sting's hit sits a
   /// few dozen milliseconds into that file. Playing past the arm moment

@@ -3486,6 +3486,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     } else {
       _hyperRemaining = Duration(milliseconds: leftMs);
       _hyperPulse = 0;
+      _playHyperchromaCountdown();
     }
     notifyListeners();
   }
@@ -4420,6 +4421,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         _endHyperchromaRun();
       } else {
         _hyperRemaining = next;
+        _playHyperchromaCountdown();
         notifyListeners();
       }
       return;
@@ -4427,6 +4429,12 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_isPaused) return;
     _elapsed += const Duration(seconds: 1);
     notifyListeners();
+  }
+
+  void _playHyperchromaCountdown() {
+    final seconds = _hyperRemaining.inSeconds;
+    if (seconds < 1 || seconds > 10) return;
+    _playSound(_sounds.playHyperchromaTimer);
   }
 
   String formatElapsed() {
