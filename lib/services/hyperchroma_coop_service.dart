@@ -287,6 +287,7 @@ class HyperchromaCoopService {
       if (_unitCompleted(puzzle, solution, cells, row, col)) steadfast = 0;
       data['steadfast'] = steadfast;
       if (_boardComplete(puzzle, solution, cells)) data['dealing'] = true;
+      _stripPeerWrongFills(cells, puzzle, row, col, value);
     } else {
       cells[key] = {
         'v': value,
@@ -484,6 +485,9 @@ class HyperchromaCoopService {
       if (_unitCompleted(puzzle, solution, cells, row, col)) steadfast = 0;
       data['steadfast'] = steadfast;
       if (_boardComplete(puzzle, solution, cells)) data['dealing'] = true;
+      _stripPeerNotes(cells, puzzle, row, col, value);
+      _stripPeerWrongFills(cells, puzzle, row, col, value);
+      data['cells'] = cells;
       return true;
     });
   }
@@ -594,6 +598,35 @@ class HyperchromaCoopService {
           cells[key] = peer;
         }
       }
+    }
+  }
+
+  /// Drop an unlocked copy of [value] in the same row, column, and box.
+  static void _stripPeerWrongFills(
+    Map<dynamic, dynamic> cells,
+    List<int> puzzle,
+    int row,
+    int col,
+    int value,
+  ) {
+    final remove = <String>[];
+    for (var r = 0; r < 9; r++) {
+      for (var c = 0; c < 9; c++) {
+        if (r == row && c == col) continue;
+        final sameUnit =
+            r == row ||
+            c == col ||
+            (r ~/ 3 == row ~/ 3 && c ~/ 3 == col ~/ 3);
+        if (!sameUnit) continue;
+        if (puzzle.length == 81 && puzzle[r * 9 + c] != 0) continue;
+        final key = '${r}_$c';
+        final peer = _cell(cells, key);
+        if (peer['locked'] == true || _int(peer['v']) != value) continue;
+        remove.add(key);
+      }
+    }
+    for (final key in remove) {
+      cells.remove(key);
     }
   }
 

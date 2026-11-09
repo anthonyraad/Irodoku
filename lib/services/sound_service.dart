@@ -55,6 +55,7 @@ class SoundService {
   static const _gameWin = 'sounds/gamewin.mp3';
   static const _hyperchromaGameOver = 'sounds/hcgameover.mp3';
   static const _hyperchromaSelect = 'sounds/hcselect.mp3';
+  static const _hyperchromaRiser = 'sounds/hcriser.mp3';
   static const _achievement = 'sounds/achievement.mp3';
   static const _igMenu = 'sounds/igmenu.mp3';
   static const _menuSelect1 = 'sounds/menuselect1.mp3';
@@ -98,6 +99,7 @@ class SoundService {
     _gameWin,
     _hyperchromaGameOver,
     _hyperchromaSelect,
+    _hyperchromaRiser,
     _achievement,
     _igMenu,
     ..._menuSelects,
@@ -134,6 +136,7 @@ class SoundService {
     _gameWin: 0.72,
     _hyperchromaGameOver: 1.0,
     _hyperchromaSelect: 0.7,
+    _hyperchromaRiser: 0.3,
     _achievement: 0.79,
     _igMenu: 0.4,
     _menuSelect1: 0.3,
@@ -163,6 +166,8 @@ class SoundService {
   String? _lastNote;
   final List<String> _deselectBag = [];
   String? _lastDeselect;
+  int _riserToken = 0;
+  Duration? _riserDuration;
 
   Future<void> _init() async {
     try {
@@ -200,13 +205,17 @@ class SoundService {
     await player.setPlayerMode(
       asset == _achievement ||
           asset == _hyperchromaGameOver ||
-          asset == _hyperchromaSelect
+          asset == _hyperchromaSelect ||
+          asset == _hyperchromaRiser
           ? PlayerMode.mediaPlayer
           : PlayerMode.lowLatency,
     );
     await player.setReleaseMode(ReleaseMode.stop);
     await player.setSource(AssetSource(asset));
     await player.setVolume(_volumeFor(asset));
+    if (asset == _hyperchromaRiser) {
+      _riserDuration = await player.getDuration();
+    }
     return player;
   }
 
@@ -248,6 +257,66 @@ class SoundService {
   Future<void> playGameWin() => _play(_gameWin);
   Future<void> playHyperchromaGameOver() => _play(_hyperchromaGameOver);
   Future<void> playHyperchromaSelect() => _play(_hyperchromaSelect);
+
+  /// The riser's last frames fall away, and the select sting's hit sits a
+  /// few dozen milliseconds into that file. Playing past the arm moment
+  /// lets the crest meet the sting instead of leaving a gap.
+  static const _riserHandoff = Duration(milliseconds: 100);
+
+  /// Rise into the Hyperchroma sting. Playback runs past [endsIn] by
+  /// [_riserHandoff] so the crest lands as the select sound starts.
+  Future<void> playHyperchromaRiser(Duration endsIn) async {
+    if (_disposed) return;
+    final token = ++_riserToken;
+    final started = DateTime.now();
+    try {
+      await _ready;
+      if (_disposed || token != _riserToken) return;
+      final player = _players[_hyperchromaRiser];
+      if (player == null) return;
+      final duration =
+          _riserDuration ??
+          await player.getDuration() ??
+          const Duration(milliseconds: 522);
+      _riserDuration ??= duration;
+      final remaining =
+          endsIn + _riserHandoff - DateTime.now().difference(started);
+      if (remaining <= Duration.zero) return;
+      var startAt = Duration.zero;
+      var wait = Duration.zero;
+      if (duration > Duration.zero) {
+        final lead = remaining - duration;
+        if (lead.isNegative) {
+          startAt = duration - remaining;
+        } else {
+          wait = lead;
+        }
+      }
+      if (wait > Duration.zero) {
+        await Future<void>.delayed(wait);
+        if (_disposed || token != _riserToken) return;
+      }
+      await player.stop();
+      if (token != _riserToken) return;
+      await player.setVolume(_volumeFor(_hyperchromaRiser));
+      if (startAt > Duration.zero) await player.seek(startAt);
+      await player.resume();
+    } catch (e, st) {
+      debugPrint('SoundService failed to play $_hyperchromaRiser: $e\n$st');
+    }
+  }
+
+  Future<void> stopHyperchromaRiser() async {
+    _riserToken++;
+    final player = _players[_hyperchromaRiser];
+    if (player == null) return;
+    try {
+      await player.stop();
+    } catch (e, st) {
+      debugPrint('SoundService failed to stop $_hyperchromaRiser: $e\n$st');
+    }
+  }
+
   Future<void> playAchievement() => _play(_achievement);
   Future<void> playIgMenu() => _play(_igMenu);
   Future<void> playMenuSelect() => _play(_nextMenuSelect());

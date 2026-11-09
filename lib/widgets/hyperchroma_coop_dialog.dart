@@ -280,7 +280,7 @@ class _HyperchromaModeDialogState extends State<HyperchromaModeDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
+              duration: const Duration(milliseconds: 110),
               child: Text(
                 _coop ? 'Co-op' : 'Hyperchroma',
                 key: ValueKey(_coop),
@@ -289,7 +289,7 @@ class _HyperchromaModeDialogState extends State<HyperchromaModeDialog> {
             ),
             const SizedBox(height: 8),
             AnimatedSize(
-              duration: const Duration(milliseconds: 220),
+              duration: const Duration(milliseconds: 110),
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
               child: _link.roomCode != null
@@ -300,7 +300,7 @@ class _HyperchromaModeDialogState extends State<HyperchromaModeDialog> {
                           ignoring: !_coop,
                           child: AnimatedOpacity(
                             opacity: _coop ? 1 : 0,
-                            duration: const Duration(milliseconds: 220),
+                            duration: const Duration(milliseconds: 110),
                             child: _coopForm(ink),
                           ),
                         ),
@@ -309,7 +309,7 @@ class _HyperchromaModeDialogState extends State<HyperchromaModeDialog> {
                             ignoring: _coop,
                             child: AnimatedOpacity(
                               opacity: _coop ? 0 : 1,
-                              duration: const Duration(milliseconds: 220),
+                              duration: const Duration(milliseconds: 110),
                               child: _modePanel(ink),
                             ),
                           ),
@@ -329,7 +329,7 @@ class _HyperchromaModeDialogState extends State<HyperchromaModeDialog> {
         SizedBox(
           width: double.infinity,
           child: Text(
-            'Irodoku Arcade; solve against the clock on an infinite board',
+            'Irodoku Arcade; play against the clock on an infinite board',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: ink.withValues(alpha: 0.7),
             ),

@@ -853,6 +853,7 @@ class GraffitiProvider extends ChangeNotifier implements BulkPaintTarget {
     _cells = next;
     for (final (r, c, v) in newlyLocked) {
       _clearPeerNotes(r, c, v);
+      _clearPeerWrongFills(r, c, v);
     }
     _pruneInvalidFillUndos();
     _pruneLockedBulkCells();
@@ -1209,6 +1210,7 @@ class GraffitiProvider extends ChangeNotifier implements BulkPaintTarget {
         _cells[r][c] = Cell(value: value, isLocked: true);
         // Correct fills are shared/locked — not undoable.
         _clearPeerNotes(r, c, value);
+        _clearPeerWrongFills(r, c, value);
         final unitCompleted = _syncCompletedUnits(celebrate: true);
         if (!unitCompleted && !_cellBelongsToCompletedUnit(r, c)) {
           _playSound(_placementConfirmSound(value));
@@ -1462,6 +1464,26 @@ class GraffitiProvider extends ChangeNotifier implements BulkPaintTarget {
         final peer = _cells[r][c];
         if (!peer.isEditable || !peer.hasNote(value)) continue;
         _cells[r][c] = peer.withNoteRemoved(value);
+      }
+    }
+  }
+
+  /// Drop unlocked copies of [value] in the same row, column, and box.
+  void _clearPeerWrongFills(int row, int col, int value) {
+    final boxRow = row ~/ boxH;
+    final boxCol = col ~/ boxW;
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
+        if (r == row && c == col) continue;
+        final sameUnit =
+            r == row ||
+            c == col ||
+            (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
+        if (!sameUnit) continue;
+        final peer = _cells[r][c];
+        if (!peer.isEditable || peer.value != value) continue;
+        final notes = {...peer.notes}..remove(value);
+        _cells[r][c] = Cell(notes: notes);
       }
     }
   }

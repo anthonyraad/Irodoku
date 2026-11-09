@@ -503,6 +503,61 @@ void main() {
     expect(taps, ['hyper']);
   });
 
+  testWidgets('holding Hyperchroma shakes it back to Chromatic', (tester) async {
+    final taps = <String>[];
+    await _pumpButton(
+      tester,
+      onChromatic: () => taps.add('chromatic'),
+      onHyperchroma: () => taps.add('hyper'),
+    );
+    final arm = await tester.startGesture(
+      tester.getCenter(find.text('Chromatic')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1050));
+    await tester.pump();
+    expect(find.text('Hyperchroma'), findsOneWidget);
+    await arm.up();
+    await tester.pump();
+
+    final tap = await tester.startGesture(
+      tester.getCenter(find.text('Hyperchroma')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tap.up();
+    await tester.pump();
+    expect(find.text('Hyperchroma'), findsOneWidget);
+    expect(taps, ['hyper']);
+    taps.clear();
+
+    final early = await tester.startGesture(
+      tester.getCenter(find.text('Hyperchroma')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await early.up();
+    await tester.pump();
+    expect(find.text('Hyperchroma'), findsOneWidget);
+    expect(taps, isEmpty);
+
+    final revert = await tester.startGesture(
+      tester.getCenter(find.text('Hyperchroma')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump();
+    expect(find.text('Chromatic'), findsOneWidget);
+    expect(find.text('Hyperchroma'), findsNothing);
+    await revert.up();
+    await tester.pump();
+    expect(taps, isEmpty);
+
+    await tester.tap(find.text('Chromatic'));
+    await tester.pump();
+    expect(taps, ['chromatic']);
+  });
+
   testWidgets('entering Hyperchroma keeps its label while the hold turns off', (
     tester,
   ) async {
@@ -532,6 +587,50 @@ void main() {
     expect(entered, isTrue);
     expect(find.text('Hyperchroma'), findsOneWidget);
     expect(find.text('Chromatic'), findsNothing);
+  });
+
+  testWidgets('pocket label cancels an armed Hyperchroma button', (tester) async {
+    final taps = <String>[];
+    final hold = ValueNotifier(true);
+    final label = ValueNotifier('Chromatic');
+    addTearDown(hold.dispose);
+    addTearDown(label.dispose);
+    await _pumpButton(
+      tester,
+      hold: hold,
+      label: label,
+      onChromatic: () => taps.add('chromatic'),
+      onHyperchroma: () => taps.add('hyper'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Chromatic')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1050));
+    await tester.pump();
+    expect(find.text('Hyperchroma'), findsOneWidget);
+    await gesture.up();
+    await tester.pump();
+
+    await tester.tap(find.text('Hyperchroma'));
+    await tester.pump();
+    expect(taps, ['hyper']);
+    taps.clear();
+
+    label.value = '[Chromatic]';
+    hold.value = false;
+    await tester.pump();
+    expect(find.text('[Chromatic]'), findsOneWidget);
+    expect(find.text('Hyperchroma'), findsNothing);
+
+    label.value = 'Chromatic';
+    hold.value = true;
+    await tester.pump();
+    expect(find.text('Chromatic'), findsOneWidget);
+    expect(find.text('Hyperchroma'), findsNothing);
+    await tester.tap(find.text('Chromatic'));
+    await tester.pump();
+    expect(taps, ['chromatic']);
   });
 
   testWidgets('leaving the button host restores Chromatic', (tester) async {
@@ -578,7 +677,7 @@ void main() {
   test('co-op fill clears peer notes and a repeated mistake erases', () {
     final puzzle = List<int>.filled(81, 1);
     final solution = List<int>.filled(81, 1);
-    for (final index in [0, 1, 8, 9, 40]) {
+    for (final index in [0, 1, 5, 8, 9, 10, 40, 50]) {
       puzzle[index] = 0;
     }
     solution[0] = 5;
@@ -610,6 +709,21 @@ void main() {
           'locked': false,
           'notes': {'5': true},
         },
+        '1_1': {
+          'v': 5,
+          'locked': false,
+          'notes': <String, bool>{},
+        },
+        '0_5': {
+          'v': 5,
+          'locked': false,
+          'notes': <String, bool>{},
+        },
+        '5_5': {
+          'v': 5,
+          'locked': false,
+          'notes': <String, bool>{},
+        },
       },
       'endsAt': 50000,
       'sketches': 0,
@@ -632,6 +746,8 @@ void main() {
     expect(data['endsAt'], 50000 - 12000);
     var cells = data['cells']! as Map;
     expect(cells['0_0']['v'], 4);
+    expect(cells['1_1']['v'], 5);
+    expect(cells['5_5']['v'], 5);
     expect(
       HyperchromaCoopService.readNotes(cells['0_1']['notes']),
       contains(5),
@@ -677,6 +793,42 @@ void main() {
       HyperchromaCoopService.readNotes(cells['4_4']['notes']),
       contains(5),
     );
+    expect(cells.containsKey('1_1'), isFalse);
+    expect(cells.containsKey('0_5'), isFalse);
+    expect(cells['5_5']['v'], 5);
+  });
+
+  test('a correct fill clears that color from the rest of its unit', () async {
+    final game = await _game();
+    addTearDown(game.dispose);
+    game.debugQueueHyperchromaBoards([
+      generatePuzzleIsolate(<Object>[Difficulty.easy.storageKey, 3]),
+    ]);
+    await game.debugBeginHyperchroma();
+    final (row, col) = _editable(game).first;
+    final correct = game.debugSolutionAt(row, col)!;
+    (int, int)? peer;
+    final boxRow = row ~/ 3;
+    final boxCol = col ~/ 3;
+    for (var r = boxRow * 3; r < boxRow * 3 + 3 && peer == null; r++) {
+      for (var c = boxCol * 3; c < boxCol * 3 + 3; c++) {
+        if (r == row && c == col) continue;
+        if (!game.cellAt(r, c).isEditable) continue;
+        if (game.debugSolutionAt(r, c) == correct) continue;
+        peer = (r, c);
+        break;
+      }
+    }
+    expect(peer, isNotNull);
+    final spot = peer!;
+    game.selectCell(spot.$1, spot.$2);
+    game.applyPickerColor(correct);
+    expect(game.cellAt(spot.$1, spot.$2).value, correct);
+
+    game.selectCell(row, col);
+    game.applyPickerColor(correct);
+    expect(game.cellAt(row, col).isLocked, isTrue);
+    expect(game.cellAt(spot.$1, spot.$2).value, 0);
   });
 }
 
@@ -816,6 +968,7 @@ Future<void> _pumpButton(
   VoidCallback? onChromatic,
   VoidCallback? onHyperchroma,
   ValueNotifier<bool>? hold,
+  ValueNotifier<String>? label,
 }) async {
   SharedPreferences.setMockInitialValues({'sound_enabled': false});
   final prefs = await PreferencesService.create();
@@ -826,6 +979,20 @@ Future<void> _pumpButton(
     achievements: AchievementsProvider(prefs),
   );
   final holdListenable = hold;
+  final labelListenable = label;
+  Widget button(String text, bool enabled) {
+    return HyperchromaMenuButton(
+      label: text,
+      holdEnabled: enabled,
+      onPressed: onChromatic ?? () {},
+      onHyperchroma: onHyperchroma ?? () {},
+    );
+  }
+
+  final listenables = <Listenable>[
+    if (holdListenable != null) holdListenable,
+    if (labelListenable != null) labelListenable,
+  ];
   await tester.pumpWidget(
     MultiProvider(
       providers: [
@@ -834,21 +1001,14 @@ Future<void> _pumpButton(
       ],
       child: MaterialApp(
         home: Scaffold(
-          body: holdListenable == null
-              ? HyperchromaMenuButton(
-                  label: 'Chromatic',
-                  holdEnabled: true,
-                  onPressed: onChromatic ?? () {},
-                  onHyperchroma: onHyperchroma ?? () {},
-                )
-              : ValueListenableBuilder<bool>(
-                  valueListenable: holdListenable,
-                  builder: (context, enabled, _) {
-                    return HyperchromaMenuButton(
-                      label: 'Chromatic',
-                      holdEnabled: enabled,
-                      onPressed: onChromatic ?? () {},
-                      onHyperchroma: onHyperchroma ?? () {},
+          body: listenables.isEmpty
+              ? button('Chromatic', true)
+              : AnimatedBuilder(
+                  animation: Listenable.merge(listenables),
+                  builder: (context, _) {
+                    return button(
+                      labelListenable?.value ?? 'Chromatic',
+                      holdListenable?.value ?? true,
                     );
                   },
                 ),

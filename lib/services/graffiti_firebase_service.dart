@@ -375,6 +375,7 @@ class GraffitiFirebaseService {
           'mistake': false,
         };
         myStats['correct'] = ((myStats['correct'] as num?)?.toInt() ?? 0) + 1;
+        _clearPeerWrongFills(board, n, row, col, value);
       } else {
         board[key] = {
           'v': value,
@@ -393,6 +394,41 @@ class GraffitiFirebaseService {
       _applyEndConditions(data, stats);
       return Transaction.success(data);
     });
+  }
+
+  /// A correct color removes unlocked copies of itself in its row, column, and box.
+  static void _clearPeerWrongFills(
+    Map<dynamic, dynamic> board,
+    int n,
+    int row,
+    int col,
+    int value,
+  ) {
+    final boxW = n == 6 ? 3 : 3;
+    final boxH = n == 6 ? 2 : 3;
+    final boxRow = row ~/ boxH;
+    final boxCol = col ~/ boxW;
+    final remove = <String>[];
+    for (final entry in board.entries) {
+      final parts = entry.key.toString().split('_');
+      if (parts.length != 2) continue;
+      final r = int.tryParse(parts[0]);
+      final c = int.tryParse(parts[1]);
+      if (r == null || c == null || (r == row && c == col)) continue;
+      final sameUnit =
+          r == row ||
+          c == col ||
+          (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
+      if (!sameUnit) continue;
+      if (entry.value is! Map) continue;
+      final cell = Map<dynamic, dynamic>.from(entry.value as Map);
+      if (cell['locked'] == true) continue;
+      if ((cell['v'] as num?)?.toInt() != value) continue;
+      remove.add('${r}_$c');
+    }
+    for (final key in remove) {
+      board.remove(key);
+    }
   }
 
   /// Clears an unlocked cell the player previously filled (undo / erase).

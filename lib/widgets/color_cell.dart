@@ -97,6 +97,7 @@ class _ColorCellState extends State<ColorCell>
 
   Timer? _longPressTimer;
   Timer? _noteDismissStartTimer;
+  Timer? _committedDismissTimer;
   bool _longPressTriggered = false;
 
   late final AnimationController _revealController;
@@ -244,11 +245,22 @@ class _ColorCellState extends State<ColorCell>
   }
 
   void _beginDepartingCommitted(int value) {
+    _committedDismissTimer?.cancel();
     _departingCommittedSwatch = _swatchFor(value);
     _departingCommittedOutline =
         IrodokuPalette.outlineForSwatch(_swatchFor(value));
     _revealController.duration = _noteDismissDuration;
-    _revealController.reverse(from: 1);
+    final delay = _noteDismissDelay({value});
+    if (delay <= Duration.zero) {
+      _revealController.reverse(from: 1);
+      return;
+    }
+    // Hold the fill until this cell's ring of the note-clear ripple.
+    _revealController.value = 1;
+    _committedDismissTimer = Timer(delay, () {
+      if (!mounted) return;
+      _revealController.reverse(from: 1);
+    });
   }
 
   Duration _noteDismissDelay(Set<int> removed) {
@@ -300,6 +312,8 @@ class _ColorCellState extends State<ColorCell>
   }
 
   void _clearDepartingCommitted() {
+    _committedDismissTimer?.cancel();
+    _committedDismissTimer = null;
     _departingCommittedSwatch = null;
     _departingCommittedOutline = null;
     // Cancel an in-flight shrink only. Do not snap dismissed→1 here: that
@@ -311,6 +325,8 @@ class _ColorCellState extends State<ColorCell>
   }
 
   void _ensureFullyRevealed() {
+    _committedDismissTimer?.cancel();
+    _committedDismissTimer = null;
     _departingCommittedSwatch = null;
     _departingCommittedOutline = null;
     _revealController.stop();
@@ -325,6 +341,7 @@ class _ColorCellState extends State<ColorCell>
   void dispose() {
     _cancelLongPressTimer();
     _noteDismissStartTimer?.cancel();
+    _committedDismissTimer?.cancel();
     _noteAppearStartTimer?.cancel();
     _revealController.dispose();
     _noteDismissController.dispose();

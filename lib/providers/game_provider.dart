@@ -1866,6 +1866,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _selected = null;
     // Drop that color from notes in the same row, column, and box.
     _clearPeerNotes(row, col, value);
+    if (!isMistake) _clearPeerWrongFills(row, col, value);
 
     if (isMistake) {
       _consecutiveDistinctFillColors.clear();
@@ -2124,6 +2125,27 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         final peer = _cells[r][c];
         if (!peer.isEditable || !peer.hasNote(value)) continue;
         _cells[r][c] = peer.withNoteRemoved(value);
+      }
+    }
+  }
+
+  /// A correct color replaces any unlocked copy of itself in its row, column,
+  /// and box. The cell shrinks out with the note-clear ripple.
+  void _clearPeerWrongFills(int row, int col, int value) {
+    final boxRow = row ~/ boxH;
+    final boxCol = col ~/ boxW;
+    for (var r = 0; r < gridSize; r++) {
+      for (var c = 0; c < gridSize; c++) {
+        if (r == row && c == col) continue;
+        final sameUnit =
+            r == row ||
+            c == col ||
+            (r ~/ boxH == boxRow && c ~/ boxW == boxCol);
+        if (!sameUnit) continue;
+        final peer = _cells[r][c];
+        if (!peer.isEditable || peer.value != value) continue;
+        final notes = {...peer.notes}..remove(value);
+        _cells[r][c] = Cell(notes: notes);
       }
     }
   }
@@ -2417,6 +2439,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _cells[row][col] = cell;
       if (cell.value != 0) {
         _clearPeerNotes(row, col, cell.value, emitWave: false);
+        _clearPeerWrongFills(row, col, cell.value);
       }
     }
   }
