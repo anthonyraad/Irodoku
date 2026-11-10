@@ -1996,7 +1996,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     for (final (row, col) in targets) {
       _cells[row][col] = _cells[row][col].withNoteAdded(value);
     }
-    _playSound(_sounds.playNote);
+    _playSound(
+      targets.length > 1 ? _sounds.playMultiNote : _sounds.playNote,
+    );
     notifyListeners();
     return true;
   }
@@ -2028,7 +2030,11 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       }
       _cells[entry.key.$1][entry.key.$2] = cell;
     }
-    _playSound(_sounds.playNote);
+    final added = additions.values.fold<int>(
+      0,
+      (sum, values) => sum + values.length,
+    );
+    _playSound(added > 1 ? _sounds.playMultiNote : _sounds.playNote);
     return true;
   }
 
@@ -2299,7 +2305,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (targets.isEmpty) return;
 
     _pushUndo();
-    var changed = false;
+    var changed = 0;
     for (final (row, col) in targets) {
       final cell = _cells[row][col];
       final next = add
@@ -2307,12 +2313,16 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
           : cell.withNoteRemoved(value);
       if (!identical(next, cell)) {
         _cells[row][col] = next;
-        changed = true;
+        changed++;
       }
     }
-    if (changed) {
+    if (changed > 0) {
       if (add) _markNoteTaken();
-      _playSound(add ? _sounds.playNote : _sounds.playNoteDeselect);
+      _playSound(
+        add
+            ? (changed > 1 ? _sounds.playMultiNote : _sounds.playNote)
+            : _sounds.playNoteDeselect,
+      );
       notifyListeners();
     }
   }
@@ -3565,7 +3575,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   void _patchCoopCells(Map<dynamic, dynamic> room) {
     final before = _cloneCells();
     _overlayCoopCells(room);
-    var addedNote = false;
+    var addedNotes = 0;
     int? noteRow;
     int? noteCol;
     int? noteValue;
@@ -3590,7 +3600,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
           placedValue = next.value;
         }
         if (next.notes.length > previous.notes.length) {
-          addedNote = true;
+          addedNotes += next.notes.length - previous.notes.length;
           noteRow ??= r;
           noteCol ??= c;
           final added = next.notes.difference(previous.notes);
@@ -3601,7 +3611,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         }
       }
     }
-    if (addedNote && noteRow != null && noteCol != null && noteValue != null) {
+    if (addedNotes > 0 && noteRow != null && noteCol != null && noteValue != null) {
       final seq = ++_noteAppearWaveSeq;
       _noteAppearWave = NoteAppearWave(
         value: noteValue,
@@ -3609,7 +3619,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         centerRow: (noteRow ~/ 3) * 3 + 1,
         centerCol: (noteCol ~/ 3) * 3 + 1,
       );
-      _playSound(_sounds.playNote);
+      _playSound(
+        addedNotes > 1 ? _sounds.playMultiNote : _sounds.playNote,
+      );
     } else if (removedNote && placedValue == null) {
       _playSound(_sounds.playNoteDeselect);
     }

@@ -506,15 +506,28 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     onPressed: withMenuSelect(context, () async {
                       final live = context.read<GameProvider>();
                       if (live.isHyperchroma && !live.isGameOver) {
-                        // Solo used to freeze the moment the menu opened. Hold
-                        // it through the prompt so the run cannot time out
-                        // while Cancel and Yes are on screen. Co-op time is
-                        // the shared room clock and stays running.
-                        final freezeSolo = !live.isHyperchromaCoop;
-                        if (freezeSolo) live.holdHyperchromaForMenu(true);
+                        // The countdown keeps running under this prompt. If it
+                        // hits zero, drop the prompt so Game Over can show.
+                        var leaveDialogOpen = true;
+                        var dismissScheduled = false;
+                        void dismissIfOver() {
+                          if (!leaveDialogOpen ||
+                              dismissScheduled ||
+                              !live.isGameOver) {
+                            return;
+                          }
+                          dismissScheduled = true;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted || !leaveDialogOpen) return;
+                            Navigator.of(context).pop(false);
+                          });
+                        }
+
+                        live.addListener(dismissIfOver);
                         final leave = await showLeaveGameDialog(context);
-                        if (!mounted || leave != true) {
-                          if (freezeSolo) live.holdHyperchromaForMenu(false);
+                        leaveDialogOpen = false;
+                        live.removeListener(dismissIfOver);
+                        if (!mounted || leave != true || live.isGameOver) {
                           return;
                         }
                       }

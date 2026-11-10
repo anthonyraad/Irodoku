@@ -1294,7 +1294,11 @@ class GraffitiProvider extends ChangeNotifier implements BulkPaintTarget {
     if (changes.isEmpty) return;
     if (add) _usedNotes = true;
     _undoStack.add(_BulkNoteUndo(changes));
-    _playSound(add ? _sounds.playNote : _sounds.playNoteDeselect);
+    _playSound(
+      add
+          ? (changes.length > 1 ? _sounds.playMultiNote : _sounds.playNote)
+          : _sounds.playNoteDeselect,
+    );
     notifyListeners();
   }
 

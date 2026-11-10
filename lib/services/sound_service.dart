@@ -27,6 +27,12 @@ class SoundService {
     _note3,
     _note4,
   ];
+  static const _multiNote1 = 'sounds/multinote.mp3';
+  static const _multiNote2 = 'sounds/multinote2.mp3';
+  static const _multiNotes = [
+    _multiNote1,
+    _multiNote2,
+  ];
   static const _deselect1 = 'sounds/deselect1.mp3';
   static const _deselect2 = 'sounds/deselect2.mp3';
   static const _deselect3 = 'sounds/deselect3.mp3';
@@ -87,6 +93,7 @@ class SoundService {
 
   static const _assets = <String>[
     ..._notes,
+    ..._multiNotes,
     ..._deselects,
     _confirm,
     _coin,
@@ -117,6 +124,8 @@ class SoundService {
     _note2: 0.5,
     _note3: 0.5,
     _note4: 0.5,
+    _multiNote1: 0.5,
+    _multiNote2: 0.5,
     _deselect1: 1.10,
     _deselect2: 1.10,
     _deselect3: 1.10,
@@ -169,6 +178,7 @@ class SoundService {
   String? _lastNote;
   final List<String> _deselectBag = [];
   String? _lastDeselect;
+  int _multiNoteCursor = 0;
   int _riserToken = 0;
   Duration? _riserDuration;
 
@@ -223,6 +233,7 @@ class SoundService {
   }
 
   Future<void> playNote() => _play(_nextNote());
+  Future<void> playMultiNote() => _play(_nextMultiNote());
   Future<void> playNoteDeselect() => _play(_nextDeselect());
   Future<void> playConfirm() => _play(_confirm);
   /// 1-1 palette placement sting (replaces [playConfirm]).
@@ -338,6 +349,12 @@ class SoundService {
     if (_noteBag.isEmpty) _refillShuffleBag(_noteBag, _notes, _lastNote);
     final next = _noteBag.removeLast();
     _lastNote = next;
+    return next;
+  }
+
+  String _nextMultiNote() {
+    final next = _multiNotes[_multiNoteCursor % _multiNotes.length];
+    _multiNoteCursor++;
     return next;
   }
 
