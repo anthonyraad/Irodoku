@@ -12,6 +12,7 @@ import 'package:irodoku/services/hyperchroma_coop_service.dart';
 import 'package:irodoku/services/preferences_service.dart';
 import 'package:irodoku/services/sound_service.dart';
 import 'package:irodoku/widgets/hyperchroma_menu_button.dart';
+import 'package:irodoku/widgets/palette_sweep_mask.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -653,6 +654,32 @@ void main() {
     expect(find.text('Hyperchroma'), findsNothing);
   });
 
+  testWidgets('Hyperchroma label skips the difficulty color sweep', (
+    tester,
+  ) async {
+    final sweep = AnimationController(
+      vsync: tester,
+      duration: const Duration(milliseconds: 600),
+    );
+    addTearDown(sweep.dispose);
+    await _pumpButton(tester, labelSweep: sweep);
+    expect(find.byType(PaletteSweepFillText), findsOneWidget);
+
+    final arm = await tester.startGesture(
+      tester.getCenter(find.text('Chromatic')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1050));
+    await tester.pump();
+    await arm.up();
+    await tester.pump();
+
+    expect(find.text('Hyperchroma'), findsOneWidget);
+    sweep.value = 0.5;
+    await tester.pump();
+    expect(find.byType(PaletteSweepFillText), findsNothing);
+  });
+
   test('co-op clock pulse clears on the next tick', () async {
     final game = await _game();
     addTearDown(game.dispose);
@@ -969,6 +996,7 @@ Future<void> _pumpButton(
   VoidCallback? onHyperchroma,
   ValueNotifier<bool>? hold,
   ValueNotifier<String>? label,
+  Animation<double>? labelSweep,
 }) async {
   SharedPreferences.setMockInitialValues({'sound_enabled': false});
   final prefs = await PreferencesService.create();
@@ -986,6 +1014,7 @@ Future<void> _pumpButton(
       holdEnabled: enabled,
       onPressed: onChromatic ?? () {},
       onHyperchroma: onHyperchroma ?? () {},
+      labelSweep: labelSweep,
     );
   }
 

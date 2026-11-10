@@ -8,7 +8,7 @@ Future<bool?> showStartNewGameDialog(BuildContext context) {
   return _showYesCancelDialog(context, 'Start new game?');
 }
 
-/// Confirm before the Main Menu button leaves an in-progress Hyperchroma run.
+/// Confirm before leaving an in-progress Hyperchroma run.
 Future<bool?> showLeaveGameDialog(BuildContext context) {
   return _showYesCancelDialog(context, 'Leave game?');
 }

@@ -255,7 +255,8 @@ class _HyperchromaMenuButtonState extends State<HyperchromaMenuButton>
         onPressed: _onPressed,
         labelShake: widget.labelShake,
         labelRumble: _disarming ? _disarmRumble : _rumble,
-        labelSweep: widget.labelSweep,
+        // Difficulty does not change a Hyperchroma run, so that label stays still.
+        labelSweep: _armed || _keepHyperchromaLabel ? null : widget.labelSweep,
         playTapSound: false,
       ),
     );

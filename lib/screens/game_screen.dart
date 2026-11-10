@@ -147,12 +147,38 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  /// Live Hyperchroma: ask before leaving. The clock keeps running, and a
+  /// timeout closes the prompt so Game Over can show.
+  /// True when there is nothing to confirm, or the player chose Yes.
+  Future<bool> _confirmLeaveHyperchroma(GameProvider live) async {
+    if (!live.isHyperchroma || live.isGameOver) return true;
+
+    var leaveDialogOpen = true;
+    var dismissScheduled = false;
+    void dismissIfOver() {
+      if (!leaveDialogOpen || dismissScheduled || !live.isGameOver) return;
+      dismissScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !leaveDialogOpen) return;
+        Navigator.of(context).pop(false);
+      });
+    }
+
+    live.addListener(dismissIfOver);
+    final leave = await showLeaveGameDialog(context);
+    leaveDialogOpen = false;
+    live.removeListener(dismissIfOver);
+    return mounted && leave == true && !live.isGameOver;
+  }
+
   Future<void> _onNewGame() async {
     final game = context.read<GameProvider>();
     if (game.isGenerating) return;
 
-    // Mid-match: confirm before discarding progress (same modal as difficulty).
-    if (game.hasInteracted && !game.isGameOver) {
+    if (game.isHyperchroma) {
+      if (!await _confirmLeaveHyperchroma(game)) return;
+    } else if (game.hasInteracted && !game.isGameOver) {
+      // Mid-match: confirm before discarding progress (same modal as difficulty).
       final startNew = await showStartNewGameDialog(context);
       if (!mounted || startNew != true) return;
     }
@@ -505,32 +531,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     ),
                     onPressed: withMenuSelect(context, () async {
                       final live = context.read<GameProvider>();
-                      if (live.isHyperchroma && !live.isGameOver) {
-                        // The countdown keeps running under this prompt. If it
-                        // hits zero, drop the prompt so Game Over can show.
-                        var leaveDialogOpen = true;
-                        var dismissScheduled = false;
-                        void dismissIfOver() {
-                          if (!leaveDialogOpen ||
-                              dismissScheduled ||
-                              !live.isGameOver) {
-                            return;
-                          }
-                          dismissScheduled = true;
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!mounted || !leaveDialogOpen) return;
-                            Navigator.of(context).pop(false);
-                          });
-                        }
-
-                        live.addListener(dismissIfOver);
-                        final leave = await showLeaveGameDialog(context);
-                        leaveDialogOpen = false;
-                        live.removeListener(dismissIfOver);
-                        if (!mounted || leave != true || live.isGameOver) {
-                          return;
-                        }
-                      }
+                      if (!await _confirmLeaveHyperchroma(live)) return;
                       if (!mounted) return;
                       if (live.isHyperchromaCoop) {
                         await live.leaveHyperchromaCoop();
