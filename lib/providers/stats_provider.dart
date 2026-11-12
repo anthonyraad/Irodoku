@@ -218,6 +218,16 @@ class StatsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// One fully cleared Hyperchroma board, solo or co-op. Counts toward Iroen.
+  void recordHyperchromaLevelsCleared([int count = 1]) {
+    if (count <= 0) return;
+    _stats = _stats.copyWith(
+      hyperchromaLevelsCleared: _stats.hyperchromaLevelsCleared + count,
+    );
+    notifyListeners();
+    unawaited(persist());
+  }
+
   /// Keeps the highest Hyperchroma cell-fill score.
   void recordHyperchromaScore(int score) {
     if (score <= _stats.hyperchromaBestScore) return;

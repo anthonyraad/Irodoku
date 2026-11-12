@@ -45,6 +45,24 @@ class HyperchromaCoopService {
 
   static String? get playerId => GraffitiFirebaseService.playerId;
 
+  /// Sanitized name of the other seated player, or null if they left or
+  /// never set one.
+  static String? teammateName(Map<dynamic, dynamic> room, String? selfId) {
+    if (room['partnerLeft'] == true) return null;
+    final players = Map<dynamic, dynamic>.from(room['players'] as Map? ?? {});
+    String? other;
+    for (final key in players.keys) {
+      final id = key.toString();
+      if (id.isEmpty || id == selfId) continue;
+      final present = players[key];
+      if (present == null || present == false) continue;
+      other = id;
+      break;
+    }
+    if (other == null) return null;
+    return GraffitiFirebaseService.playerNameFromRoom(room, other);
+  }
+
   static DatabaseReference roomRef(String code) =>
       GraffitiFirebaseService.roomRef(code);
 
@@ -190,6 +208,8 @@ class HyperchromaCoopService {
     required int sketches,
     required int steadfast,
     required bool trace,
+    required bool illuminate,
+    required int levitateUntil,
     required bool telepathy,
     required String palette,
     required int cellsFilled,
@@ -208,6 +228,8 @@ class HyperchromaCoopService {
       'sketches': sketches,
       'steadfast': steadfast,
       'trace': trace,
+      'illuminate': illuminate,
+      'levitateUntil': levitateUntil,
       'telepathy': telepathy,
       'palette': palette,
       'cellsFilled': cellsFilled,
@@ -262,7 +284,6 @@ class HyperchromaCoopService {
       data['cells'] = cells;
       return true;
     }
-    final gain = HyperchromaRules.coopGainSeconds * 1000;
     final penalty = HyperchromaRules.mistakePenaltySeconds * 1000;
     var endsAt = (data['endsAt'] as num?)?.toInt() ?? at;
     if (value == correct) {
@@ -277,7 +298,7 @@ class HyperchromaCoopService {
       if (!boxWasDone && _boxDone(puzzle, solution, cells, row, col)) {
         data['sketches'] = _int(data['sketches']) + 1;
       }
-      endsAt += gain;
+      endsAt += _timeGain(data, at, puzzle, solution, cells, row, col);
       var steadfast = _int(data['steadfast']);
       if (steadfast > 0) {
         steadfast -= 1;
@@ -433,6 +454,27 @@ class HyperchromaCoopService {
     });
   }
 
+  static Future<bool> illuminate({
+    required String roomCode,
+    required int value,
+  }) {
+    return _transact(roomCode, (data, _) {
+      if (data['illuminate'] != true) return false;
+      if (!applyIlluminate(data, value)) return false;
+      return true;
+    });
+  }
+
+  /// Notes [value] across the board. Keeps the charge when nothing is new.
+  @visibleForTesting
+  static bool applyIlluminate(Map<dynamic, dynamic> data, int value) {
+    if (value < 1 || value > 9) return false;
+    final added = _pencilBoard(data, value);
+    if (added == 0) return false;
+    data['illuminate'] = false;
+    return true;
+  }
+
   static Future<bool> telepathy({
     required String roomCode,
     required int box,
@@ -503,8 +545,12 @@ class HyperchromaCoopService {
       switch (effect) {
         case 'steadfast':
           data['steadfast'] = HyperchromaRules.steadfastFills;
+        case 'levitate':
+          data['levitateUntil'] = at + HyperchromaRules.levitateSeconds * 1000;
         case 'trace':
           data['trace'] = true;
+        case 'illuminate':
+          data['illuminate'] = true;
         case 'telepathy':
           data['telepathy'] = true;
       }
@@ -643,30 +689,70 @@ class HyperchromaCoopService {
     var added = 0;
     for (var r = boxRow; r < boxRow + 3; r++) {
       for (var c = boxCol; c < boxCol + 3; c++) {
-        if (puzzle[r * 9 + c] != 0) continue;
-        final key = '${r}_$c';
-        final cell = _cell(cells, key);
-        if (cell['locked'] == true) continue;
-        if (_int(cell['v']) != 0) continue;
-        final notes = _noteList(cell['notes']);
-        final colors = fillAllColors ? List<int>.generate(9, (i) => i + 1) : [only!];
-        var changed = false;
-        for (final value in colors) {
-          if (notes.contains(value)) continue;
-          if (!_valid(puzzle, cells, r, c, value)) continue;
-          notes.add(value);
-          changed = true;
-          added++;
-        }
-        if (!changed) continue;
-        notes.sort();
-        cell['notes'] = _noteStore(notes);
-        cell['v'] = 0;
-        cell['locked'] = false;
-        cells[key] = cell;
+        added += _pencilCell(
+          cells,
+          puzzle,
+          r,
+          c,
+          fillAllColors: fillAllColors,
+          only: only,
+        );
       }
     }
     data['cells'] = cells;
+    return added;
+  }
+
+  static int _pencilBoard(Map<dynamic, dynamic> data, int value) {
+    final cells = _cells(data);
+    final puzzle = _ints(data['puzzle']);
+    var added = 0;
+    for (var r = 0; r < 9; r++) {
+      for (var c = 0; c < 9; c++) {
+        added += _pencilCell(
+          cells,
+          puzzle,
+          r,
+          c,
+          fillAllColors: false,
+          only: value,
+        );
+      }
+    }
+    data['cells'] = cells;
+    return added;
+  }
+
+  static int _pencilCell(
+    Map<dynamic, dynamic> cells,
+    List<int> puzzle,
+    int r,
+    int c, {
+    required bool fillAllColors,
+    required int? only,
+  }) {
+    if (puzzle.length == 81 && puzzle[r * 9 + c] != 0) return 0;
+    final key = '${r}_$c';
+    final cell = _cell(cells, key);
+    if (cell['locked'] == true) return 0;
+    if (_int(cell['v']) != 0) return 0;
+    final notes = _noteList(cell['notes']);
+    final colors = fillAllColors
+        ? List<int>.generate(9, (i) => i + 1)
+        : [only!];
+    var added = 0;
+    for (final value in colors) {
+      if (notes.contains(value)) continue;
+      if (!_valid(puzzle, cells, r, c, value)) continue;
+      notes.add(value);
+      added++;
+    }
+    if (added == 0) return 0;
+    notes.sort();
+    cell['notes'] = _noteStore(notes);
+    cell['v'] = 0;
+    cell['locked'] = false;
+    cells[key] = cell;
     return added;
   }
 
@@ -698,7 +784,24 @@ class HyperchromaCoopService {
     return true;
   }
 
-  static bool _unitCompleted(
+  static int _timeGain(
+    Map<dynamic, dynamic> data,
+    int at,
+    List<int> puzzle,
+    List<int> solution,
+    Map<dynamic, dynamic> cells,
+    int row,
+    int col,
+  ) {
+    final base = HyperchromaRules.coopGainSeconds * 1000;
+    final until = (data['levitateUntil'] as num?)?.toInt() ?? 0;
+    if (until <= at) return base;
+    final units = _newUnitCount(puzzle, solution, cells, row, col);
+    if (units == 0) return base;
+    return base * HyperchromaRules.levitateTimeMultiplier * units;
+  }
+
+  static int _newUnitCount(
     List<int> puzzle,
     List<int> solution,
     Map<dynamic, dynamic> cells,
@@ -712,21 +815,28 @@ class HyperchromaCoopService {
       return cell['locked'] == true && _int(cell['v']) == wanted;
     }
 
-    var rowOk = true;
-    var colOk = true;
-    for (var i = 0; i < 9; i++) {
-      if (!filled(row, i)) rowOk = false;
-      if (!filled(i, col)) colOk = false;
-    }
-    final br = (row ~/ 3) * 3;
-    final bc = (col ~/ 3) * 3;
-    var boxOk = true;
-    for (var r = br; r < br + 3; r++) {
-      for (var c = bc; c < bc + 3; c++) {
-        if (!filled(r, c)) boxOk = false;
+    bool line(bool Function(int i) at) {
+      for (var i = 0; i < 9; i++) {
+        if (!at(i)) return false;
       }
+      return true;
     }
-    return rowOk || colOk || boxOk;
+
+    var count = 0;
+    if (line((i) => filled(row, i))) count++;
+    if (line((i) => filled(i, col))) count++;
+    if (_boxDone(puzzle, solution, cells, row, col)) count++;
+    return count;
+  }
+
+  static bool _unitCompleted(
+    List<int> puzzle,
+    List<int> solution,
+    Map<dynamic, dynamic> cells,
+    int row,
+    int col,
+  ) {
+    return _newUnitCount(puzzle, solution, cells, row, col) > 0;
   }
 
   static bool _boxDone(

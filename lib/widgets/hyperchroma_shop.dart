@@ -21,24 +21,31 @@ class HyperchromaShop extends StatelessWidget {
       color: Theme.of(context).scaffoldBackgroundColor,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(12),
+          return FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight - 24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (final effect in HyperchromaEffect.values) ...[
-                    if (effect != HyperchromaEffect.values.first)
-                      const SizedBox(height: 14),
-                    _EffectCard(
-                      effect: effect,
-                      enabled: sketches >= effect.cost,
-                      onBuy: () => onBuy(effect),
-                      scheme: scheme,
-                    ),
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final effect in HyperchromaEffect.values) ...[
+                      if (effect != HyperchromaEffect.values.first)
+                        const SizedBox(height: 8),
+                      _EffectCard(
+                        effect: effect,
+                        enabled: sketches >= effect.cost,
+                        onBuy: () => onBuy(effect),
+                        scheme: scheme,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           );

@@ -9,12 +9,22 @@ enum HyperchromaEffect {
   steadfast(
     3,
     'Steadfast',
-    "The palette doesn't hop for your next 4 fills, or until you complete a unit.",
+    "The palette doesn't hop for your next 8 fills, or until you complete a unit.",
+  ),
+  levitate(
+    4,
+    'Levitate',
+    'Every unit you complete in the next 4 seconds grants 2x time bonus.',
   ),
   trace(
     5,
     'Trace',
     'The next box you tap into gets filled with all color notes.',
+  ),
+  illuminate(
+    6,
+    'Illuminate',
+    'The next color you tap fills the board with all of its notes.',
   ),
   telepathy(
     7,
@@ -50,7 +60,13 @@ abstract final class HyperchromaRules {
   static const pointsPerCell = 10;
 
   /// Correct fills Steadfast can hold the palette still.
-  static const steadfastFills = 4;
+  static const steadfastFills = 8;
+
+  /// How long Levitate doubles the time bonus for each completed unit.
+  static const levitateSeconds = 4;
+
+  /// Levitate grants this many times the usual correct-fill time bonus.
+  static const levitateTimeMultiplier = 2;
 
   /// Twice the normal finish XP for that difficulty.
   static int boardXp(Difficulty difficulty) => PlayerXp.baseXp(difficulty) * 2;

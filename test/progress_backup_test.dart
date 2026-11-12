@@ -21,6 +21,7 @@ void main() {
         pocketDailyWins: 1,
         graffitiWins: 4,
         pocketGraffitiWins: 5,
+        hyperchromaLevelsCleared: 6,
         totalXp: 400,
         winsByDifficulty: {Difficulty.easy: 8, Difficulty.medium: 4},
         bestTimes: {Difficulty.easy: Duration(minutes: 3)},
@@ -66,7 +67,7 @@ void main() {
     expect(copy.iroenActiveMosaicId, 'abc');
     expect(
       copy.stats.iroenUnlockWins,
-      12 + 3 + 2 + 1 + 4 + 5,
+      12 + 3 + 2 + 1 + 4 + 5 + 6,
     );
   });
 

@@ -29,6 +29,7 @@ import '../widgets/mistake_display.dart';
 import '../widgets/sketch_icon.dart';
 import '../widgets/start_new_game_dialog.dart';
 import '../widgets/sudoku_grid.dart';
+import '../widgets/hyperchroma_clock_readout.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/typing_title.dart';
 import '../widgets/win_dialog.dart';
@@ -105,6 +106,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   int? _sketchColor;
   Offset? _sketchGlobal;
   int? _sketchBox;
+
+  /// Fits in the 8px already above the status row, so the board does not move.
+  static const _teammateNameSize = 8.0;
 
   @override
   void initState() {
@@ -226,6 +230,20 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     });
   }
 
+  /// Painted in the padding above the status row, right-aligned with Level N.
+  /// It does not take layout space, so the board stays where it is.
+  Widget _teammateNameOverlay(String name, TextStyle? hud) {
+    return IgnorePointer(
+      child: Text(
+        name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.right,
+        style: hud?.copyWith(fontSize: _teammateNameSize, height: 1),
+      ),
+    );
+  }
+
   void _maybeShowResult(GameProvider game) {
     // Home and Daily routes share one provider — only the matching route
     // should present win/loss dialogs.
@@ -334,9 +352,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   void _onSketchDragUpdate(int color, Offset global) {
     final box = _boxAtGlobal(global);
-    if (_sketchColor == color &&
-        _sketchBox == box &&
-        _sketchGlobal == global) {
+    if (_sketchColor == color && _sketchBox == box && _sketchGlobal == global) {
       return;
     }
     setState(() {
@@ -386,7 +402,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           width: 36,
           height: 36,
           child: DecoratedBox(
-            decoration: swatch?.boxDecoration(
+            decoration:
+                swatch?.boxDecoration(
                   border: Border.all(color: ink, width: 1),
                 ) ??
                 BoxDecoration(
@@ -477,6 +494,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
               kMinInteractiveDimension * (widget.isDailyRoute ? 1 : 3),
         );
 
+        final teammateName = game.hyperchromaTeammateName;
+        final hudStyle = Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurface.withValues(alpha: 0.55),
+        );
+
         final scaffold = GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: hasSelection
@@ -559,72 +583,83 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: Column(
                   children: [
-                    Row(
+                    Stack(
+                      clipBehavior: Clip.none,
                       children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: TimerDisplay(
-                              time: game.formatElapsed(),
-                              color: _hyperchromaClockColor(context, game),
-                            ),
-                          ),
-                        ),
-                        if (game.isHyperchroma)
-                          Semantics(
-                            label: 'Sketch ${game.hyperchromaSketches}',
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ExcludeSemantics(
-                                  child: SketchIconPulse(
-                                    count: game.hyperchromaSketches,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${game.hyperchromaSketches}x',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelLarge
-                                      ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                            .withValues(alpha: 0.55),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: game.isHyperchroma
+                                    ? HyperchromaClockReadout(
+                                        time: game.formatElapsed(),
+                                        color: _hyperchromaClockColor(
+                                          context,
+                                          game,
+                                        ),
+                                        pulse: game.hyperchromaPulse,
+                                        pulseSerial:
+                                            game.hyperchromaPulseSerial,
+                                      )
+                                    : TimerDisplay(
+                                        time: game.formatElapsed(),
+                                        color: _hyperchromaClockColor(
+                                          context,
+                                          game,
+                                        ),
                                       ),
-                                ),
-                              ],
+                              ),
                             ),
-                          )
-                        else
-                          MistakeDisplay(
-                            mistakes: game.mistakes,
-                            maxMistakes: game.mistakeLimit,
-                          ),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: game.isPocket && !widget.isDailyRoute
-                                ? const SizedBox.shrink()
-                                : Text(
-                                    widget.isDailyRoute
-                                        ? (game.dailyDateLabel ?? '')
-                                        : game.isHyperchroma
+                            if (game.isHyperchroma)
+                              Semantics(
+                                label: 'Sketch ${game.hyperchromaSketches}',
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ExcludeSemantics(
+                                      child: SketchIconPulse(
+                                        count: game.hyperchromaSketches,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${game.hyperchromaSketches}x',
+                                      style: hudStyle,
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              MistakeDisplay(
+                                mistakes: game.mistakes,
+                                maxMistakes: game.mistakeLimit,
+                              ),
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: game.isPocket && !widget.isDailyRoute
+                                    ? const SizedBox.shrink()
+                                    : Text(
+                                        widget.isDailyRoute
+                                            ? (game.dailyDateLabel ?? '')
+                                            : game.isHyperchroma
                                             ? game.hyperchromaLevelLabel
                                             : game.difficulty.label,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelLarge
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withValues(alpha: 0.55),
-                                        ),
-                                  ),
-                          ),
+                                        style: hudStyle,
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
+                        if (teammateName != null)
+                          Positioned(
+                            top: -_teammateNameSize,
+                            right: 0,
+                            height: _teammateNameSize,
+                            width: 96,
+                            child: _teammateNameOverlay(teammateName, hudStyle),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -688,150 +723,165 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                 alignment: Alignment.topCenter,
                                 child: SizedBox(
                                   width: boardSize,
-                                  child: Column(
+                                  child: Stack(
                                     children: [
-                                      SizedBox(
-                                        width: boardSize,
-                                        height: boardSize,
-                                        child: Stack(
-                                          alignment: Alignment.center,
-                                          clipBehavior: Clip.hardEdge,
-                                          children: [
-                                            // Keep the grid mounted while paused so
-                                            // resume doesn't remount and replay the
-                                            // title-tap color-cycle shimmer.
-                                            TickerMode(
-                                              enabled: !game.isPaused,
-                                              child: SudokuGrid(
-                                                game: game,
-                                                palette: palette,
-                                                displaySwatches: swatches,
-                                                boardKey: _boardKey,
-                                                sketchBox: game.isHyperchroma
-                                                    ? _sketchBox
-                                                    : null,
-                                                showFrame: !(game.isHyperchroma &&
-                                                    game.isPaused),
-                                              ),
-                                            ),
-                                            if (game.isPaused)
-                                              Positioned.fill(
-                                                child: game.isHyperchroma
-                                                    ? HyperchromaShop(
-                                                        sketches: game
-                                                            .hyperchromaSketches,
-                                                        onBuy: (effect) => game
-                                                            .buyHyperchromaEffect(
-                                                              effect,
-                                                            ),
-                                                      )
-                                                    : _PausedBoard(
-                                                        onResume:
-                                                            game.resumeGame,
-                                                      ),
-                                              ),
-                                            if (game.isGenerating)
-                                              Container(
-                                                decoration: BoxDecoration(
-                                                  color: Theme.of(context)
-                                                      .scaffoldBackgroundColor
-                                                      .withValues(alpha: 0.7),
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                                child: const Padding(
-                                                  padding: EdgeInsets.all(24),
-                                                  child:
-                                                      CircularProgressIndicator(),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (reserveControlsLayout) ...[
-                                        const SizedBox(height: toolbarGap),
-                                        if (showControls)
-                                          IgnorePointer(
-                                            ignoring: !controlsEnabled,
-                                            child: GestureDetector(
-                                              onTap: () {},
-                                              behavior: HitTestBehavior.opaque,
-                                              child: GameToolbar(
-                                                canUndo:
-                                                    controlsEnabled &&
-                                                    game.canUndo,
-                                                noteMode: game.noteMode,
-                                                bulkNoteSelect:
-                                                    game.bulkNoteSelect,
-                                                canErase:
-                                                    controlsEnabled && canErase,
-                                                onUndo: game.undo,
-                                                onErase: game.clearSelectedCell,
-                                                onToggleNote:
-                                                    game.toggleNoteMode,
-                                                onNoteLongPress:
-                                                    game.canEnterBulkNoteSelectFromToolbar
-                                                    ? game.enterBulkNoteSelectFromToolbar
-                                                    : null,
-                                              ),
-                                            ),
-                                          )
-                                        else
-                                          const SizedBox(
-                                            height: GameToolbar.height,
-                                          ),
-                                        const SizedBox(height: pickerGap),
-                                        if (showControls)
-                                          IgnorePointer(
-                                            ignoring: !controlsEnabled,
-                                            child: Align(
+                                      Column(
+                                        children: [
+                                          SizedBox(
+                                            width: boardSize,
+                                            height: boardSize,
+                                            child: Stack(
                                               alignment: Alignment.center,
-                                              child: ColorPicker(
-                                                swatchSize: swatchSize,
-                                                xlMode:
-                                                    xlPicker && !pocketPicker,
-                                                pocket: pocketPicker,
-                                                palette: palette,
-                                                displaySwatches: swatches,
-                                                visible: true,
-                                                onColorSelected:
-                                                    game.applyPickerColor,
-                                                onNoteAdded:
-                                                    game.addSelectedNote,
-                                                onNoteRemoved:
-                                                    game.removeSelectedNote,
-                                                onColorHoldStart:
-                                                    game.selected == null &&
-                                                        !game.bulkNoteSelect
-                                                    ? game.beginPickerHoldSweep
-                                                    : null,
-                                                onColorHoldEnd:
-                                                    game.selected == null &&
-                                                        !game.bulkNoteSelect
-                                                    ? game.endPickerHoldSweep
-                                                    : null,
-                                                sketchHitsBoard: game
-                                                        .isHyperchroma
-                                                    ? _sketchHitsBoard
-                                                    : null,
-                                                onSketchDragUpdate: game
-                                                        .isHyperchroma
-                                                    ? _onSketchDragUpdate
-                                                    : null,
-                                                onSketchDragEnd: game
-                                                        .isHyperchroma
-                                                    ? _onSketchDragEnd
-                                                    : null,
-                                                onSketchDragCancel:
-                                                    game.isHyperchroma
-                                                    ? _clearSketchDrag
-                                                    : null,
-                                              ),
+                                              clipBehavior: Clip.hardEdge,
+                                              children: [
+                                                // Keep the grid mounted while paused so
+                                                // resume doesn't remount and replay the
+                                                // title-tap color-cycle shimmer.
+                                                TickerMode(
+                                                  enabled: !game.isPaused,
+                                                  child: SudokuGrid(
+                                                    game: game,
+                                                    palette: palette,
+                                                    displaySwatches: swatches,
+                                                    boardKey: _boardKey,
+                                                    sketchBox:
+                                                        game.isHyperchroma
+                                                        ? _sketchBox
+                                                        : null,
+                                                    showFrame:
+                                                        !(game.isHyperchroma &&
+                                                            game.isPaused),
+                                                  ),
+                                                ),
+                                                if (game.isPaused &&
+                                                    !game.isHyperchroma)
+                                                  Positioned.fill(
+                                                    child: _PausedBoard(
+                                                      onResume: game.resumeGame,
+                                                    ),
+                                                  ),
+                                                if (game.isGenerating)
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Theme.of(context)
+                                                          .scaffoldBackgroundColor
+                                                          .withValues(
+                                                            alpha: 0.7,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                    ),
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.all(
+                                                        24,
+                                                      ),
+                                                      child:
+                                                          CircularProgressIndicator(),
+                                                    ),
+                                                  ),
+                                              ],
                                             ),
-                                          )
-                                        else
-                                          SizedBox(height: pickerHeight),
-                                      ],
+                                          ),
+                                          if (reserveControlsLayout) ...[
+                                            const SizedBox(height: toolbarGap),
+                                            if (showControls)
+                                              IgnorePointer(
+                                                ignoring: !controlsEnabled,
+                                                child: GestureDetector(
+                                                  onTap: () {},
+                                                  behavior:
+                                                      HitTestBehavior.opaque,
+                                                  child: GameToolbar(
+                                                    canUndo:
+                                                        controlsEnabled &&
+                                                        game.canUndo,
+                                                    noteMode: game.noteMode,
+                                                    bulkNoteSelect:
+                                                        game.bulkNoteSelect,
+                                                    canErase:
+                                                        controlsEnabled &&
+                                                        canErase,
+                                                    onUndo: game.undo,
+                                                    onErase:
+                                                        game.clearSelectedCell,
+                                                    onToggleNote:
+                                                        game.toggleNoteMode,
+                                                    onNoteLongPress:
+                                                        game.canEnterBulkNoteSelectFromToolbar
+                                                        ? game.enterBulkNoteSelectFromToolbar
+                                                        : null,
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              const SizedBox(
+                                                height: GameToolbar.height,
+                                              ),
+                                            const SizedBox(height: pickerGap),
+                                            if (showControls)
+                                              IgnorePointer(
+                                                ignoring: !controlsEnabled,
+                                                child: Align(
+                                                  alignment: Alignment.center,
+                                                  child: ColorPicker(
+                                                    swatchSize: swatchSize,
+                                                    xlMode:
+                                                        xlPicker &&
+                                                        !pocketPicker,
+                                                    pocket: pocketPicker,
+                                                    palette: palette,
+                                                    displaySwatches: swatches,
+                                                    visible: true,
+                                                    onColorSelected: game
+                                                        .applyPickerColor,
+                                                    onNoteAdded:
+                                                        game.addSelectedNote,
+                                                    onNoteRemoved: game
+                                                        .removeSelectedNote,
+                                                    onColorHoldStart:
+                                                        game.selected == null &&
+                                                            !game.bulkNoteSelect
+                                                        ? game.beginPickerHoldSweep
+                                                        : null,
+                                                    onColorHoldEnd:
+                                                        game.selected == null &&
+                                                            !game.bulkNoteSelect
+                                                        ? game.endPickerHoldSweep
+                                                        : null,
+                                                    sketchHitsBoard:
+                                                        game.isHyperchroma
+                                                        ? _sketchHitsBoard
+                                                        : null,
+                                                    onSketchDragUpdate:
+                                                        game.isHyperchroma
+                                                        ? _onSketchDragUpdate
+                                                        : null,
+                                                    onSketchDragEnd:
+                                                        game.isHyperchroma
+                                                        ? _onSketchDragEnd
+                                                        : null,
+                                                    onSketchDragCancel:
+                                                        game.isHyperchroma
+                                                        ? _clearSketchDrag
+                                                        : null,
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              SizedBox(height: pickerHeight),
+                                          ],
+                                        ],
+                                      ),
+                                      if (game.isPaused && game.isHyperchroma)
+                                        Positioned.fill(
+                                          child: HyperchromaShop(
+                                            sketches: game.hyperchromaSketches,
+                                            onBuy: (effect) => game
+                                                .buyHyperchromaEffect(effect),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -903,7 +953,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                           onClose: _closeVictory,
                         )
                       : DefeatPanel(
-                          title: game.isHyperchroma &&
+                          title:
+                              game.isHyperchroma &&
                                   game.hyperchromaBoardsCleared == 0
                               ? 'Game Over'
                               : 'Defeat',

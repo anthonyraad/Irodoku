@@ -241,6 +241,8 @@ class _HyperchromaModeDialogState extends State<HyperchromaModeDialog> {
         sketches: 0,
         steadfast: 0,
         trace: false,
+        illuminate: false,
+        levitateUntil: 0,
         telepathy: false,
         palette: palette.storageKey,
         cellsFilled: 0,

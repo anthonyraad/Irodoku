@@ -5,7 +5,7 @@ enum Difficulty {
   expert,
   master;
 
-  static const int unlockWinsRequired = 3;
+  static const int unlockWinsRequired = 1;
 
   String get label => switch (this) {
         Difficulty.easy => 'Easy',

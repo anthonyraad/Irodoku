@@ -294,7 +294,7 @@ class _IroenMosaicCell extends StatefulWidget {
 
 class _IroenMosaicCellState extends State<_IroenMosaicCell> {
   /// Match [ColorCell]: select on pointer-down so onDoubleTap doesn't delay taps.
-  static const _longPressDuration = Duration(milliseconds: 425);
+  static const _longPressDuration = Duration(milliseconds: 330);
 
   Timer? _longPressTimer;
   bool _longPressTriggered = false;

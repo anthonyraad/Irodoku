@@ -933,7 +933,9 @@ void _showUnlockSnackBar(
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                TextSpan(text: ' games ($have/$need)'),
+                TextSpan(
+                  text: ' ${need == 1 ? 'game' : 'games'} ($have/$need)',
+                ),
               ],
             ),
             textAlign: TextAlign.center,

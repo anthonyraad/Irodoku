@@ -167,8 +167,14 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// Remaining correct fills that skip the per-cell palette hop.
   int _steadfastFills = 0;
 
+  /// Clock ticks left where each completed unit grants twice the time bonus.
+  int _levitateSecondsLeft = 0;
+
   /// The next tapped box receives every legal candidate note.
   bool _traceArmed = false;
+
+  /// The next tapped color is noted in every still-legal empty cell.
+  bool _illuminateArmed = false;
 
   /// Co-op shares one clock and board. Correct fills stay at +5s.
   bool _hyperCoop = false;
@@ -184,6 +190,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   bool _coopBuying = false;
   bool _sawPartnerLeft = false;
   String? _coopToast;
+  String? _hyperchromaTeammateName;
 
   /// The next sketch drag locks the solution cell for that color.
   bool _telepathyArmed = false;
@@ -193,6 +200,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   /// Signed seconds of the latest fill, cleared on the next clock tick.
   int _hyperPulse = 0;
+
+  /// Bumps on every gain or penalty, not on the one-second countdown.
+  int _hyperPulseSerial = 0;
   bool _hyperHeldByMenu = false;
   bool _hyperHeldByBackground = false;
   Future<void>? _hyperLoad;
@@ -305,10 +315,18 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   bool get isPocketDaily => _isDaily && _isPocket;
   int get hyperchromaSeconds => _hyperRemaining.inSeconds;
   int get hyperchromaPulse => _hyperPulse;
+
+  /// Changes only when time is added or removed outside the countdown.
+  int get hyperchromaPulseSerial => _hyperPulseSerial;
   int get hyperchromaBoardsCleared => _hyperBoardsCleared;
 
   /// 1-based board in this run. The opening Easy board is Level 1.
   String get hyperchromaLevelLabel => 'Level ${_hyperBoardsCleared + 1}';
+
+  /// Other player's display name during a co-op run. Null when they have
+  /// none set, or after they leave.
+  String? get hyperchromaTeammateName =>
+      _hyperCoop ? _hyperchromaTeammateName : null;
 
   /// Correct fills this run, 10 points each. Givens and mistakes do not count.
   int get hyperchromaScore =>
@@ -529,8 +547,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     return pending;
   }
 
-  bool get canUndo =>
-      _undoStack.isNotEmpty && !_isGenerating && !_hyperCoop;
+  bool get canUndo => _undoStack.isNotEmpty && !_isGenerating && !_hyperCoop;
 
   bool isCellSelected(int row, int col) {
     if (_bulkNoteSelect) {
@@ -1403,8 +1420,12 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     switch (effect) {
       case HyperchromaEffect.steadfast:
         _steadfastFills = HyperchromaRules.steadfastFills;
+      case HyperchromaEffect.levitate:
+        _levitateSecondsLeft = HyperchromaRules.levitateSeconds;
       case HyperchromaEffect.trace:
         _traceArmed = true;
+      case HyperchromaEffect.illuminate:
+        _illuminateArmed = true;
       case HyperchromaEffect.telepathy:
         _telepathyArmed = true;
     }
@@ -1607,11 +1628,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_traceArmed && _hyperCoop) {
       final code = _coopLink?.roomCode;
       if (code != null) {
-        unawaited(HyperchromaCoopService.traceBox(
-          roomCode: code,
-          row: row,
-          col: col,
-        ));
+        unawaited(
+          HyperchromaCoopService.traceBox(roomCode: code, row: row, col: col),
+        );
       }
     } else if (_traceArmed) {
       _applyTrace(row, col);
@@ -1765,6 +1784,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// or glimmer matching filled cells when nothing is selected.
   void applyPickerColor(int value) {
     if (_pickerHoldActive || _ignorePickerTap) return;
+    if (_illuminateArmed && _hyperchroma) {
+      if (isGameOver || _isGenerating || _isPaused) return;
+      if (_hyperCoop) {
+        final code = _coopLink?.roomCode;
+        if (code != null) {
+          unawaited(
+            HyperchromaCoopService.illuminate(roomCode: code, value: value),
+          );
+        }
+        return;
+      }
+      _applyIlluminate(value);
+      return;
+    }
     if (_noteMode) {
       toggleSelectedNote(value);
       return;
@@ -1810,20 +1843,26 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_hyperCoop) {
       final sel = _selected;
       final code = _coopLink?.roomCode;
-      if (sel == null || code == null || isGameOver || _isGenerating || _isPaused) {
+      if (sel == null ||
+          code == null ||
+          isGameOver ||
+          _isGenerating ||
+          _isPaused) {
         return;
       }
       final cell = _cells[sel.$1][sel.$2];
       if (!cell.isEditable) return;
       if (cell.value == value) _selected = null;
-      unawaited(HyperchromaCoopService.placeColor(
-        roomCode: code,
-        playerId: _coopLink?.playerId ?? '',
-        row: sel.$1,
-        col: sel.$2,
-        value: value,
-        hopPalette: _coopHopPalette(),
-      ));
+      unawaited(
+        HyperchromaCoopService.placeColor(
+          roomCode: code,
+          playerId: _coopLink?.playerId ?? '',
+          row: sel.$1,
+          col: sel.$2,
+          value: value,
+          hopPalette: _coopHopPalette(),
+        ),
+      );
       return;
     }
     final sel = _selected;
@@ -1892,9 +1931,6 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     } else {
       _recordSuccessfulFill(row, col, value);
       if (_hyperchroma) {
-        if (!_suppressHyperchromaTime) {
-          _applyHyperchromaDelta(HyperchromaRules.gainSeconds);
-        }
         _hyperFilledOnBoard++;
         _hyperCellsFilled++;
         if (_steadfastFills > 0) {
@@ -1906,8 +1942,15 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     }
 
     _refreshConflicts();
-    final unitCompleted = _syncCompletedUnits(celebrate: true);
-    if (_hyperchroma && unitCompleted) _steadfastFills = 0;
+    final newUnits = _syncCompletedUnits(celebrate: true);
+    if (_hyperchroma && newUnits > 0) _steadfastFills = 0;
+    if (_hyperchroma && !isMistake && !_suppressHyperchromaTime) {
+      final base = HyperchromaRules.gainSeconds;
+      final bonus = _levitateSecondsLeft > 0 && newUnits > 0
+          ? base * HyperchromaRules.levitateTimeMultiplier * newUnits
+          : base;
+      _applyHyperchromaDelta(bonus);
+    }
     if (!isMistake) {
       final solved = _toBoard().isValidSolution();
       if (solved && _hyperchroma) {
@@ -1916,7 +1959,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         _playSound(_sounds.playGameWin);
       } else {
         _playSound(
-          unitCompleted ? _sounds.playComplete : _placementConfirmSound(value),
+          newUnits > 0 ? _sounds.playComplete : _placementConfirmSound(value),
         );
       }
     }
@@ -1932,22 +1975,28 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   bool useSketch(int box, int value) {
     if (_hyperCoop) {
       final code = _coopLink?.roomCode;
-      if (code == null || isGameOver || _isGenerating || _isPaused) return false;
+      if (code == null || isGameOver || _isGenerating || _isPaused) {
+        return false;
+      }
       if (_telepathyArmed) {
-        unawaited(HyperchromaCoopService.telepathy(
-          roomCode: code,
-          box: box,
-          value: value,
-          hopPalette: _coopHopPalette(),
-        ));
+        unawaited(
+          HyperchromaCoopService.telepathy(
+            roomCode: code,
+            box: box,
+            value: value,
+            hopPalette: _coopHopPalette(),
+          ),
+        );
         return true;
       }
       if (_hyperSketches <= 0) return false;
-      unawaited(HyperchromaCoopService.sketchBox(
-        roomCode: code,
-        box: box,
-        value: value,
-      ));
+      unawaited(
+        HyperchromaCoopService.sketchBox(
+          roomCode: code,
+          box: box,
+          value: value,
+        ),
+      );
       return true;
     }
     if (_telepathyArmed) return _applyTelepathy(box, value);
@@ -1996,9 +2045,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     for (final (row, col) in targets) {
       _cells[row][col] = _cells[row][col].withNoteAdded(value);
     }
-    _playSound(
-      targets.length > 1 ? _sounds.playMultiNote : _sounds.playNote,
-    );
+    _playSound(targets.length > 1 ? _sounds.playMultiNote : _sounds.playNote);
     notifyListeners();
     return true;
   }
@@ -2035,6 +2082,35 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       (sum, values) => sum + values.length,
     );
     _playSound(added > 1 ? _sounds.playMultiNote : _sounds.playNote);
+    return true;
+  }
+
+  /// Note [value] in every empty cell where it is still legal. Keeps the
+  /// charge when the board has nothing new to pencil.
+  bool _applyIlluminate(int value) {
+    if (value < 1 || value > gridSize) return false;
+    final board = _toBoard();
+    final targets = <(int, int)>[];
+    for (var row = 0; row < gridSize; row++) {
+      for (var col = 0; col < gridSize; col++) {
+        final cell = _cells[row][col];
+        if (!cell.isEditable || cell.value != 0 || cell.hasNote(value)) {
+          continue;
+        }
+        if (!board.isValidPlacement(row, col, value)) continue;
+        targets.add((row, col));
+      }
+    }
+    if (targets.isEmpty) return false;
+
+    _illuminateArmed = false;
+    _hasInteracted = true;
+    _pushUndo();
+    for (final (row, col) in targets) {
+      _cells[row][col] = _cells[row][col].withNoteAdded(value);
+    }
+    _playSound(targets.length > 1 ? _sounds.playMultiNote : _sounds.playNote);
+    notifyListeners();
     return true;
   }
 
@@ -2100,12 +2176,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   void _showNoteClearWave(int row, int col, int value) {
     final seq = ++_noteClearWaveSeq;
-    _noteClearWave = NoteClearWave(
-      row: row,
-      col: col,
-      value: value,
-      seq: seq,
-    );
+    _noteClearWave = NoteClearWave(row: row, col: col, value: value, seq: seq);
     final clearToken = ++_noteClearWaveClearToken;
     Future<void>.delayed(const Duration(milliseconds: 520), () {
       if (_noteClearWaveClearToken != clearToken) return;
@@ -2355,9 +2426,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       unawaited(
         HyperchromaCoopService.clearNotes(
           roomCode: code,
-          cells: [
-            for (final (row, col) in targets) (row: row, col: col),
-          ],
+          cells: [for (final (row, col) in targets) (row: row, col: col)],
         ),
       );
       return;
@@ -2376,11 +2445,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (_hyperCoop) {
       final code = _coopLink?.roomCode;
       if (code == null || isGameOver || _isGenerating || _isPaused) return;
-      unawaited(HyperchromaCoopService.clearCell(
-        roomCode: code,
-        row: row,
-        col: col,
-      ));
+      unawaited(
+        HyperchromaCoopService.clearCell(roomCode: code, row: row, col: col),
+      );
       return;
     }
     if (isGameOver || _isGenerating || _isPaused) return;
@@ -2470,12 +2537,12 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     );
   }
 
-  bool _syncCompletedUnits({required bool celebrate}) {
+  int _syncCompletedUnits({required bool celebrate}) {
     final now = _successfullyCompletedUnits();
-    var newlyCompleted = false;
     final newly = now.difference(_completedUnits);
+    var newUnits = 0;
     if (celebrate && newly.isNotEmpty) {
-      newlyCompleted = true;
+      newUnits = newly.length;
       _celebration = _buildCelebration(newly);
       if (_hyperchroma) {
         for (final key in newly) {
@@ -2488,7 +2555,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _maybeDailyPaletteShift(now);
     }
     _completedUnits = now;
-    return newlyCompleted;
+    return newUnits;
   }
 
   /// Daily: after ~½ of units (14/27), switch to the day's second palette.
@@ -3412,6 +3479,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _isLost = false;
     _coopEndsAt = endsAtMillis;
     _hyperPulse = pulse;
+    if (pulse != 0) _hyperPulseSerial++;
     _hyperRemaining = Duration(
       milliseconds: endsAtMillis - HyperchromaCoopService.now(),
     );
@@ -3474,7 +3542,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   String? _coopHopPalette() {
     final options = GamePalette.menuValues
-        .where((palette) => palette != activePalette && palette != GamePalette.iro)
+        .where(
+          (palette) => palette != activePalette && palette != GamePalette.iro,
+        )
         .toList();
     if (options.isEmpty) return null;
     return options[Random().nextInt(options.length)].storageKey;
@@ -3505,11 +3575,13 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (!_hyperCoop || _coopFinished) return;
     final state = room['gameState']?.toString();
     if (state == 'finished') {
+      _syncTeammateName(room);
       _syncCoopMeta(room);
       _finishCoopRun();
       return;
     }
     if (state != 'playing') return;
+    _syncTeammateName(room);
     if (room['partnerLeft'] == true && !_sawPartnerLeft) {
       _sawPartnerLeft = true;
       _coopToast = 'Teammate left';
@@ -3562,10 +3634,17 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       });
     });
     _overlayCoopCells(room);
+    final previousBoard = _coopBoardId;
+    final previousCleared = _hyperBoardsCleared;
     _coopBoardId = (room['boardId'] as num?)?.toInt() ?? 0;
-    _hyperBoardsCleared = (room['boardsCleared'] as num?)?.toInt() ?? 0;
+    final cleared = (room['boardsCleared'] as num?)?.toInt() ?? 0;
+    if (previousBoard >= 0 && cleared > previousCleared) {
+      _stats.recordHyperchromaLevelsCleared(cleared - previousCleared);
+    }
+    _hyperBoardsCleared = cleared;
     _gameDifficulty = HyperchromaRules.difficultyForBoard(_hyperBoardsCleared);
-    _hyperEmptyOnBoard = (room['emptyOnBoard'] as num?)?.toInt() ?? _countPlayerCells();
+    _hyperEmptyOnBoard =
+        (room['emptyOnBoard'] as num?)?.toInt() ?? _countPlayerCells();
     _completedUnits = _successfullyCompletedUnits();
     _isGenerating = false;
     _syncSessionBSide();
@@ -3611,7 +3690,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         }
       }
     }
-    if (addedNotes > 0 && noteRow != null && noteCol != null && noteValue != null) {
+    if (addedNotes > 0 &&
+        noteRow != null &&
+        noteCol != null &&
+        noteValue != null) {
       final seq = ++_noteAppearWaveSeq;
       _noteAppearWave = NoteAppearWave(
         value: noteValue,
@@ -3619,9 +3701,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         centerRow: (noteRow ~/ 3) * 3 + 1,
         centerCol: (noteCol ~/ 3) * 3 + 1,
       );
-      _playSound(
-        addedNotes > 1 ? _sounds.playMultiNote : _sounds.playNote,
-      );
+      _playSound(addedNotes > 1 ? _sounds.playMultiNote : _sounds.playNote);
     } else if (removedNote && placedValue == null) {
       _playSound(_sounds.playNoteDeselect);
     }
@@ -3659,15 +3739,26 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     }
   }
 
+  void _syncTeammateName(Map<dynamic, dynamic> room) {
+    _hyperchromaTeammateName = HyperchromaCoopService.teammateName(
+      room,
+      _coopLink?.playerId,
+    );
+  }
+
   void _syncCoopMeta(Map<dynamic, dynamic> room) {
     final previousEnd = _coopEndsAt;
     _hyperSketches = (room['sketches'] as num?)?.toInt() ?? _hyperSketches;
     _steadfastFills = (room['steadfast'] as num?)?.toInt() ?? 0;
     _traceArmed = room['trace'] == true;
+    _illuminateArmed = room['illuminate'] == true;
     _telepathyArmed = room['telepathy'] == true;
-    _hyperCellsFilled = (room['cellsFilled'] as num?)?.toInt() ?? _hyperCellsFilled;
-    _hyperFilledOnBoard = (room['filledOnBoard'] as num?)?.toInt() ?? _hyperFilledOnBoard;
-    _hyperBoardsCleared = (room['boardsCleared'] as num?)?.toInt() ?? _hyperBoardsCleared;
+    _hyperCellsFilled =
+        (room['cellsFilled'] as num?)?.toInt() ?? _hyperCellsFilled;
+    _hyperFilledOnBoard =
+        (room['filledOnBoard'] as num?)?.toInt() ?? _hyperFilledOnBoard;
+    _hyperBoardsCleared =
+        (room['boardsCleared'] as num?)?.toInt() ?? _hyperBoardsCleared;
     _coopEndsAt = (room['endsAt'] as num?)?.toInt();
     final palette = GamePalette.fromStorageKey(room['palette']?.toString());
     if (_sessionPalette != palette) {
@@ -3675,10 +3766,14 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _iroMix = null;
       _syncSessionBSide();
     }
-    if (previousEnd != null && _coopEndsAt != null && _coopEndsAt != previousEnd) {
-      _hyperPulse = _coopEndsAt! > previousEnd
-          ? HyperchromaRules.coopGainSeconds
+    if (previousEnd != null &&
+        _coopEndsAt != null &&
+        _coopEndsAt != previousEnd) {
+      final deltaMs = _coopEndsAt! - previousEnd;
+      _hyperPulse = deltaMs > 0
+          ? (deltaMs / 1000).round()
           : -HyperchromaRules.mistakePenaltySeconds;
+      if (_hyperPulse != 0) _hyperPulseSerial++;
     }
     final ends = _coopEndsAt;
     if (ends != null) {
@@ -3715,10 +3810,13 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
         solution: boards[1],
         boardId: ((room['boardId'] as num?)?.toInt() ?? 1) + 1,
         boardsCleared: cleared,
-        endsAt: (room['endsAt'] as num?)?.toInt() ?? HyperchromaCoopService.now(),
+        endsAt:
+            (room['endsAt'] as num?)?.toInt() ?? HyperchromaCoopService.now(),
         sketches: (room['sketches'] as num?)?.toInt() ?? 0,
         steadfast: (room['steadfast'] as num?)?.toInt() ?? 0,
         trace: room['trace'] == true,
+        illuminate: room['illuminate'] == true,
+        levitateUntil: (room['levitateUntil'] as num?)?.toInt() ?? 0,
         telepathy: room['telepathy'] == true,
         palette: room['palette']?.toString() ?? GamePalette.standard.storageKey,
         cellsFilled: (room['cellsFilled'] as num?)?.toInt() ?? 0,
@@ -3751,16 +3849,20 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _coopBuying = false;
     _sawPartnerLeft = false;
     _coopToast = null;
+    _hyperchromaTeammateName = null;
+    _levitateSecondsLeft = 0;
+    _illuminateArmed = false;
     _coopReturnBoard = _HyperchromaReturnBoard.none;
     if (link == null) return;
     unawaited(link.stop());
     final code = link.roomCode;
     final id = link.playerId;
     if (tellPartner && code != null && id != null) {
-      unawaited(HyperchromaCoopService.roomRef(code).update({
-        'players/$id': null,
-        'partnerLeft': true,
-      }));
+      unawaited(
+        HyperchromaCoopService.roomRef(
+          code,
+        ).update({'players/$id': null, 'partnerLeft': true}),
+      );
     }
   }
 
@@ -3778,9 +3880,12 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _hyperCellsFilled = 0;
     _hyperSketches = 0;
     _steadfastFills = 0;
+    _levitateSecondsLeft = 0;
     _traceArmed = false;
+    _illuminateArmed = false;
     _telepathyArmed = false;
     _hyperPulse = 0;
+    _hyperPulseSerial = 0;
     _hyperLoad = null;
     _isWon = false;
     _isLost = false;
@@ -3810,6 +3915,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   void _applyHyperchromaDelta(int seconds) {
     _hyperPulse = seconds;
+    if (seconds != 0) _hyperPulseSerial++;
     _hyperRemaining += Duration(seconds: seconds);
     if (_hyperRemaining < Duration.zero) {
       _hyperRemaining = Duration.zero;
@@ -3823,7 +3929,6 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _selected = null;
     _exitBulkNoteSelect();
     _hasActiveGame = false;
-    _hyperPulse = 0;
     if (_hyperRemaining < Duration.zero) {
       _hyperRemaining = Duration.zero;
     }
@@ -3854,6 +3959,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
 
   void _advanceHyperchromaBoard() {
     _hyperBoardsCleared++;
+    _stats.recordHyperchromaLevelsCleared();
     _hyperFilledOnBoard = 0;
     _hyperLoad = _loadHyperchromaBoard(freshRun: false);
   }
@@ -3898,6 +4004,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _noteClearWave = null;
     _noteAppearWave = null;
     _hyperPulse = 0;
+    _hyperPulseSerial = 0;
     _hyperFilledOnBoard = 0;
     _colorCycleFilterValue = null;
     _colorCycleMosaic = null;
@@ -3907,7 +4014,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       _hyperCellsFilled = 0;
       _hyperSketches = 0;
       _steadfastFills = 0;
+      _levitateSecondsLeft = 0;
       _traceArmed = false;
+      _illuminateArmed = false;
       _telepathyArmed = false;
       _hyperRemaining = const Duration(seconds: HyperchromaRules.startSeconds);
       _sessionPalette = null;
@@ -4405,7 +4514,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     // Discord has no first-run overlay to dismiss, so never hold the clock.
     if (_hyperCoop) {
       _timer?.cancel();
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) => _onClockTick());
+      _timer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _onClockTick(),
+      );
       return;
     }
     if (_settings.showFirstRunTutorial && !DiscordMode.enabled) return;
@@ -4426,6 +4538,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     if (isGameOver || _isGenerating) return;
     if (_hyperchroma) {
       if (_hyperHeldByMenu || _hyperHeldByBackground) return;
+      if (_levitateSecondsLeft > 0) _levitateSecondsLeft--;
       _hyperPulse = 0;
       final next = _hyperRemaining - const Duration(seconds: 1);
       if (next <= Duration.zero) {

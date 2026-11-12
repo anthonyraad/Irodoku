@@ -4,10 +4,10 @@ import 'game_palette.dart';
 class GameStats {
   static const int iroenUnlockWinsRequired = 100;
 
-  /// Medium wins required before Daily Challenge unlocks.
+  /// Kept for the locked-state message. Daily Iro itself has no win gate.
   static const int dailyChallengeUnlockMediumWins = 1;
 
-  /// Pocket wins required before Pocket [Daily Challenge] unlocks.
+  /// Kept for the locked-state message. [Daily Iro] itself has no win gate.
   static const int graffitiUnlockPocketWins = 1;
 
   final int currentStreak;
@@ -48,6 +48,9 @@ class GameStats {
   final Duration? pocketDailyBestTime;
   final int hyperchromaBestScore;
 
+  /// Lifetime Hyperchroma boards fully cleared. Each one counts toward Iroen.
+  final int hyperchromaLevelsCleared;
+
   const GameStats({
     this.currentStreak = 0,
     this.bestStreak = 0,
@@ -85,6 +88,7 @@ class GameStats {
     this.pocketDailyWins = 0,
     this.pocketDailyBestTime,
     this.hyperchromaBestScore = 0,
+    this.hyperchromaLevelsCleared = 0,
   });
 
   Duration? bestTimeFor(Difficulty difficulty) => bestTimes[difficulty];
@@ -101,9 +105,14 @@ class GameStats {
       pocketWins + pocketChromaticWins + pocketDailyWins;
 
   /// All recorded wins: Classic 9×9 (including Daily Challenge), Pocket modes
-  /// (including Pocket Daily), and both Graffiti modes.
+  /// (including Pocket Daily), both Graffiti modes, and each cleared
+  /// Hyperchroma level.
   int get iroenUnlockWins =>
-      gamesWon + pocketGamesWon + graffitiWins + pocketGraffitiWins;
+      gamesWon +
+      pocketGamesWon +
+      graffitiWins +
+      pocketGraffitiWins +
+      hyperchromaLevelsCleared;
 
   /// Display form e.g. `15-17 (2)`.
   String get graffitiRecordLabel =>
@@ -188,18 +197,13 @@ class GameStats {
 
   bool get isIroenUnlocked => iroenUnlockWins >= iroenUnlockWinsRequired;
 
-  bool get isDailyChallengeUnlocked =>
-      winsFor(Difficulty.medium) >= dailyChallengeUnlockMediumWins;
+  bool get isDailyChallengeUnlocked => true;
 
   bool get isGraffitiUnlocked => true;
 
   bool get isPocketGraffitiUnlocked => true;
 
-  /// Skip the 1 Pocket win gate for Pocket Daily. Keep false in release.
-  static const bool debugUnlockPocketDaily = false;
-
-  bool get isPocketDailyUnlocked =>
-      debugUnlockPocketDaily || pocketWins >= graffitiUnlockPocketWins;
+  bool get isPocketDailyUnlocked => true;
 
   Difficulty get highestUnlocked {
     Difficulty best = Difficulty.easy;
@@ -246,6 +250,7 @@ class GameStats {
     int? pocketDailyWins,
     Duration? pocketDailyBestTime,
     int? hyperchromaBestScore,
+    int? hyperchromaLevelsCleared,
   }) {
     return GameStats(
       currentStreak: currentStreak ?? this.currentStreak,
@@ -294,6 +299,8 @@ class GameStats {
       pocketDailyWins: pocketDailyWins ?? this.pocketDailyWins,
       pocketDailyBestTime: pocketDailyBestTime ?? this.pocketDailyBestTime,
       hyperchromaBestScore: hyperchromaBestScore ?? this.hyperchromaBestScore,
+      hyperchromaLevelsCleared:
+          hyperchromaLevelsCleared ?? this.hyperchromaLevelsCleared,
     );
   }
 }

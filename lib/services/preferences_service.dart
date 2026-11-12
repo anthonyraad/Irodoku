@@ -36,6 +36,8 @@ class PreferencesService {
   static const _keyPocketDailyBestTime = 'stats_pocket_daily_best_time';
   static const _keyHyperchromaBestScore = 'stats_hyperchroma_best_score';
   static const _keyHyperchromaBestPoints = 'stats_hyperchroma_best_points';
+  static const _keyHyperchromaLevelsCleared =
+      'stats_hyperchroma_levels_cleared';
   static const _keyPocketWins = 'stats_pocket_wins';
   static const _keyPocketBestTime = 'stats_pocket_best_time';
   static const _keyPocketChromaticWins = 'stats_pocket_chromatic_wins';
@@ -416,6 +418,8 @@ class PreferencesService {
       hyperchromaBestScore: _prefs.getInt(_keyHyperchromaBestPoints) ??
           _prefs.getInt(_keyHyperchromaBestScore) ??
           0,
+      hyperchromaLevelsCleared:
+          _prefs.getInt(_keyHyperchromaLevelsCleared) ?? 0,
     );
   }
 
@@ -439,6 +443,10 @@ class PreferencesService {
     await _prefs.setInt(
       _keyHyperchromaBestPoints,
       stats.hyperchromaBestScore,
+    );
+    await _prefs.setInt(
+      _keyHyperchromaLevelsCleared,
+      stats.hyperchromaLevelsCleared,
     );
     await _prefs.setInt(_keyTotalXp, stats.totalXp);
     await _prefs.setInt(_keyPocketWins, stats.pocketWins);

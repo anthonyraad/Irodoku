@@ -379,6 +379,18 @@ void main() {
       const GameStats(gamesWon: 99, pocketGraffitiWins: 1).isIroenUnlocked,
       isTrue,
     );
+    expect(
+      const GameStats(gamesWon: 99, hyperchromaLevelsCleared: 1).isIroenUnlocked,
+      isTrue,
+    );
+    expect(
+      const GameStats(hyperchromaLevelsCleared: 100).isIroenUnlocked,
+      isTrue,
+    );
+    expect(
+      const GameStats(hyperchromaLevelsCleared: 99).isIroenUnlocked,
+      isFalse,
+    );
     expect(const GameStats(gamesWon: 99).isIroenUnlocked, isFalse);
     expect(
       const GameStats(
@@ -396,22 +408,45 @@ void main() {
     expect(const GameStats().isPocketGraffitiUnlocked, isTrue);
   });
 
-  test('Pocket Daily unlocks after a Pocket win', () {
-    if (GameStats.debugUnlockPocketDaily) {
-      expect(const GameStats().isPocketDailyUnlocked, isTrue);
-      return;
-    }
-    expect(const GameStats().isPocketDailyUnlocked, isFalse);
+  test('Daily Iro is unlocked with no win requirement', () {
+    expect(const GameStats().isDailyChallengeUnlocked, isTrue);
+  });
+
+  test('each difficulty unlocks after one win of the previous', () {
+    const fresh = GameStats();
+    expect(fresh.isUnlocked(Difficulty.easy), isTrue);
+    expect(fresh.isUnlocked(Difficulty.medium), isFalse);
+    expect(fresh.isUnlocked(Difficulty.hard), isFalse);
+
     expect(
-      const GameStats(
-        winsByDifficulty: {Difficulty.medium: 1},
-      ).isPocketDailyUnlocked,
-      isFalse,
-    );
-    expect(
-      const GameStats(pocketWins: 1).isPocketDailyUnlocked,
+      const GameStats(winsByDifficulty: {Difficulty.easy: 1})
+          .isUnlocked(Difficulty.medium),
       isTrue,
     );
+    expect(
+      const GameStats(winsByDifficulty: {Difficulty.medium: 1})
+          .isUnlocked(Difficulty.hard),
+      isTrue,
+    );
+    expect(
+      const GameStats(winsByDifficulty: {Difficulty.hard: 1})
+          .isUnlocked(Difficulty.expert),
+      isTrue,
+    );
+    expect(
+      const GameStats(winsByDifficulty: {Difficulty.expert: 1})
+          .isUnlocked(Difficulty.master),
+      isTrue,
+    );
+    expect(
+      const GameStats(winsByDifficulty: {Difficulty.easy: 1})
+          .isUnlocked(Difficulty.hard),
+      isFalse,
+    );
+  });
+
+  test('[Daily Iro] is unlocked with no win requirement', () {
+    expect(const GameStats().isPocketDailyUnlocked, isTrue);
   });
 
   test('Wet paint adds 25% of base, rounded down', () {
