@@ -14,7 +14,7 @@ enum HyperchromaEffect {
   levitate(
     4,
     'Levitate',
-    'Every unit you complete in the next 4 seconds grants 2x time bonus.',
+    'Every unit you complete in the next ${HyperchromaRules.levitateSeconds} seconds grants 2x time bonus.',
   ),
   trace(
     5,
@@ -63,7 +63,7 @@ abstract final class HyperchromaRules {
   static const steadfastFills = 8;
 
   /// How long Levitate doubles the time bonus for each completed unit.
-  static const levitateSeconds = 4;
+  static const levitateSeconds = 5;
 
   /// Levitate grants this many times the usual correct-fill time bonus.
   static const levitateTimeMultiplier = 2;

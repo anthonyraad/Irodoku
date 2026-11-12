@@ -207,11 +207,13 @@ class StatsProvider extends ChangeNotifier {
   }
 
   /// Hyperchroma end-of-run bonus. Does not count as a difficulty win.
-  void awardHyperchroma(int earned) {
+  /// Iro doubles the payout the same way it does for other modes.
+  void awardHyperchroma(int earned, {bool iro = false}) {
     if (earned <= 0) return;
     final award = PlayerXp.hyperchroma(
       earned: earned,
       previousTotal: _stats.totalXp,
+      iro: iro,
     );
     _stats = _stats.copyWith(totalXp: award.newTotal);
     _lastXpAward = award;

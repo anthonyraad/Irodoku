@@ -367,11 +367,14 @@ abstract final class PlayerXp {
     );
   }
 
-  /// One Hyperchroma receipt line. No finish bonus, Lucky, or Iro.
+  /// One Hyperchroma receipt. No finish bonus or Lucky. Iro doubles it.
   static XpAward hyperchroma({
     required int earned,
     required int previousTotal,
+    bool iro = false,
   }) {
+    final iroXp = iro ? earned * (iroMultiplier - 1) : 0;
+    final total = earned + iroXp;
     return XpAward(
       baseXp: earned,
       difficulty: Difficulty.easy,
@@ -383,9 +386,11 @@ abstract final class PlayerXp {
       chromatic: false,
       flawlessXp: 0,
       fastXp: 0,
-      earned: earned,
+      earned: total,
       previousTotal: previousTotal,
-      newTotal: previousTotal + earned,
+      newTotal: previousTotal + total,
+      iro: iro,
+      iroXp: iroXp,
       hyperchroma: true,
     );
   }
@@ -494,7 +499,12 @@ class XpAward {
 
   /// Receipt lines that sum to [earned].
   List<({String label, int xp})> get breakdown {
-    if (hyperchroma) return [(label: 'Hyperchroma', xp: earned)];
+    if (hyperchroma) {
+      return [
+        (label: 'Hyperchroma', xp: baseXp),
+        if (iro) (label: 'Iro', xp: iroXp),
+      ];
+    }
     if (goodEffort) return [(label: 'Good effort', xp: earned)];
     if (drawer) return [(label: 'Drawer', xp: earned)];
     return [

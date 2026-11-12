@@ -93,7 +93,12 @@ class _HyperchromaClockReadoutState extends State<HyperchromaClockReadout>
             final dx = reduce ? 0.0 : math.sin(t * math.pi * 6) * 2 * (1 - t);
             return Transform.translate(offset: Offset(dx, 0), child: child);
           },
-          child: TimerDisplay(time: widget.time, color: widget.color),
+          child: _SwiftClockColor(
+            color: widget.color ??
+                Theme.of(context).textTheme.titleMedium?.color ??
+                Theme.of(context).colorScheme.onSurface,
+            time: widget.time,
+          ),
         ),
         AnimatedBuilder(
           animation: _pop,
@@ -122,6 +127,70 @@ class _HyperchromaClockReadoutState extends State<HyperchromaClockReadout>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Eases the Hyperchroma clock from one tint to the next. Levitate holds
+/// purple, then this returns it to black or red.
+class _SwiftClockColor extends StatefulWidget {
+  final Color color;
+  final String time;
+
+  const _SwiftClockColor({required this.color, required this.time});
+
+  @override
+  State<_SwiftClockColor> createState() => _SwiftClockColorState();
+}
+
+class _SwiftClockColorState extends State<_SwiftClockColor>
+    with SingleTickerProviderStateMixin {
+  static const _duration = Duration(milliseconds: 180);
+
+  late final AnimationController _controller;
+  late Color _from;
+  late Color _to;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = widget.color;
+    _to = widget.color;
+    _controller = AnimationController(vsync: this, duration: _duration)
+      ..value = 1;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SwiftClockColor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.color == widget.color) return;
+    _from = Color.lerp(_from, _to, _controller.value) ?? _to;
+    _to = widget.color;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _from = _to;
+      _controller.value = 1;
+      return;
+    }
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = Curves.easeOut.transform(_controller.value);
+        return TimerDisplay(
+          time: widget.time,
+          color: Color.lerp(_from, _to, t) ?? _to,
+        );
+      },
     );
   }
 }

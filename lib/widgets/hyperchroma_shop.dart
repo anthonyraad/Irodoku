@@ -8,10 +8,14 @@ class HyperchromaShop extends StatelessWidget {
   final int sketches;
   final ValueChanged<HyperchromaEffect> onBuy;
 
+  /// Representative colors of the live palette, in menu order.
+  final List<Color> paletteColors;
+
   const HyperchromaShop({
     super.key,
     required this.sketches,
     required this.onBuy,
+    this.paletteColors = const [],
   });
 
   @override
@@ -34,13 +38,13 @@ class HyperchromaShop extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final effect in HyperchromaEffect.values) ...[
-                      if (effect != HyperchromaEffect.values.first)
-                        const SizedBox(height: 8),
+                    for (var i = 0; i < HyperchromaEffect.values.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 8),
                       _EffectCard(
-                        effect: effect,
-                        enabled: sketches >= effect.cost,
-                        onBuy: () => onBuy(effect),
+                        effect: HyperchromaEffect.values[i],
+                        enabled: sketches >= HyperchromaEffect.values[i].cost,
+                        tint: i < paletteColors.length ? paletteColors[i] : null,
+                        onBuy: () => onBuy(HyperchromaEffect.values[i]),
                         scheme: scheme,
                       ),
                     ],
@@ -56,14 +60,18 @@ class HyperchromaShop extends StatelessWidget {
 }
 
 class _EffectCard extends StatelessWidget {
+  static const _washOpacity = 0.15;
+
   final HyperchromaEffect effect;
   final bool enabled;
+  final Color? tint;
   final VoidCallback onBuy;
   final ColorScheme scheme;
 
   const _EffectCard({
     required this.effect,
     required this.enabled,
+    required this.tint,
     required this.onBuy,
     required this.scheme,
   });
@@ -73,6 +81,10 @@ class _EffectCard extends StatelessWidget {
     final ink = scheme.onSurface.withValues(alpha: enabled ? 1 : 0.45);
     final border = enabled ? scheme.onSurface : scheme.outlineVariant;
     final fill = enabled ? scheme.surface : scheme.surfaceContainerHighest;
+    final wash = tint;
+    final painted = enabled && wash != null
+        ? Color.alphaBlend(wash.withValues(alpha: _washOpacity), fill)
+        : fill;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: const BorderRadius.all(Radius.circular(8)),
@@ -87,7 +99,7 @@ class _EffectCard extends StatelessWidget {
             : null,
       ),
       child: Material(
-        color: fill,
+        color: painted,
         shape: RoundedRectangleBorder(
           borderRadius: const BorderRadius.all(Radius.circular(8)),
           side: BorderSide(color: border, width: 2.5),

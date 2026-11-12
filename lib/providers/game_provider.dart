@@ -170,6 +170,9 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   /// Clock ticks left where each completed unit grants twice the time bonus.
   int _levitateSecondsLeft = 0;
 
+  /// Co-op wall-clock instant when Levitate stops, in epoch milliseconds.
+  int? _coopLevitateUntil;
+
   /// The next tapped box receives every legal candidate note.
   bool _traceArmed = false;
 
@@ -314,6 +317,16 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
   bool get isHyperchromaCoop => _hyperCoop;
   bool get isPocketDaily => _isDaily && _isPocket;
   int get hyperchromaSeconds => _hyperRemaining.inSeconds;
+
+  /// Levitate is doubling each completed unit for its short window.
+  bool get hyperchromaLevitateActive {
+    if (!_hyperchroma || isGameOver) return false;
+    if (_hyperCoop) {
+      final until = _coopLevitateUntil;
+      return until != null && HyperchromaCoopService.now() < until;
+    }
+    return _levitateSecondsLeft > 0;
+  }
   int get hyperchromaPulse => _hyperPulse;
 
   /// Changes only when time is added or removed outside the countdown.
@@ -3760,6 +3773,8 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _hyperBoardsCleared =
         (room['boardsCleared'] as num?)?.toInt() ?? _hyperBoardsCleared;
     _coopEndsAt = (room['endsAt'] as num?)?.toInt();
+    final levitateUntil = (room['levitateUntil'] as num?)?.toInt() ?? 0;
+    _coopLevitateUntil = levitateUntil > 0 ? levitateUntil : null;
     final palette = GamePalette.fromStorageKey(room['palette']?.toString());
     if (_sessionPalette != palette) {
       _sessionPalette = palette;
@@ -3851,6 +3866,7 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
     _coopToast = null;
     _hyperchromaTeammateName = null;
     _levitateSecondsLeft = 0;
+    _coopLevitateUntil = null;
     _illuminateArmed = false;
     _coopReturnBoard = _HyperchromaReturnBoard.none;
     if (link == null) return;
@@ -3946,7 +3962,10 @@ class GameProvider extends ChangeNotifier implements BulkPaintTarget {
       emptyOnCurrent: _hyperEmptyOnBoard,
     );
     if (earned > 0) {
-      _stats.awardHyperchroma(earned);
+      _stats.awardHyperchroma(
+        earned,
+        iro: activePalette == GamePalette.iro,
+      );
       unawaited(_stats.persist());
     }
     if (!_hyperCoop) _stats.recordHyperchromaScore(hyperchromaScore);

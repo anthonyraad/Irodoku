@@ -71,9 +71,13 @@ TextStyle? _centeredAppBarTitleStyle(
   return fontSize == baseSize ? base : base.copyWith(fontSize: fontSize);
 }
 
+/// Clock tint while Levitate is doubling completed units.
+const _levitateClockColor = Color(0xFFAB47BC);
+
 Color? _hyperchromaClockColor(BuildContext context, GameProvider game) {
   if (!game.isHyperchroma) return null;
   if (game.hyperchromaSeconds <= 0) return null;
+  if (game.hyperchromaLevitateActive) return _levitateClockColor;
   if (game.hyperchromaPulse > 0) return Colors.lightBlueAccent;
   if (game.hyperchromaPulse < 0 || game.hyperchromaSeconds <= 10) {
     return Theme.of(context).colorScheme.error;
@@ -878,6 +882,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                                         Positioned.fill(
                                           child: HyperchromaShop(
                                             sketches: game.hyperchromaSketches,
+                                            paletteColors: game.displaySwatches
+                                                    ?.map(
+                                                      (swatch) =>
+                                                          swatch.representative,
+                                                    )
+                                                    .toList() ??
+                                                const <Color>[],
                                             onBuy: (effect) => game
                                                 .buyHyperchromaEffect(effect),
                                           ),

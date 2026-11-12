@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../core/palette.dart';
 import '../models/game_palette.dart';
@@ -448,57 +449,108 @@ class _XpProgressTrack extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: const BorderRadius.all(Radius.circular(2)),
-      child: SizedBox(
-        height: minHeight,
+      child: _IntrinsicFreeBox(
+        intrinsicHeight: minHeight,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final width = constraints.maxWidth;
             final fill = value.clamp(0.0, 1.0);
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                ColoredBox(color: ink.withValues(alpha: 0.12)),
-                if (fill > 0)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: ClipRect(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: fill,
-                        child: SizedBox(
-                          width: width,
-                          height: minHeight,
-                          child: sweeping
-                              ? AnimatedBuilder(
-                                  animation: sweep,
-                                  builder: (context, _) {
-                                    final raw = sweep.value;
-                                    if (raw <= 0 || raw >= 1) {
-                                      return ColoredBox(color: ink);
-                                    }
-                                    return DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: PaletteSweepMask.gradient(
-                                          colors: colors,
-                                          ink: ink,
-                                          raw: raw,
+            return SizedBox(
+              height: minHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(color: ink.withValues(alpha: 0.12)),
+                  if (fill > 0)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: ClipRect(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: fill,
+                          child: SizedBox(
+                            width: width,
+                            height: minHeight,
+                            child: sweeping
+                                ? AnimatedBuilder(
+                                    animation: sweep,
+                                    builder: (context, _) {
+                                      final raw = sweep.value;
+                                      if (raw <= 0 || raw >= 1) {
+                                        return ColoredBox(color: ink);
+                                      }
+                                      return DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          gradient: PaletteSweepMask.gradient(
+                                            colors: colors,
+                                            ink: ink,
+                                            raw: raw,
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                                )
-                              : ColoredBox(color: ink),
+                                      );
+                                    },
+                                  )
+                                : ColoredBox(color: ink),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             );
           },
         ),
       ),
     );
   }
+}
+
+/// Lets the XP track live inside an [AlertDialog], which measures its content
+/// with intrinsic widths. [LayoutBuilder] cannot answer that query.
+class _IntrinsicFreeBox extends SingleChildRenderObjectWidget {
+  final double intrinsicHeight;
+
+  const _IntrinsicFreeBox({
+    required this.intrinsicHeight,
+    required super.child,
+  });
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    return _RenderIntrinsicFreeBox(intrinsicHeight);
+  }
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderIntrinsicFreeBox renderObject,
+  ) {
+    renderObject.intrinsicHeight = intrinsicHeight;
+  }
+}
+
+class _RenderIntrinsicFreeBox extends RenderProxyBox {
+  _RenderIntrinsicFreeBox(this._intrinsicHeight);
+
+  double _intrinsicHeight;
+
+  set intrinsicHeight(double value) {
+    if (_intrinsicHeight == value) return;
+    _intrinsicHeight = value;
+    markNeedsLayout();
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => 0;
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => 0;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _intrinsicHeight;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _intrinsicHeight;
 }
 
 class _LevelUpDigit extends StatefulWidget {

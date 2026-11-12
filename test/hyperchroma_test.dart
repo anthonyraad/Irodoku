@@ -12,6 +12,7 @@ import 'package:irodoku/services/hyperchroma_coop_service.dart';
 import 'package:irodoku/services/preferences_service.dart';
 import 'package:irodoku/services/sound_service.dart';
 import 'package:irodoku/widgets/hyperchroma_clock_readout.dart';
+import 'package:irodoku/widgets/win_dialog.dart';
 import 'package:irodoku/widgets/hyperchroma_menu_button.dart';
 import 'package:irodoku/widgets/hyperchroma_shop.dart';
 import 'package:irodoku/widgets/palette_sweep_mask.dart';
@@ -80,6 +81,20 @@ void main() {
     expect(award.newTotal, 20 + earned);
     expect(award.chromatic, isFalse);
     expect(award.lucky, isFalse);
+    expect(award.iro, isFalse);
+
+    final iro = PlayerXp.hyperchroma(
+      earned: earned,
+      previousTotal: 20,
+      iro: true,
+    );
+    expect(iro.iroXp, earned);
+    expect(iro.earned, earned * PlayerXp.iroMultiplier);
+    expect(iro.breakdown, [
+      (label: 'Hyperchroma', xp: earned),
+      (label: 'Iro', xp: earned),
+    ]);
+    expect(iro.newTotal, 20 + iro.earned);
   });
 
   test(
@@ -343,6 +358,85 @@ void main() {
     expect(game.hyperchromaScore, 0);
   });
 
+  test('Iro doubles Hyperchroma XP', () async {
+    SharedPreferences.setMockInitialValues({
+      'sound_enabled': false,
+      'dev_mode': true,
+    });
+    final prefs = await PreferencesService.create();
+    await prefs.setPalette(GamePalette.iro);
+    final stats = StatsProvider(prefs);
+    final achievements = AchievementsProvider(prefs);
+    final settings = SettingsProvider(
+      prefs,
+      stats: stats,
+      achievements: achievements,
+    );
+    final game = GameProvider(
+      settings: settings,
+      stats: stats,
+      achievements: achievements,
+      preferences: prefs,
+      sounds: SoundService(),
+    );
+    addTearDown(game.dispose);
+    game.debugQueueHyperchromaBoards([
+      generatePuzzleIsolate(<Object>[Difficulty.easy.storageKey, 11]),
+    ]);
+    await game.debugBeginHyperchroma();
+    expect(game.activePalette, GamePalette.iro);
+    game.debugSetHyperchromaProgress(
+      boardsCleared: 1,
+      filledOnCurrent: 10,
+      emptyOnCurrent: 40,
+    );
+    for (var i = 0; i < HyperchromaRules.startSeconds; i++) {
+      game.debugTickClock();
+    }
+
+    final earned = HyperchromaRules.xp(
+      boardsCleared: 1,
+      filledOnCurrent: 10,
+      emptyOnCurrent: 40,
+    );
+    expect(stats.stats.totalXp, earned * PlayerXp.iroMultiplier);
+    expect(stats.lastXpAward?.breakdown, [
+      (label: 'Hyperchroma', xp: earned),
+      (label: 'Iro', xp: earned),
+    ]);
+  });
+
+  testWidgets('the Iro receipt fits in the Hyperchroma result dialog', (
+    tester,
+  ) async {
+    final award = PlayerXp.hyperchroma(
+      earned: 180,
+      previousTotal: 0,
+      iro: true,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VictoryPanel(
+            title: 'Game Over',
+            time: 'Score: 40',
+            xp: award,
+            onClose: () {},
+            onNewGame: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Iro'), findsOneWidget);
+    expect(find.text('+180'), findsNWidgets(2));
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('Level'), findsOneWidget);
+  });
+
   test('Hyperchroma parks the live puzzle and does not overwrite it', () async {
     SharedPreferences.setMockInitialValues({
       'sound_enabled': false,
@@ -536,6 +630,87 @@ void main() {
     );
   });
 
+  testWidgets('Levitate purple eases back to the resting clock color', (
+    tester,
+  ) async {
+    const purple = Color(0xFFAB47BC);
+    const resting = Color(0xFF111111);
+
+    Future<void> show(Color color) {
+      return tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: HyperchromaClockReadout(
+              time: '00:40',
+              color: color,
+              pulse: 0,
+              pulseSerial: 0,
+            ),
+          ),
+        ),
+      );
+    }
+
+    await show(purple);
+    expect(tester.widget<Text>(find.text('00:40')).style?.color, purple);
+
+    await show(resting);
+    await tester.pump(const Duration(milliseconds: 90));
+    final mid = tester.widget<Text>(find.text('00:40')).style!.color!;
+    expect(mid, isNot(purple));
+    expect(mid, isNot(resting));
+
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(tester.widget<Text>(find.text('00:40')).style?.color, resting);
+  });
+
+  testWidgets('affordable shop items wash in palette order', (tester) async {
+    const colors = [
+      Color(0xFFFF0000),
+      Color(0xFF00FF00),
+      Color(0xFF0000FF),
+      Color(0xFFFFFF00),
+      Color(0xFFFF00FF),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HyperchromaShop(
+            sketches: HyperchromaEffect.trace.cost,
+            paletteColors: colors,
+            onBuy: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    Color fillOf(String title) {
+      return tester
+          .widget<Material>(
+            find
+                .ancestor(of: find.text(title), matching: find.byType(Material))
+                .first,
+          )
+          .color!;
+    }
+
+    final surface = Theme.of(
+      tester.element(find.text('Steadfast')),
+    ).colorScheme.surface;
+    final muted = Theme.of(
+      tester.element(find.text('Illuminate')),
+    ).colorScheme.surfaceContainerHighest;
+
+    Color wash(Color tint) =>
+        Color.alphaBlend(tint.withValues(alpha: 0.15), surface);
+
+    expect(fillOf('Steadfast'), wash(colors[0]));
+    expect(fillOf('Levitate'), wash(colors[1]));
+    expect(fillOf('Trace'), wash(colors[2]));
+    expect(fillOf('Illuminate'), muted);
+    expect(fillOf('Telepathy'), muted);
+  });
+
   testWidgets('the shop shows every effect without scrolling', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -567,7 +742,7 @@ void main() {
     );
     expect(
       HyperchromaEffect.levitate.description,
-      'Every unit you complete in the next 4 seconds grants 2x time bonus.',
+      'Every unit you complete in the next 5 seconds grants 2x time bonus.',
     );
     expect(
       HyperchromaEffect.illuminate.description,
@@ -585,6 +760,7 @@ void main() {
     game.debugGrantSketches(HyperchromaEffect.levitate.cost);
     await game.pauseGame();
     expect(game.buyHyperchromaEffect(HyperchromaEffect.levitate), isTrue);
+    expect(game.hyperchromaLevitateActive, isTrue);
 
     final safe = _safeEmpty(game);
     expect(safe, isNotNull);
@@ -614,6 +790,7 @@ void main() {
     for (var i = 0; i < HyperchromaRules.levitateSeconds; i++) {
       game.debugTickClock();
     }
+    expect(game.hyperchromaLevitateActive, isFalse);
     final nextBox = _openBoxes(game).first;
     final nextEmpties = [
       for (final cell in _boxCells(game, nextBox))
